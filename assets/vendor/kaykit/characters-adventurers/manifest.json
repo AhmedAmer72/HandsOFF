@@ -1,0 +1,23 @@
+{
+  "id": "characters-adventurers",
+  "product": "KayKit : Adventurers Character Pack (2.0)",
+  "archive": "KayKit_Adventurers_2.0_FREE.zip",
+  "sha256": "abe48f4763fba0896bab486ee9e6d08ca6b5b3884b9601f235c8847ae94dc479",
+  "bytes": 13024345,
+  "extractedFiles": 250,
+  "extensions": {
+    ".url": 3,
+    ".png": 44,
+    ".txt": 1,
+    ".fbx": 70,
+    ".glb": 8,
+    ".obj": 31,
+    ".mtl": 31,
+    ".bin": 31,
+    ".gltf": 31
+  },
+  "runtimeFiles": 75,
+  "license": "CC0-1.0",
+  "licenseStatus": "APPROVED_CC0",
+  "verified": "2026-11-05 (Africa/Cairo)"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "characters-skeletons",
+  "product": "KayKit Character Pack : Skeletons (1.1)",
+  "archive": "KayKit_Skeletons_1.1_FREE.zip",
+  "sha256": "21fbad59ee6cc1d7bed12d0e425acab8ebe564b8620bbc1d017aedb29dd8a3d2",
+  "bytes": 8177445,
+  "extractedFiles": 107,
+  "extensions": {
+    ".url": 4,
+    ".png": 12,
+    ".txt": 1,
+    ".fbx": 32,
+    ".glb": 6,
+    ".obj": 13,
+    ".mtl": 13,
+    ".bin": 13,
+    ".gltf": 13
+  },
+  "runtimeFiles": 31,
+  "license": "CC0-1.0",
+  "licenseStatus": "APPROVED_CC0",
+  "verified": "2026-11-05 (Africa/Cairo)"
+}

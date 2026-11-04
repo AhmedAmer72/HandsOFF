@@ -1,0 +1,6 @@
+verified: 2026-11-05 (Africa/Cairo)
+product_page: https://kaylousberg.com/game-assets/rpg-tools
+download_page: https://kaylousberg.itch.io/rpg-tools-bits
+archive: KayKit_RPGToolsBits_1.0_FREE.zip
+free_upload: Free
+license: https://creativecommons.org/publicdomain/zero/1.0/legalcode

@@ -1,0 +1,6 @@
+verified: 2026-11-05 (Africa/Cairo)
+product_page: https://kaylousberg.com/game-assets/characters-adventurers
+download_page: https://kaylousberg.itch.io/kaykit-adventurers
+archive: KayKit_Adventurers_2.0_FREE.zip
+free_upload: Free 2.0
+license: https://creativecommons.org/publicdomain/zero/1.0/legalcode
