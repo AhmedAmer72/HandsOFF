@@ -1,11 +1,11 @@
 # Current status
 
-Prototype: APPROVED as the stylized KayKit room. Evidence is in `docs/FIRST_PLAYABLE_PROTOTYPE.md`.
+The core loop is playable: prepare traps, open the gate, watch a rules-driven raid, burn or release the diary page, trade with finite merchants, and advance the day.
 
-Licenses: five free packs APPROVED_CC0, including the animation companion. Paid source blends were not taken.
+Prototype graphics are unchanged. The raid result comes from `src/game/engine/raid.ts`.
 
-Playable now: menu, dungeon prototype, full Ashgate layout toggle, world-map hexes, gate market, player market, workshop, registry, chronicle, settings, and the 3D asset gallery. State stays in localStorage. No chain code.
+Tests: `npx vitest run` — 13 passed. `npx tsc --noEmit` passed after the diary countdown type fix.
 
-Run `npm install` then `npm run dev`.
+Browser: spike at 2,2 costs 18 Gold (140 to 122), Kara dies on that spike, the parchment offers Burn, and burning spends 3 Cinder (8 to 5). Replay lists the ticks.
 
-Not done: a sculpted hero replacement, a dedicated boulder mesh, recorded audio, the Medieval Hexagon Pack, and Lamplighter. Those were either absent from the authorized downloads or absent from the repo.
+Report: `docs/UNDERREALM_GAMEPLAY_IMPLEMENTATION_REPORT.md`.

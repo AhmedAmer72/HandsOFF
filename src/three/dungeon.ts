@@ -1,6 +1,9 @@
 import gsap from "gsap";
 import * as THREE from "three";
-import { ANIMATION_FILES, CELL, CLIP_ALIASES, ENEMIES, HEROES, TRAPS, fullLayout, item, prototypeLayout, type HeroId, type Piece, type Quality, type WorldMode } from "../game/content";
+import { ANIMATION_FILES, CELL, CLIP_ALIASES, ENEMIES, HEROES, fullLayout, item, prototypeLayout, type HeroId, type Piece, type Quality, type WorldMode } from "../game/content";
+import { TRAP_DEFINITIONS, type TrapId } from "../game/config/trapDefinitions";
+import type { PlacedTrap } from "../game/engine/types";
+import type { VisualStep } from "../game/store";
 import { sfx } from "../game/audio";
 import { loadGltf, spawn, stripRootMotion } from "./loader";
 
@@ -14,7 +17,8 @@ export interface DungeonHooks {
   onHeroDamage: (amount: number) => void;
   onEnemyDamage: (id: string, amount: number) => void;
   onEnemies: (enemies: { id: string; name: string; hp: number; maxHp: number; file: string }[]) => void;
-  onPlace: (trap: { id: string; trapId: string; x: number; z: number }) => void;
+  tryPlace: (trapId: TrapId, ix: number, iz: number) => boolean;
+  getTraps: () => PlacedTrap[];
   onStats: (fps: number, triangles: number) => void;
   onDiary: (phase: "decision") => void;
   diaryChoice: () => "idle" | "decision" | "burned" | "escaped";
@@ -82,6 +86,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   let lastStat = 0;
   let placing: THREE.Group | null = null;
   let diaryPlayed = false;
+  let scripted = false;
   let aggro = false;
   let burnStarted = false;
   let releaseStarted = false;
@@ -267,6 +272,12 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     clips = loaded.flatMap((gltf) => gltf.animations.map((clip) => stripRootMotion(clip)));
     applyQuality(hooks.getQuality());
     await buildLevel(hooks.getMode());
+    for (const trap of hooks.getTraps()) {
+      const mesh = await spawn(TRAP_DEFINITIONS[trap.trapId].model, "cast");
+      mesh.position.set(trap.ix * CELL, 0.05, trap.iz * CELL);
+      mesh.userData.level = true;
+      scene.add(mesh);
+    }
     const mode = hooks.getMode();
     const lead = HEROES.find((entry) => entry.id === hooks.getHero()) ?? HEROES[0];
     hero = await addActor({
@@ -332,7 +343,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     }
     const hit = hitFloor(clientX, clientY);
     if (!hit) return;
-    const trap = TRAPS.find((entry) => entry.id === trapId);
+    const trap = TRAP_DEFINITIONS[trapId as TrapId];
     if (!trap) return;
     if (!placing) {
       placing = new THREE.Group();
@@ -364,18 +375,23 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       return;
     }
     const trapId = hooks.getTrap();
-    if (trapId && placing?.visible && placing.userData.valid) {
-      const trap = TRAPS.find((entry) => entry.id === trapId);
-      if (!trap) return;
-      const id = `placed-${Date.now()}`;
-      spawn(trap.model).then((mesh) => {
-        mesh.position.copy(placing!.position);
-        mesh.userData.level = true;
-        scene.add(mesh);
-        placed.push({ id, trapId, mesh, x: mesh.position.x, z: mesh.position.z, spent: false });
-      });
-      hooks.onPlace({ id, trapId, x: placing.position.x, z: placing.position.z });
-      sfx.place();
+    if (trapId) {
+      const hit = hitFloor(event.clientX, event.clientY);
+      const trap = TRAP_DEFINITIONS[trapId as TrapId];
+      if (hit && trap) {
+        const ix = Math.round(hit.point.x / CELL);
+        const iz = Math.round(hit.point.z / CELL);
+        if (hooks.tryPlace(trap.id, ix, iz)) {
+          const id = `${trap.id}-${ix}-${iz}`;
+          spawn(trap.model).then((mesh) => {
+            mesh.position.set(ix * CELL, 0.05, iz * CELL);
+            mesh.userData.level = true;
+            scene.add(mesh);
+            placed.push({ id, trapId, mesh, x: ix * CELL, z: iz * CELL, spent: false });
+          });
+          sfx.place();
+        }
+      }
       return;
     }
     const rect = canvas.getBoundingClientRect();
@@ -510,7 +526,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
         actor.action = "";
       }
       if (actor.hp <= 0) continue;
-      if (actor.family === "hero") {
+      if (actor.family === "hero" && !scripted) {
         const delta = actor.home.clone().sub(actor.root.position);
         delta.y = 0;
         if (delta.length() > 0.15) {
@@ -521,7 +537,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
         } else if (now > actor.busyUntil && actor.action !== "idle" && actor.action !== "attack") {
           play(actor, "idle");
         }
-      } else if (aggro && hero && hero.hp > 0 && now > actor.busyUntil) {
+      } else if (!scripted && aggro && hero && hero.hp > 0 && now > actor.busyUntil) {
         const delta = hero.root.position.clone().sub(actor.root.position);
         delta.y = 0;
         const distance = delta.length();
@@ -545,7 +561,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
         const dz = actor.root.position.z - trap.z;
         if (dx * dx + dz * dz > 2.2) continue;
         trap.spent = true;
-        const def = TRAPS.find((entry) => entry.id === trap.trapId);
+        const def = TRAP_DEFINITIONS[trap.trapId as TrapId];
         const bonus = trap.trapId === "spike" ? hooks.getSpikeBonus() : 0;
         const damage = (def?.damage ?? 0) + bonus;
         if (damage > 0) {
@@ -612,6 +628,33 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   return {
     ready,
     resize,
+    async playRoute(steps: VisualStep[]) {
+      scripted = true;
+      aggro = false;
+      if (hero && steps[0]) hero.root.position.set(steps[0].x, 0, steps[0].z);
+      for (const step of steps) {
+        if (!running || !hero) break;
+        focus.set(step.x, 0, step.z);
+        if (step.type === "move" || step.type === "enter") {
+          play(hero, "walk");
+          await gsap.to(hero.root.position, { x: step.x, z: step.z, duration: 0.45, ease: "none" });
+        } else if (step.type === "trap" || step.type === "combat") {
+          play(hero, step.type === "combat" ? "attack" : "hit", true);
+          if (step.type === "combat") sfx.attack();
+          else sfx.hit();
+          await gsap.to({}, { duration: 0.35 });
+        } else if (step.type === "death") {
+          play(hero, "death", true);
+          hooks.onDiary("decision");
+          await gsap.to({}, { duration: 0.5 });
+        } else if (step.type === "survive" || step.type === "vault" || step.type === "flee") {
+          play(hero, "interact", true);
+          await gsap.to({}, { duration: 0.35 });
+        }
+      }
+      scripted = false;
+      if (hero && hero.hp > 0) play(hero, "idle");
+    },
     focusHero() {
       if (hero) gsap.to(focus, { x: hero.root.position.x, z: hero.root.position.z, duration: 0.5 });
     },

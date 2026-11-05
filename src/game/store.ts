@@ -1,114 +1,62 @@
 import { useSyncExternalStore } from "react";
-import { HEROES, ITEMS, MERCHANTS, type HeroId, type Quality, type ScreenId, type WorldMode } from "./content";
+import type { Quality, ScreenId, WorldMode } from "./content";
+import { CELL } from "./content";
+import { ECONOMY } from "./config/economyRules";
+import { isWalkable, RULES } from "./config/gameRules";
+import { TRAP_DEFINITIONS, type TrapId } from "./config/trapDefinitions";
+import { applyPurchase, chooseRaider, playerBuy } from "./engine/decisions";
+import { createSave, restock } from "./engine/newGame";
+import { simulateRaid } from "./engine/raid";
+import type { PlacedTrap, RaidReport, SaveData } from "./engine/types";
+import { clearSave, readSave, writeSave } from "./persist";
 
-export interface Listing {
-  id: string;
-  itemId: string;
-  seller: string;
-  price: number;
-  qty: number;
-}
-
-export interface LedgerLine {
-  id: string;
-  when: number;
-  text: string;
-}
-
-export interface EnemyState {
-  id: string;
-  name: string;
-  hp: number;
-  maxHp: number;
-  file: string;
-}
-
-export interface PlacedTrap {
-  id: string;
-  trapId: string;
+export interface VisualStep {
+  type: string;
   x: number;
   z: number;
+  text: string;
+  trapId?: string;
 }
 
-export interface GameState {
-  screen: ScreenId;
+interface Session extends SaveData {
   quality: Quality;
   worldMode: WorldMode;
-  gold: number;
-  cinder: number;
-  selectedHero: HeroId;
-  heroes: Record<HeroId, { hp: number; maxHp: number; memory: string[] }>;
-  inventory: Record<string, number>;
-  listings: Listing[];
-  ledger: LedgerLine[];
-  chronicle: LedgerLine[];
-  enemies: EnemyState[];
-  placed: PlacedTrap[];
-  selectedTrap: string | null;
-  raid: { wave: number; status: string };
-  diary: "idle" | "decision" | "burned" | "escaped";
-  rumour: string;
-  spikeBonus: number;
+  screen: ScreenId;
+  selectedTrap: TrapId | null;
   selection: { label: string; file: string; pack: string; note?: string } | null;
   fps: number;
   triangles: number;
+  lastDecision: string;
+  priceNote: string;
+  pageResult: "idle" | "decision" | "burned" | "escaped";
 }
 
-const SAVE = "underrealm-save-v2";
-
-function fresh(): GameState {
-  const heroes = {} as GameState["heroes"];
-  for (const hero of HEROES) {
-    heroes[hero.id] = { hp: 100, maxHp: 100, memory: [`${hero.name} entered Ashgate with the free KayKit company.`] };
-  }
-  return {
-    screen: "menu",
-    quality: "high",
-    worldMode: "prototype",
-    gold: 120,
-    cinder: 10,
-    selectedHero: "brann",
-    heroes,
-    inventory: { nail: 6, hammer: 1, torch: 2, potion: 1 },
-    listings: [
-      { id: "list-sword", itemId: "sword", seller: "Orrin", price: 28, qty: 1 },
-      { id: "list-lantern", itemId: "lantern", seller: "Mira", price: 14, qty: 2 },
-      { id: "list-shield", itemId: "shield", seller: "Brann", price: 26, qty: 1 },
-    ],
-    ledger: [],
-    chronicle: [],
-    enemies: [],
-    placed: [],
-    selectedTrap: null,
-    raid: { wave: 1, status: "Scouting" },
-    diary: "idle",
-    rumour: "",
-    spikeBonus: 0,
-    selection: null,
-    fps: 0,
-    triangles: 0,
-  };
-}
-
-let state = load();
+let state: Session = { ...createSave("menu"), quality: "high", worldMode: "prototype", screen: "menu", selectedTrap: null, selection: null, fps: 0, triangles: 0, lastDecision: "", priceNote: "", pageResult: "idle" };
 const listeners = new Set<() => void>();
-
-function load(): GameState {
-  try {
-    const raw = localStorage.getItem(SAVE);
-    if (!raw) return fresh();
-    const parsed = JSON.parse(raw) as Partial<GameState>;
-    return { ...fresh(), ...parsed, screen: parsed.screen ?? "menu" };
-  } catch {
-    return fresh();
-  }
-}
+let dungeonApi: { ready: Promise<void>; playRoute: (steps: VisualStep[]) => Promise<void>; focusHero: () => void } | null = null;
 
 function emit() {
-  const { fps, triangles, ...saved } = state;
-  void fps;
-  void triangles;
-  localStorage.setItem(SAVE, JSON.stringify(saved));
+  const saved: SaveData = {
+    version: 3,
+    day: state.day,
+    seed: state.seed,
+    gold: state.gold,
+    cinder: state.cinder,
+    reputation: state.reputation,
+    vault: state.vault,
+    inventory: state.inventory,
+    traps: state.traps,
+    heroes: state.heroes,
+    merchants: state.merchants,
+    listings: state.listings,
+    ledger: state.ledger,
+    raids: state.raids,
+    tutorialStep: state.tutorialStep,
+    phase: state.phase,
+    pending: state.pending,
+    screen: state.screen,
+  };
+  void writeSave(saved);
   listeners.forEach((listener) => listener());
 }
 
@@ -125,157 +73,238 @@ export function useGame() {
   return useSyncExternalStore(subscribe, getState, getState);
 }
 
-export function patch(next: Partial<GameState>) {
-  state = { ...state, ...next };
-  emit();
+export async function hydrate() {
+  const saved = await readSave();
+  if (!saved) return;
+  state = { ...state, ...saved, screen: (saved.screen as ScreenId) || "menu" };
+  listeners.forEach((listener) => listener());
+}
+
+export function bindDungeon(api: typeof dungeonApi) {
+  dungeonApi = api;
 }
 
 export function setScreen(screen: ScreenId) {
-  patch({ screen });
+  state = { ...state, screen };
+  emit();
 }
 
-export function note(text: string) {
-  const line = { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, when: Date.now(), text };
+export function setQuality(quality: Quality) {
+  state = { ...state, quality };
+  emit();
+}
+
+export function setWorldMode(worldMode: WorldMode) {
+  state = { ...state, worldMode };
+  emit();
+}
+
+export function selectTrap(trapId: TrapId | null) {
+  state = { ...state, selectedTrap: state.selectedTrap === trapId ? null : trapId };
+  emit();
+}
+
+export function selectInfo(selection: Session["selection"]) {
+  state = { ...state, selection };
+  emit();
+}
+
+export function setStats(fps: number, triangles: number) {
+  state = { ...state, fps, triangles };
+  listeners.forEach((listener) => listener());
+}
+
+export function newGame() {
+  state = { ...createSave("dungeon"), quality: state.quality, worldMode: "prototype", screen: "dungeon", selectedTrap: null, selection: null, fps: 0, triangles: 0, lastDecision: "A new dungeon day begins.", priceNote: "", pageResult: "idle" };
+  void clearSave();
+  emit();
+}
+
+export function placeTrap(trapId: TrapId, ix: number, iz: number): { ok: boolean; reason: string } {
+  const rule = TRAP_DEFINITIONS[trapId];
+  if (!rule) return { ok: false, reason: "Unknown trap." };
+  if (state.phase !== "prep") return { ok: false, reason: "Traps can be placed before the raid." };
+  const kit = trapId === "spike" ? (state.inventory.kit ?? 0) : 0;
+  const cost = kit > 0 ? 0 : rule.cost;
+  if (state.gold < cost) return { ok: false, reason: `Need ${cost} Gold for ${rule.name}.` };
+  if (state.traps.some((trap) => trap.ix === ix && trap.iz === iz)) return { ok: false, reason: "That tile already holds a trap." };
+  if (ix === RULES.grid.vault.ix && iz === RULES.grid.vault.iz) return { ok: false, reason: "The vault tile stays clear." };
+  if (ix === RULES.grid.entrance.ix && iz === RULES.grid.entrance.iz) return { ok: false, reason: "The entrance tile stays clear." };
+  if (!isWalkable(ix, iz)) return { ok: false, reason: "That tile is not part of the hall." };
+  const trap: PlacedTrap = { id: `${trapId}-${ix}-${iz}-${state.day}`, trapId, ix, iz };
+  const tutorialStep = state.tutorialStep === 0 && trapId === "spike" && ix === RULES.spikeTutorialCell.ix && iz === RULES.spikeTutorialCell.iz ? 1 : state.tutorialStep;
   state = {
     ...state,
-    chronicle: [line, ...state.chronicle].slice(0, 80),
-    ledger: text.startsWith("Trade") || text.startsWith("Bought") || text.startsWith("Sold") || text.startsWith("Craft")
-      ? [line, ...state.ledger].slice(0, 40)
-      : state.ledger,
+    gold: state.gold - cost,
+    inventory: kit > 0 ? { ...state.inventory, kit: kit - 1 } : state.inventory,
+    traps: [...state.traps, trap],
+    tutorialStep,
+    ledger: [{ id: trap.id, day: state.day, text: `Placed ${rule.name} at ${ix}, ${iz} for ${cost} Gold.` }, ...state.ledger],
+  };
+  emit();
+  return { ok: true, reason: rule.note };
+}
+
+export function removeTrap(id: string) {
+  const trap = state.traps.find((entry) => entry.id === id);
+  if (!trap || state.phase !== "prep") return;
+  const refund = TRAP_DEFINITIONS[trap.trapId].cost;
+  state = {
+    ...state,
+    gold: state.gold + refund,
+    traps: state.traps.filter((entry) => entry.id !== id),
+    ledger: [{ id: `refund-${id}`, day: state.day, text: `Removed ${trap.trapId} and returned ${refund} Gold.` }, ...state.ledger],
   };
   emit();
 }
 
-export function selectHero(id: HeroId) {
-  patch({ selectedHero: id });
-  note(`${HEROES.find((hero) => hero.id === id)?.name} takes the lead.`);
-}
-
-export function damageHero(amount: number) {
-  const id = state.selectedHero;
-  const hero = state.heroes[id];
-  const hp = Math.max(0, hero.hp - amount);
-  const heroes = { ...state.heroes, [id]: { ...hero, hp, memory: [`Hit for ${amount}.`, ...hero.memory].slice(0, 8) } };
-  state = { ...state, heroes, raid: { ...state.raid, status: hp === 0 ? "Hero down" : "Contact" } };
-  emit();
-  if (hp === 0) note(`${HEROES.find((item) => item.id === id)?.name} falls. The diary page is in the air.`);
-}
-
-export function revive() {
-  const heroes = { ...state.heroes };
-  (Object.keys(heroes) as HeroId[]).forEach((id) => {
-    heroes[id] = { ...heroes[id], hp: heroes[id].maxHp };
+export function startRaid() {
+  if (state.phase !== "prep" && state.phase !== "report") return;
+  let save: SaveData = state;
+  const decision = chooseRaider(save);
+  if (decision.purchase) save = applyPurchase(save, decision.heroId, decision.purchase);
+  const simulated = simulateRaid({
+    day: save.day,
+    seed: save.seed + save.day,
+    hero: save.heroes[decision.heroId],
+    traps: save.traps,
+    tutorial: save.tutorialStep < 5,
   });
-  state = { ...state, heroes, diary: "idle", selectedTrap: null, raid: { ...state.raid, status: "Scouting" } };
-  emit();
-}
-
-export function healHero(amount: number) {
-  const id = state.selectedHero;
-  const hero = state.heroes[id];
-  const heroes = { ...state.heroes, [id]: { ...hero, hp: Math.min(hero.maxHp, hero.hp + amount) } };
-  state = { ...state, heroes };
-  emit();
-}
-
-export function setEnemies(enemies: EnemyState[]) {
-  patch({ enemies });
-}
-
-export function damageEnemy(id: string, amount: number) {
-  const enemies = state.enemies.map((enemy) => (enemy.id === id ? { ...enemy, hp: Math.max(0, enemy.hp - amount) } : enemy));
-  const alive = enemies.some((enemy) => enemy.hp > 0);
+  const report: RaidReport = { ...simulated.report, decision };
+  const heroes = { ...save.heroes, [decision.heroId]: simulated.hero };
+  const gold = Math.max(0, save.gold - (simulated.report.survived ? simulated.report.goldLost : 0));
+  const reputation = save.reputation + (simulated.report.survived ? RULES.reputationPerSurvival : RULES.reputationPerDeath);
+  const tutorialStep = save.tutorialStep < 2 ? 2 : save.tutorialStep;
   state = {
     ...state,
-    enemies,
-    raid: { ...state.raid, status: alive ? "Contact" : "Room clear" },
-    gold: alive ? state.gold : state.gold + 8,
-    cinder: alive ? state.cinder : state.cinder + 2,
+    ...save,
+    heroes,
+    gold,
+    reputation,
+    phase: simulated.report.survived ? "report" : "raid",
+    pending: report,
+    raids: [report, ...save.raids].slice(0, 20),
+    tutorialStep,
+    lastDecision: decision.reason,
+    ledger: [{ id: report.id, day: save.day, text: decision.reason }, ...save.ledger],
+    screen: "dungeon",
   };
   emit();
 }
 
-export function addPlaced(trap: PlacedTrap) {
-  state = { ...state, placed: [...state.placed, trap] };
+export function markDiary() {
+  if (!state.pending || state.pending.survived) return;
+  state = { ...state, phase: "diary", pageResult: "decision" };
   emit();
-  note(`Placed ${trap.trapId} at ${trap.x.toFixed(1)}, ${trap.z.toFixed(1)}.`);
+}
+
+export function resolvePage(choice: "burn" | "escape") {
+  const report = state.pending;
+  if (!report || state.phase !== "diary") return { ok: false, reason: "No diary page is waiting." };
+  if (choice === "burn") {
+    if (state.cinder < ECONOMY.burnCinderCost) return { ok: false, reason: `Burning costs ${ECONOMY.burnCinderCost} Cinder.` };
+    const burned = report.facts.map((fact) => ({ ...fact, burned: true }));
+    state = {
+      ...state,
+      cinder: state.cinder - ECONOMY.burnCinderCost,
+      phase: "report",
+      pageResult: "burned",
+      pending: { ...report, facts: burned },
+      tutorialStep: Math.max(state.tutorialStep, 3),
+      ledger: [{ id: `burn-${report.id}`, day: state.day, text: `Burned ${report.heroId}'s page for ${ECONOMY.burnCinderCost} Cinder. The facts stay out of the market.` }, ...state.ledger],
+    };
+    emit();
+    return { ok: true, reason: "The page is ash." };
+  }
+  const orrin = state.merchants.orrin;
+  state = {
+    ...state,
+    phase: "report",
+    pageResult: "escaped",
+    merchants: { ...state.merchants, orrin: { ...orrin, rumours: [...report.facts, ...orrin.rumours] } },
+    tutorialStep: Math.max(state.tutorialStep, 3),
+    ledger: [{ id: `escape-${report.id}`, day: state.day, text: `The page escaped. Orrin can sell ${report.facts.length} fact(s).` }, ...state.ledger],
+  };
+  emit();
+  return { ok: true, reason: "Orrin has the page." };
+}
+
+export function nextDay() {
+  if (state.phase !== "report") return;
+  const stepped = state.tutorialStep === 3 ? 4 : state.tutorialStep === 4 ? 5 : state.tutorialStep >= 5 ? 6 : state.tutorialStep;
+  const saved = restock({ ...state, tutorialStep: stepped });
+  state = { ...state, ...saved, screen: state.screen, tutorialStep: stepped, phase: "prep", pageResult: "idle" };
+  emit();
+}
+
+export function buyFromMerchant(merchantId: "mira" | "orrin" | "tallow", itemId: string) {
+  const result = playerBuy(state, merchantId, itemId);
+  state = { ...state, ...result.save, screen: state.screen, priceNote: result.reason, tutorialStep: result.ok && state.tutorialStep === 4 ? 5 : state.tutorialStep };
+  emit();
+  return result;
+}
+
+export function listItem(itemId: string, price: number) {
+  const owned = state.inventory[itemId] ?? 0;
+  if (owned < 1 || price < 1 || state.listings.length >= 8) return;
+  state = {
+    ...state,
+    inventory: { ...state.inventory, [itemId]: owned - 1 },
+    listings: [{ id: `list-${state.day}-${itemId}-${price}`, itemId, seller: "player", price, qty: 1 }, ...state.listings],
+    ledger: [{ id: `list-${Date.now()}`, day: state.day, text: `Listed ${itemId} for ${price} Gold.` }, ...state.ledger],
+  };
+  emit();
+}
+
+export function cancelListing(id: string) {
+  const listing = state.listings.find((entry) => entry.id === id);
+  if (!listing) return;
+  state = {
+    ...state,
+    listings: state.listings.filter((entry) => entry.id !== id),
+    inventory: { ...state.inventory, [listing.itemId]: (state.inventory[listing.itemId] ?? 0) + listing.qty },
+  };
+  emit();
 }
 
 export function buyListing(id: string) {
   const listing = state.listings.find((entry) => entry.id === id);
-  if (!listing || listing.qty < 1 || state.gold < listing.price) return;
-  const item = ITEMS.find((entry) => entry.id === listing.itemId);
+  if (!listing || state.gold < listing.price) return;
   state = {
     ...state,
     gold: state.gold - listing.price,
-    inventory: { ...state.inventory, [listing.itemId]: (state.inventory[listing.itemId] ?? 0) + 1 },
-    listings: state.listings.map((entry) => (entry.id === id ? { ...entry, qty: entry.qty - 1 } : entry)).filter((entry) => entry.qty > 0),
+    listings: state.listings.filter((entry) => entry.id !== id),
+    inventory: { ...state.inventory, [listing.itemId]: (state.inventory[listing.itemId] ?? 0) + listing.qty },
+    ledger: [{ id: `bought-${id}`, day: state.day, text: `Bought your own listing back for ${listing.price} Gold.` }, ...state.ledger],
   };
   emit();
-  note(`Bought ${item?.name ?? listing.itemId} from ${listing.seller} for ${listing.price} gold.`);
 }
 
-export function sellItem(itemId: string, price: number) {
-  const qty = state.inventory[itemId] ?? 0;
-  if (qty < 1) return;
-  const item = ITEMS.find((entry) => entry.id === itemId);
+export function forgeKit() {
+  const nails = state.inventory.nail ?? 0;
+  if (nails < 4) return { ok: false, reason: "The forge needs 4 iron nails." };
   state = {
     ...state,
-    inventory: { ...state.inventory, [itemId]: qty - 1 },
-    listings: [{ id: `player-${Date.now()}`, itemId, seller: "You", price, qty: 1 }, ...state.listings],
+    inventory: { ...state.inventory, nail: nails - 4, kit: (state.inventory.kit ?? 0) + 1 },
+    ledger: [{ id: `kit-${state.day}-${nails}`, day: state.day, text: "Mira's pattern: 4 nails become one spike kit. The next spike trap costs no Gold." }, ...state.ledger],
   };
   emit();
-  note(`Trade listed ${item?.name ?? itemId} for ${price} gold.`);
+  return { ok: true, reason: "Spike kit ready." };
 }
 
-export function buyFromMerchant(merchantId: string, itemId: string) {
-  const merchant = MERCHANTS.find((entry) => entry.id === merchantId);
-  const stock = merchant?.stock.find((entry) => entry.itemId === itemId);
-  if (!merchant || !stock || stock.qty < 1 || state.gold < stock.price) return;
-  stock.qty -= 1;
-  state = {
-    ...state,
-    gold: state.gold - stock.price,
-    inventory: { ...state.inventory, [itemId]: (state.inventory[itemId] ?? 0) + 1 },
-    ledger: [{ id: `m-${Date.now()}`, when: Date.now(), text: `Bought ${itemId} from ${merchant.name} for ${stock.price} gold.` }, ...state.ledger],
-  };
-  emit();
-  note(`Bought ${itemId} from ${merchant.name} for ${stock.price} gold.`);
-}
-
-export function craft(recipeId: string) {
-  const recipe = recipeId === "spike-upgrade"
-    ? { needs: [{ itemId: "nail", qty: 4 }, { itemId: "hammer", qty: 1 }], cinder: 0, bonus: 6, name: "Brood Spikes" }
-    : { needs: [{ itemId: "torch", qty: 1 }], cinder: 8, bonus: 0, name: "Wick Bundle" };
-  for (const need of recipe.needs) {
-    if ((state.inventory[need.itemId] ?? 0) < need.qty) return;
-  }
-  const inventory = { ...state.inventory };
-  for (const need of recipe.needs) {
-    if (need.itemId !== "hammer") inventory[need.itemId] -= need.qty;
-  }
-  state = { ...state, inventory, cinder: state.cinder + recipe.cinder, spikeBonus: state.spikeBonus + recipe.bonus };
-  emit();
-  note(`Crafted ${recipe.name}.`);
-}
-
-export function resolveDiary(choice: "burn" | "release") {
-  if (choice === "burn") {
-    state = { ...state, diary: "burned", cinder: state.cinder + 5, rumour: "The page is ash. No rumour leaves Ashgate." };
-    note("Burned the diary page. Cinder +5.");
-  } else {
-    state = { ...state, diary: "escaped", gold: Math.max(0, state.gold - 10), rumour: "The page escaped. The gate market repeats a worse version of the raid." };
-    note("The diary page escaped. Gold -10.");
-  }
+export function note(text: string) {
+  state = { ...state, ledger: [{ id: `note-${Date.now()}`, day: state.day, text }, ...state.ledger] };
   emit();
 }
 
-export function resetSave() {
-  localStorage.removeItem(SAVE);
-  state = fresh();
-  emit();
+export function toSteps(report: RaidReport): VisualStep[] {
+  return report.events.map((event) => ({
+    type: event.type,
+    x: (event.ix ?? RULES.grid.entrance.ix) * CELL,
+    z: (event.iz ?? RULES.grid.entrance.iz) * CELL,
+    text: event.text,
+    trapId: event.trapId,
+  }));
 }
 
-export function itemName(id: string) {
-  return ITEMS.find((item) => item.id === id)?.name ?? id;
-}
+export type { Session };
