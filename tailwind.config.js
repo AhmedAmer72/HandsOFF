@@ -4,13 +4,16 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: "#100c0a",
-        panel: "#241812",
-        panel2: "#1a120f",
-        gold: "#e4c48a",
-        ember: "#ff7a3c",
-        parchment: "#f3e2c4",
-        blood: "#c4493a",
+        ink: "#14100E",
+        panel: "#2B2A33",
+        panel2: "#3E3C4A",
+        gold: "#F2C14E",
+        ember: "#FF5A1F",
+        torch: "#FF9A3C",
+        parchment: "#E9D8B4",
+        memory: "#3FA7A0",
+        rust: "#B5532E",
+        blood: "#8E1B1B",
       },
       fontFamily: {
         display: ["Cinzel", "Palatino Linotype", "Palatino", "serif"],

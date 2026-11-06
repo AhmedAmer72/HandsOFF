@@ -1,6 +1,6 @@
 # Asset manifest
 
-Generated 2026-11-05 (Africa/Cairo).
+Generated 2026-11-05 (Africa/Cairo). The 6 November 2026 visual pass did not add packs. Medieval Hexagon is still absent. See `docs/EXISTING_ASSETS_AUDIT.md`.
 
 ## Packs
 

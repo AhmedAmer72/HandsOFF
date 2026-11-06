@@ -103,6 +103,10 @@ export function mountGallery(canvas: HTMLCanvasElement) {
       frameCamera();
       return clips.map((clip) => clip.name).filter((name) => name !== "T-Pose");
     },
+    setView(name: "front" | "side" | "back" | "three-quarter") {
+      yaw = name === "front" ? 0 : name === "side" ? Math.PI / 2 : name === "back" ? Math.PI : 0.8;
+      pitch = name === "three-quarter" ? 0.5 : 0.18;
+    },
     play(name: string) {
       if (!mixer) return;
       const clip = clips.find((entry) => entry.name === name);

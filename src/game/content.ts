@@ -29,6 +29,8 @@ export const ANIMATION_FILES = [
   "/runtime/animations/Rig_Medium/Rig_Medium_MovementAdvanced.glb",
   "/runtime/animations/Rig_Medium/Rig_Medium_CombatMelee.glb",
   "/runtime/animations/Rig_Medium/Rig_Medium_Special.glb",
+  "/runtime/animations/Rig_Medium/Rig_Medium_Tools.glb",
+  "/runtime/animations/Rig_Medium/Rig_Medium_Simulation.glb",
 ];
 
 export const CLIP_ALIASES: Record<string, string[]> = {
@@ -40,6 +42,12 @@ export const CLIP_ALIASES: Record<string, string[]> = {
   death: ["Skeletons_Death", "Death_A"],
   dodge: ["Dodge_Forward", "Dodge_Left"],
   interact: ["Interact", "PickUp"],
+  inspect: ["Interact", "Lockpicking"],
+  buy: ["Use_Item", "PickUp"],
+  work: ["Hammering", "Work_A"],
+  sell: ["Interact", "Use_Item"],
+  talk: ["Waving", "Idle_B"],
+  restock: ["PickUp", "Work_B"],
 };
 
 export interface HeroDef {

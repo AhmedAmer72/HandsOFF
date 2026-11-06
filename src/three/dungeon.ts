@@ -37,6 +37,7 @@ export interface DungeonHooks {
   clearArm: () => void;
   getPhase: () => string;
   getDay: () => number;
+  getShelf: () => { mira: number; tallow: number; orrin: number };
 }
 
 interface Actor {
@@ -57,7 +58,7 @@ interface Actor {
   busyUntil: number;
 }
 
-const TORCH = new THREE.Color("#ff8a3d");
+const TORCH = new THREE.Color("#FF9A3C");
 
 export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -66,10 +67,10 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   renderer.toneMappingExposure = 1.12;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.setClearColor("#140e0c");
+  renderer.setClearColor("#14100E");
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog("#140e0c", 22, 78);
+  scene.fog = new THREE.Fog("#14100E", 22, 78);
   scene.add(new THREE.HemisphereLight("#ffe0bf", "#2a1c16", 0.72));
   const sun = new THREE.DirectionalLight("#d7e4ff", 0.55);
   sun.position.set(12, 18, 8);
@@ -149,6 +150,55 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const ash = makeAsh();
   ash.visible = false;
   scene.add(ash);
+  const shelves: { id: string; meshes: THREE.Object3D[] }[] = [];
+  const emberPositions = new Float32Array(36 * 3);
+  const embers = new THREE.Points(
+    new THREE.BufferGeometry(),
+    new THREE.PointsMaterial({ color: "#FF9A3C", size: 0.16, transparent: true, depthWrite: false }),
+  );
+  embers.geometry.setAttribute("position", new THREE.BufferAttribute(emberPositions, 3));
+  embers.visible = false;
+  scene.add(embers);
+
+  async function stockShelf(id: string, url: string, x: number, z: number) {
+    const meshes: THREE.Object3D[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      const mesh = await spawn(url, "cast");
+      mesh.position.set(x + index * 0.42, 0.15, z);
+      mesh.scale.setScalar(0.55);
+      scene.add(mesh);
+      meshes.push(mesh);
+    }
+    shelves.push({ id, meshes });
+  }
+
+  function burstEmbers(at: THREE.Vector3) {
+    for (let index = 0; index < 36; index += 1) {
+      emberPositions[index * 3] = at.x + (Math.random() - 0.5) * 1.2;
+      emberPositions[index * 3 + 1] = at.y + 0.2;
+      emberPositions[index * 3 + 2] = at.z + (Math.random() - 0.5) * 1.2;
+    }
+    embers.geometry.attributes.position.needsUpdate = true;
+    embers.visible = true;
+    const rise = { t: 0 };
+    gsap.to(rise, {
+      t: 1,
+      duration: 1.3,
+      onUpdate: () => {
+        for (let index = 0; index < 36; index += 1) emberPositions[index * 3 + 1] += 0.025;
+        embers.geometry.attributes.position.needsUpdate = true;
+      },
+      onComplete: () => {
+        embers.visible = false;
+      },
+    });
+  }
+
+  function popTrap(step: VisualStep) {
+    const entry = placed.find((trap) => Math.abs(trap.x - step.x) < 1.2 && Math.abs(trap.z - step.z) < 1.2);
+    if (!entry) return;
+    gsap.fromTo(entry.mesh.position, { y: 0.05 }, { y: step.trapId === "pit" ? -0.35 : 0.45, duration: 0.18, yoyo: true, repeat: 1 });
+  }
 
   function applyQuality(quality: Quality) {
     const ratio = quality === "low" ? 1 : quality === "medium" ? 1.25 : Math.min(window.devicePixelRatio, 1.75);
@@ -172,7 +222,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
 
   function aimCamera() {
     const az = Math.PI / 4 + yaw;
-    const el = 0.78;
+    const el = 35 * Math.PI / 180;
     const dist = 32;
     camera.position.set(
       focus.x + Math.cos(az) * Math.cos(el) * dist,
@@ -399,6 +449,8 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     gate.add(gateHit);
     scene.add(gate);
     selectables.push(gate);
+    await stockShelf("mira", item("nail"), 0.6, 6 * CELL + 0.9);
+    await stockShelf("tallow", dungeon("bottle_A_green"), CELL + 0.6, 5 * CELL + 0.9);
     focus.set(4 * CELL, 0, 6 * CELL);
     const posts = [
       { ...RULES.skeletons[0], model: monsterModel("Skeleton_Minion"), file: "Skeleton_Minion.glb", weapon: undefined as string | undefined },
@@ -582,13 +634,18 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     }
     if (data?.pick) {
       const actor = data.pick as Actor;
-      focus.copy(actor.root.position);
-      gsap.to(focus, { duration: 0.45, overwrite: true });
+      gsap.to(focus, { x: actor.root.position.x, z: actor.root.position.z, duration: 0.55, overwrite: true });
       ring.position.set(actor.root.position.x, 0.08, actor.root.position.z);
       ring.visible = true;
-      if (actor.family === "merchant") hooks.onMerchant(actor.id);
+      if (actor.family === "merchant") {
+        play(actor, actor.id === "mira" ? "work" : actor.id === "tallow" ? "restock" : "talk", true);
+        hooks.onMerchant(actor.id);
+      }
       else if (actor.family === "skeleton" && actor.id === "guard") hooks.onPossess();
-      else hooks.onSelect({ label: actor.name, file: actor.file, pack: actor.family === "hero" ? "characters-adventurers" : "characters-skeletons" });
+      else {
+        if (actor.family === "hero") play(actor, "inspect", true);
+        hooks.onSelect({ label: actor.name, file: actor.file, pack: actor.family === "hero" ? "characters-adventurers" : "characters-skeletons" });
+      }
       return;
     }
     const floorHit = hitFloor(event.clientX, event.clientY);
@@ -687,7 +744,10 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       },
       onComplete: () => {
         ash.visible = false;
-        if (journal) journal.visible = false;
+        if (journal) {
+          burstEmbers(journal.position.clone());
+          journal.visible = false;
+        }
       },
     });
   }
@@ -757,6 +817,13 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
         }
       }
       if (actor.hp <= 0 && actor.action !== "death") play(actor, "death", true);
+    }
+    const shelf = hooks.getShelf();
+    for (const row of shelves) {
+      const count = row.id === "mira" ? shelf.mira : shelf.tallow;
+      row.meshes.forEach((mesh, index) => {
+        mesh.visible = index < count;
+      });
     }
     if (hooks.diaryChoice() === "burned") burnJournal();
     if (hooks.diaryChoice() === "escaped") releaseJournal();
@@ -878,6 +945,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
           });
           await pause(0.85);
         } else if (step.type === "trap" || step.type === "combat") {
+          if (step.type === "trap") popTrap(step);
           play(hero, step.type === "combat" ? "attack" : "hit", true);
           if (step.type === "combat") sfx.attack();
           else sfx.hit();

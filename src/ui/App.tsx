@@ -4,6 +4,7 @@ import { goodsRule } from "../game/config/economyRules";
 import { RAID } from "../../rules/economy";
 import { HERO_PROFILES } from "../game/config/heroProfiles";
 import { RULES } from "../game/config/gameRules";
+import { TRAP_DEFINITIONS, TRAP_IDS } from "../game/config/trapDefinitions";
 import { quotePrice } from "../game/engine/pricing";
 import { chooseRaider, evaluateHero } from "../game/engine/decisions";
 import { shopState } from "../game/rules/money";
@@ -161,6 +162,17 @@ function DungeonScreen() {
       clearArm: () => clearTrap(),
       getPhase: () => hooks.current.phase,
       getDay: () => hooks.current.day,
+      getShelf: () => {
+        const miraHeld = hooks.current.merchants.mira.stock.reduce((sum, line) => sum + line.qty, 0);
+        const tallowHeld = hooks.current.merchants.tallow.stock.reduce((sum, line) => sum + line.qty, 0);
+        const miraTarget = STALL_GOODS.filter((good) => good.merchant === "mira").reduce((sum, good) => sum + good.targetStock, 1);
+        const tallowTarget = STALL_GOODS.filter((good) => good.merchant === "tallow").reduce((sum, good) => sum + good.targetStock, 1);
+        return {
+          mira: Math.round(4 * Math.min(1, miraHeld / miraTarget)),
+          tallow: Math.round(4 * Math.min(1, tallowHeld / tallowTarget)),
+          orrin: hooks.current.merchants.orrin.rumours.length,
+        };
+      },
     });
     bindDungeon(mounted);
     void mounted.ready.then(() => {
@@ -232,6 +244,20 @@ function DungeonScreen() {
           {toast && <p className="mt-1 text-xs text-gold">{toast}</p>}
           <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-parchment/45">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
         </div>
+      </div>
+      <div className="pointer-events-none absolute right-3 top-28 hidden w-64 lg:block">
+        <div className="hud-glass max-h-72 overflow-hidden rounded-2xl p-3 text-xs">
+          <div className="font-display text-sm text-gold">Chronicle</div>
+          {game.selection && <p className="mt-1 text-memory">{game.selection.label}</p>}
+          {game.ledger.slice(0, 5).map((line) => <p key={line.id} className="mt-1 text-parchment/80">{line.text}</p>)}
+        </div>
+      </div>
+      <div className="absolute bottom-24 left-1/2 flex -translate-x-1/2 gap-2">
+        {TRAP_IDS.map((id) => (
+          <button key={id} className={`hud-glass rounded-full px-3 py-2 text-xs ${game.selectedTrap === id ? "text-gold" : "text-parchment"}`} onClick={() => armTrap(id)}>
+            {TRAP_DEFINITIONS[id].name} · {TRAP_DEFINITIONS[id].cost}
+          </button>
+        ))}
       </div>
       <p className="pointer-events-none absolute bottom-1 right-3 text-[10px] text-parchment/35">{game.fps.toFixed(0)} fps · {game.rendererInfo || "renderer"}</p>
     </div>
@@ -494,6 +520,11 @@ function Gallery() {
       </div>
       <div className="relative min-h-[480px]">
         <canvas ref={canvasRef} className="view h-full w-full" />
+        <div className="absolute left-3 top-3 flex gap-1">
+          {(["front", "side", "back", "three-quarter"] as const).map((viewName) => (
+            <button key={viewName} className="hud-glass rounded-full px-2 py-1 text-[11px] uppercase tracking-wider" onClick={() => view.current?.setView(viewName)}>{viewName}</button>
+          ))}
+        </div>
         {error && <p className="absolute bottom-3 left-3 text-sm text-blood">{error}</p>}
       </div>
       <aside className="overflow-auto border-l border-white/10 p-3 text-sm">
