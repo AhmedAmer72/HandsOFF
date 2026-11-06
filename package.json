@@ -9,7 +9,8 @@
     "preview": "vite preview --host 0.0.0.0 --port 4173",
     "catalog": "python3 tools/stage_assets.py",
     "verify:assets": "node tools/verify-catalog.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "verify:economy": "vitest run src/game/rules/money.test.ts scripts/economy-sim.test.ts"
   },
   "dependencies": {
     "gsap": "^3.12.7",

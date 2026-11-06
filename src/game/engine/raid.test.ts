@@ -22,6 +22,13 @@ describe("pathing", () => {
     expect(path.at(-1)).toEqual({ ix: 4, iz: 0 });
   });
 
+  it("does not detour for a page she only saw, or for a stale epoch", () => {
+    const observed: Fact = { id: "eyes", kind: "spike", ix: 4, iz: 6, text: "seen", quality: 3, burned: false, memory: "observed", epoch: 1 };
+    const stale: Fact = { id: "old", kind: "spike", ix: 4, iz: 6, text: "old", quality: 3, burned: false, memory: "warned", epoch: 1 };
+    expect(findPath([spike], [observed], HERO_PROFILES.kara).some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(true);
+    expect(findPath([{ ...spike, epoch: 2 }], [stale], HERO_PROFILES.kara).some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(true);
+  });
+
   it("Kara walks around a spike she knows", () => {
     const fact: Fact = { id: "spike-4,6-d1", kind: "spike", ix: 4, iz: 6, text: "Spike Trap at tile 4, 6.", quality: 3, burned: false };
     const path = findPath([spike], [fact], HERO_PROFILES.kara);
@@ -129,12 +136,14 @@ describe("hero decisions", () => {
     expect(next.heroes.kara.gold).toBe(save.heroes.kara.gold - 20);
     expect(next.merchants.orrin.gold).toBe(save.merchants.orrin.gold + 20);
     expect(next.heroes.kara.facts.map((entry) => entry.id)).toContain(fact.id);
+    expect(next.heroes.kara.facts.find((entry) => entry.id === fact.id)?.memory).toBe("warned");
+    expect(next.merchants.orrin.rumours).toHaveLength(0);
   });
 });
 
 describe("trap rules", () => {
   it("reads spike damage from the single trap table", () => {
     expect(TRAP_DEFINITIONS.spike.damage).toBe(24);
-    expect(TRAP_DEFINITIONS.spike.cost).toBe(18);
+    expect(TRAP_DEFINITIONS.spike.cost).toBe(30);
   });
 });

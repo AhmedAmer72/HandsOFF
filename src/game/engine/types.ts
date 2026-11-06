@@ -9,6 +9,12 @@ export interface Fact {
   text: string;
   quality: number;
   burned: boolean;
+  /** Layout epoch this clue belongs to. A re-lay makes an older clue stale. */
+  epoch?: number;
+  memory?: "unseen" | "observed" | "warned" | "dodged" | "countered";
+  source?: string;
+  bornDay?: number;
+  buybacks?: number;
 }
 
 export interface LedgerLine {
@@ -50,6 +56,9 @@ export interface Listing {
   seller: "player";
   price: number;
   qty: number;
+  listedDay?: number;
+  currency?: "PLAY_GOLD";
+  cls?: "PLAY_ONLY";
 }
 
 export interface PlacedTrap {
@@ -57,6 +66,7 @@ export interface PlacedTrap {
   trapId: TrapId;
   ix: number;
   iz: number;
+  epoch?: number;
 }
 
 export type RaidEventType = "enter" | "move" | "trap" | "combat" | "flee" | "vault" | "death" | "survive";

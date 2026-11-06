@@ -30,7 +30,7 @@ function planPurchase(save: SaveData, hero: HeroState): DecisionTrace["purchase"
   const profile = HERO_PROFILES[hero.id];
   if (profile.buysRumours) {
     const orrin = save.merchants.orrin;
-    const rumour = orrin.rumours.find((fact) => !fact.burned && !hero.facts.some((known) => known.id === fact.id));
+    const rumour = orrin.rumours.find((fact) => !fact.burned && !hero.facts.some((known) => known.id === fact.id && known.memory !== "observed"));
     if (rumour) {
       const price = Math.min(profile.spendCap, ECONOMY.rumourBasePrice + rumour.quality * 4);
       if (hero.gold >= price && orrin.gold >= 0) {
@@ -73,7 +73,7 @@ export function applyPurchase(save: SaveData, heroId: HeroState["id"], purchase:
       const nextHero: HeroState = {
         ...hero,
         gold: hero.gold - purchase.price,
-        facts: [...hero.facts, { ...rumour, burned: false }],
+        facts: [...hero.facts, { ...rumour, burned: false, memory: "warned", source: "bought rumour" }],
         history: [{ id: `buy-${save.day}-${rumour.id}`, day: save.day, text: purchase.reason }, ...hero.history],
       };
       return {
@@ -81,7 +81,7 @@ export function applyPurchase(save: SaveData, heroId: HeroState["id"], purchase:
         heroes: { ...save.heroes, [heroId]: nextHero },
         merchants: {
           ...save.merchants,
-          orrin: { ...merchant, gold: merchant.gold + purchase.price, sales: merchant.sales + 1 },
+          orrin: { ...merchant, gold: merchant.gold + purchase.price, sales: merchant.sales + 1, rumours: merchant.rumours.filter((fact) => fact.id !== rumour.id) },
         },
         ledger: [{ id: `led-${save.day}-${rumour.id}`, day: save.day, text: purchase.reason }, ...save.ledger],
       };
@@ -117,18 +117,7 @@ export function playerBuy(save: SaveData, merchantId: MerchantState["id"], itemI
   if (merchantId === "orrin") {
     const rumour = merchant.rumours.find((fact) => fact.id === itemId);
     if (!rumour) return { save, ok: false, reason: "That rumour is not in Orrin's book." };
-    const price = ECONOMY.rumourBasePrice + rumour.quality * 4;
-    if (save.gold < price) return { save, ok: false, reason: "Not enough Gold." };
-    return {
-      ok: true,
-      reason: `Bought the rumour for ${price} Gold.`,
-      save: {
-        ...save,
-        gold: save.gold - price,
-        merchants: { ...save.merchants, orrin: { ...merchant, gold: merchant.gold + price, rumours: merchant.rumours.filter((fact) => fact.id !== itemId), sales: merchant.sales + 1 } },
-        ledger: [{ id: `player-rumour-${itemId}`, day: save.day, text: `You bought a rumour from Orrin for ${price} Gold.` }, ...save.ledger],
-      },
-    };
+    return { save, ok: false, reason: "Orrin sells a landed page to one hero. Buying it is the only way that hero learns it." };
   }
   const line = merchant.stock.find((entry) => entry.itemId === itemId);
   if (!line || line.qty < 1) return { save, ok: false, reason: "That item is out of stock." };

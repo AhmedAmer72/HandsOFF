@@ -12,6 +12,7 @@ export interface RaidInput {
   traps: PlacedTrap[];
   tutorial: boolean;
   upgrades?: string[];
+  possessGuard?: boolean;
 }
 
 export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "decision">; hero: HeroState } {
@@ -74,7 +75,10 @@ export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "deci
     }
 
     const skeleton = RULES.skeletons.find((guard) => !fought.has(guard.id) && guard.ix === cell.ix && guard.iz === cell.iz);
-    if (skeleton && hero.hp > 0 && survived) {
+    if (skeleton && input.possessGuard && skeleton.id === "guard") {
+      fought.add(skeleton.id);
+      push({ type: "combat", text: `${profile.name} finds the hall guard already pulled off the tile.`, ix: cell.ix, iz: cell.iz, damage: 0 });
+    } else if (skeleton && hero.hp > 0 && survived) {
       fought.add(skeleton.id);
       let enemyHp = Number(skeleton.hp);
       const armor = profile.armor;
@@ -124,10 +128,14 @@ export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "deci
     push({ type: "survive", text: `${profile.name} withdraws while still standing.` });
   }
 
+  const eyes = learned
+    .filter((fact) => fact.kind !== "skeleton")
+    .map((fact) => ({ ...fact, burned: false, memory: "observed" as const, source: "eyes" }));
   if (!survived) {
-    hero.memory = [`Died on day ${input.day} inside Ashgate.`, ...hero.memory].slice(0, 12);
+    hero.facts = mergeFacts(hero.facts, eyes);
+    hero.memory = [`Observed the trap on day ${input.day}. Burning the page does not erase that.`, ...hero.memory].slice(0, 12);
   } else {
-    hero.facts = mergeFacts(hero.facts, learned.map((fact) => ({ ...fact, burned: false })));
+    hero.facts = mergeFacts(hero.facts, eyes);
     hero.memory = [`Survived day ${input.day}.`, ...hero.memory].slice(0, 12);
   }
 
@@ -159,6 +167,10 @@ function factFor(trap: PlacedTrap, day: number): Fact {
     text: `${rule.name} at tile ${trap.ix}, ${trap.iz}.`,
     quality: rule.damage > 0 ? 3 : 1,
     burned: false,
+    epoch: trap.epoch ?? 1,
+    bornDay: day,
+    memory: "unseen",
+    source: "page",
   };
 }
 

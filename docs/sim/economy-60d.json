@@ -1,0 +1,45 @@
+{
+  "label": "SIMULATED",
+  "source": "rules/economy.ts",
+  "days": 60,
+  "raids": 1020,
+  "closures": 1,
+  "recoveries": 1,
+  "closedRaids": 112,
+  "endPrice": 5,
+  "min": 5,
+  "max": 20,
+  "liveCinder": {
+    "start": 3,
+    "burnCost": 2,
+    "afterOneKillFromEmpty": 1,
+    "killAlonePaysForBurn": false
+  },
+  "cinderVariants": [
+    {
+      "burnCost": 1,
+      "perKill": 1,
+      "perWaveClear": 0,
+      "burns": 60,
+      "leftover": 3,
+      "killPaysForBurn": true
+    },
+    {
+      "burnCost": 2,
+      "perKill": 1,
+      "perWaveClear": 0,
+      "burns": 31,
+      "leftover": 1,
+      "killPaysForBurn": false
+    },
+    {
+      "burnCost": 1,
+      "perKill": 0,
+      "perWaveClear": 2,
+      "burns": 60,
+      "leftover": 4,
+      "killPaysForBurn": false
+    }
+  ],
+  "note": "Play Gold only. NEAR reserves, permits, and deeds are not settled here."
+}

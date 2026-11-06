@@ -1,24 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ITEMS, NAV, SITES } from "../game/content";
-import { ECONOMY, goodsRule } from "../game/config/economyRules";
+import { goodsRule } from "../game/config/economyRules";
+import { RAID } from "../../rules/economy";
 import { HERO_PROFILES } from "../game/config/heroProfiles";
 import { RULES } from "../game/config/gameRules";
 import { TRAP_DEFINITIONS, TRAP_IDS } from "../game/config/trapDefinitions";
 import { quotePrice } from "../game/engine/pricing";
+import { chooseRaider, evaluateHero } from "../game/engine/decisions";
+import { shopState } from "../game/rules/money";
+import { GOODS as STALL_GOODS } from "../game/config/economyRules";
 import { sfx } from "../game/audio";
 import {
+  armPossess,
   bindDungeon,
+  buyBackRumour,
   buyFromMerchant,
   buyUpgrade,
   cancelListing,
+  craftTrap,
   forgeKit,
+  supplyIron,
   listItem,
   markDiary,
   newGame,
   nextDay,
   note,
-  removeTrap,
   placeTrap,
+  relayTrap,
   resolvePage,
   selectInfo,
   selectTrap,
@@ -95,7 +103,7 @@ function DungeonScreen() {
   const game = useGame();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const api = useRef<ReturnType<typeof mountDungeon> | null>(null);
-  const [seconds, setSeconds] = useState<number>(ECONOMY.diaryCountdownSeconds);
+  const [seconds, setSeconds] = useState<number>(RAID.pageFlightSec);
   const hooks = useRef(game);
   hooks.current = game;
 
@@ -131,12 +139,15 @@ function DungeonScreen() {
 
   useEffect(() => {
     if (game.pageResult !== "decision") return;
-    let left: number = ECONOMY.diaryCountdownSeconds;
+    let left: number = RAID.pageFlightSec;
     setSeconds(left);
     const timer = window.setInterval(() => {
       left = Math.max(0, left - 1);
       setSeconds(left);
-      if (left === 0) window.clearInterval(timer);
+      if (left === 0) {
+        window.clearInterval(timer);
+        resolvePage("escape");
+      }
     }, 1000);
     return () => window.clearInterval(timer);
   }, [game.pageResult, game.pending?.id]);
@@ -182,8 +193,8 @@ function DungeonScreen() {
               {report.facts.length === 0 && <li>The page only records that {hero.name} fell.</li>}
             </ul>
             <div className="mt-3 flex gap-2">
-              <button className="rounded bg-ember px-3 py-1" disabled={game.cinder < ECONOMY.burnCinderCost} onClick={() => { resolvePage("burn"); sfx.burn(); }}>Burn ({ECONOMY.burnCinderCost} cinder)</button>
-              <button className="rounded border border-ink/30 px-3 py-1" onClick={() => resolvePage("escape")}>Let it escape</button>
+              <button className="min-h-11 min-w-11 rounded bg-ember px-3 py-1" disabled={game.cinder < RAID.cinder.burnCost} onClick={() => { resolvePage("burn"); sfx.burn(); }}>Burn ({RAID.cinder.burnCost} cinder)</button>
+              <button className="min-h-11 rounded border border-ink/30 px-3 py-1" onClick={() => resolvePage("escape")}>Let it land</button>
             </div>
           </div>
         )}
@@ -215,7 +226,8 @@ function DungeonScreen() {
           const placed = placeTrap("spike", RULES.spikeTutorialCell.ix, RULES.spikeTutorialCell.iz);
           if (placed.ok) api.current?.showTrap(RULES.spikeTutorialCell.ix, RULES.spikeTutorialCell.iz, TRAP_DEFINITIONS.spike.model);
         }}>Place hall spike</button>
-        <button className="rounded border border-white/20 px-3 py-1 text-sm" onClick={() => { const last = game.traps.at(-1); if (last) removeTrap(last.id); }}>Lift last trap</button>
+        <button className="min-h-11 rounded border border-white/20 px-3 py-1 text-sm" onClick={() => { const last = game.traps.at(-1); if (last) relayTrap(last.id); }}>Re-lay last trap ({RAID.relay} gold)</button>
+        <button className="min-h-11 rounded border border-white/20 px-3 py-1 text-sm" disabled={game.day < RAID.possess.fromWave || game.possessArmed} onClick={() => armPossess()}>Possess the hall guard ({RAID.possess.cost} gold)</button>
         <button className="rounded bg-ember px-3 py-1 text-sm text-ink" disabled={game.phase === "raid" || game.phase === "diary"} onClick={() => { startRaid(); sfx.ui(); }}>Open the gate</button>
         <button className="rounded border border-white/20 px-3 py-1 text-sm" onClick={() => api.current?.focusHero()}>Focus</button>
         <button className="rounded border border-white/20 px-3 py-1 text-sm" onClick={() => setWorldMode(game.worldMode === "prototype" ? "full" : "prototype")}>
@@ -269,12 +281,26 @@ function WorldMap() {
 function GateMarket() {
   const game = useGame();
   const merchants = [game.merchants.mira, game.merchants.orrin, game.merchants.tallow];
+  const board = (["kara", "brann", "ivo"] as const).map((id) => evaluateHero(game, game.heroes[id]));
+  const raider = chooseRaider(game);
   return (
     <section className="grid gap-4 p-4 lg:grid-cols-3">
-      {merchants.map((merchant) => (
+      <article className="rounded border border-gold/25 bg-panel p-4 lg:col-span-3">
+        <h3 className="font-display text-2xl text-gold">Raid board</h3>
+        <p className="text-sm text-parchment/70">Each hero accepts or refuses on their own numbers. A counter would move a split only. Posting an offer does not spend Gold.</p>
+        <ul className="mt-2 space-y-1 text-sm">
+          {board.map((trace) => <li key={trace.heroId}>{trace.accept ? "Accepted" : "Refused"} · {trace.reason}</li>)}
+        </ul>
+        <p className="mt-2 text-sm">Next through the gate: {raider.heroId}.</p>
+      </article>
+      {merchants.map((merchant) => {
+        const target = STALL_GOODS.filter((good) => good.merchant === merchant.id).reduce((sum, good) => sum + good.targetStock, 0);
+        const held = merchant.stock.reduce((sum, line) => sum + line.qty, 0);
+        const status = shopState(merchant.gold, held, target, merchant.id !== "orrin");
+        return (
         <article key={merchant.id} className="rounded border border-gold/25 bg-panel p-4">
           <h3 className="font-display text-2xl text-gold">{merchant.name}</h3>
-          <p className="text-sm text-parchment/70">{merchant.role} · {merchant.gold} gold</p>
+          <p className="text-sm text-parchment/70">{merchant.role} · {merchant.gold} gold · {status}</p>
           <ul className="mt-3 space-y-2 text-sm">
             {merchant.stock.map((line) => {
               const quote = quotePrice(line.itemId, line.qty);
@@ -287,13 +313,14 @@ function GateMarket() {
             })}
             {merchant.rumours.map((rumour) => (
               <li key={rumour.id} className="flex items-center justify-between gap-2">
-                <span>{rumour.text}</span>
-                <button className="rounded border border-gold/40 px-2 py-1" onClick={() => buyFromMerchant("orrin", rumour.id)}>Buy</button>
+                <span>{rumour.text} · epoch {rumour.epoch ?? 1}</span>
+                <button className="min-h-11 rounded border border-gold/40 px-2 py-1" onClick={() => buyBackRumour(rumour.id)}>Buy back</button>
               </li>
             ))}
           </ul>
         </article>
-      ))}
+        );
+      })}
       <article className="rounded border border-white/10 bg-panel2 p-4 lg:col-span-3">
         <h3 className="font-display text-gold">Why the price moved</h3>
         <p className="text-sm">{game.priceNote || "Prices follow stock against each merchant's target."}</p>
@@ -310,7 +337,7 @@ function Marketplace() {
     <section className="grid gap-4 p-4 lg:grid-cols-2">
       <div>
         <h2 className="font-display text-3xl text-gold">Player market</h2>
-        <p className="text-sm text-parchment/70">Listings move local Gold. They are not on a chain.</p>
+        <p className="text-sm text-parchment/70">Listings move local Gold. Five at a time. A day on the stall returns the item. The fee is 10% when it sells.</p>
         <ul className="mt-4 space-y-2">
           {game.listings.map((listing) => (
             <li key={listing.id} className="flex items-center justify-between rounded border border-white/10 px-3 py-2 text-sm">
@@ -346,7 +373,10 @@ function Workshop() {
       <h2 className="font-display text-3xl text-gold">Workshop</h2>
       <p className="text-sm text-parchment/70">Four iron nails become a spike kit. The next spike trap then costs no Gold.</p>
       <p className="mt-3 text-sm">Nails in hand: {game.inventory.nail ?? 0}. Kits: {game.inventory.kit ?? 0}. Cinder: {game.cinder}.</p>
-      <button className="mt-4 rounded bg-ember px-3 py-1 text-ink" onClick={() => forgeKit()}>Forge spike kit</button>
+      <p className="mt-3 text-sm">Iron {game.inventory.iron ?? 0} · ash {game.inventory.ash ?? 0} · bone {game.inventory.bone ?? 0}</p>
+      <button className="mt-4 rounded bg-ember px-3 py-1 text-ink" onClick={() => craftTrap("spike")}>Craft spike</button>
+      <button className="mt-4 ml-3 rounded border border-gold/40 px-3 py-1" onClick={() => supplyIron(5)}>Supply 5 iron to Mira</button>
+      <button className="mt-4 ml-3 rounded bg-ember px-3 py-1 text-ink" onClick={() => forgeKit()}>Forge spike kit</button>
       <button className="mt-4 ml-3 rounded border border-gold/40 px-3 py-1" onClick={() => buyUpgrade("vault-brace")}>Vault brace · {RULES.vaultBraceCost}g</button>
       <p className="mt-3 text-sm">Installed: {game.upgrades.join(", ") || "none"}.</p>
     </section>
@@ -366,7 +396,7 @@ function Registry() {
             <p>{profile.role}. {profile.personality}</p>
             <p className="text-sm">Gold {hero.gold}. Health {hero.hp}/{hero.maxHp}. Gear {hero.equipment.join(", ") || "pack only"}.</p>
             <p className="mt-2 text-sm text-parchment/70">{hero.memory[0]}</p>
-            {hero.facts.filter((fact) => !fact.burned).map((fact) => <p key={fact.id} className="text-sm">Knows: {fact.text}</p>)}
+            {hero.facts.filter((fact) => !fact.burned).map((fact) => <p key={fact.id} className="text-sm">{fact.memory ?? "warned"} · {fact.source ?? "record"} · {fact.text}</p>)}
           </article>
         );
       })}
@@ -387,8 +417,8 @@ function Chronicle() {
   return (
     <section className="mx-auto max-w-3xl p-6">
       <h2 className="font-display text-3xl text-gold">Replay & chronicles</h2>
-      <p className="text-sm text-parchment/70">The latest raid is the event list from the rules engine. The same seed and traps produce the same list.</p>
-      {raid && <p className="mt-3 text-sm">Day {raid.day} · {raid.heroId} · seed {raid.seed} · {raid.decision.reason}</p>}
+      <p className="text-sm text-parchment/70">The latest raid is the event list from the rules engine. The same traps and day produce the same list.</p>
+      {raid && <p className="mt-3 text-sm">Day {raid.day} · {raid.heroId} · {raid.decision.reason}</p>}
       <ol className="mt-4 space-y-2">
         {rows.map((event, index) => <li key={`${event.tick}-${index}`} className="border-b border-white/10 py-2 text-sm">Tick {event.tick}. {event.text}</li>)}
         {rows.length === 0 && <li className="text-parchment/60">No raid has been recorded.</li>}

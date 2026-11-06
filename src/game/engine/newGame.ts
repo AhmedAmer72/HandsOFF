@@ -1,4 +1,6 @@
 import { ECONOMY, GOODS } from "../config/economyRules";
+import { shopState } from "../rules/money";
+import { RAID } from "../../../rules/economy";
 import { HERO_ORDER, HERO_PROFILES } from "../config/heroProfiles";
 import type { HeroId } from "../content";
 import type { HeroState, MerchantState, SaveData } from "./types";
@@ -35,10 +37,10 @@ export function createSave(screen = "menu"): SaveData {
     day: 1,
     seed: 1105,
     gold: ECONOMY.startingPlayerGold,
-    cinder: ECONOMY.startingCinder,
+    cinder: RAID.cinder.start,
     reputation: 0,
-    vault: 100,
-    inventory: { nail: 4 },
+    vault: RAID.vaultStart,
+    inventory: { nail: 4, iron: 12, bone: 6, ash: 6 },
     traps: [],
     heroes,
     merchants,
@@ -57,6 +59,13 @@ export function restock(save: SaveData): SaveData {
   const merchants = { ...save.merchants };
   (Object.keys(merchants) as MerchantState["id"][]).forEach((id) => {
     const merchant = merchants[id];
+    const target = GOODS.filter((good) => good.merchant === id).reduce((sum, good) => sum + good.targetStock, 0);
+    const held = merchant.stock.reduce((sum, line) => sum + line.qty, 0);
+    const stateName = shopState(merchant.gold, held, target, id !== "orrin");
+    if (stateName === "CLOSED" || stateName === "UNDERCAPITALISED") {
+      merchants[id] = merchant;
+      return;
+    }
     const nextStock = merchant.stock.map((line) => {
       const rule = GOODS.find((good) => good.id === line.itemId);
       if (!rule) return line;

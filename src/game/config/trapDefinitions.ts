@@ -1,3 +1,4 @@
+import { RAID } from "../../../rules/economy";
 import { dungeon } from "../content";
 
 export type TrapId = "spike" | "pit" | "boulder" | "bait";
@@ -17,7 +18,7 @@ export const TRAP_DEFINITIONS: Record<TrapId, TrapDefinition> = {
   spike: {
     id: "spike",
     name: "Spike Trap",
-    cost: 18,
+    cost: RAID.traps.spike,
     damage: 24,
     model: dungeon("floor_tile_big_spikes"),
     file: "floor_tile_big_spikes.gltf",
@@ -26,7 +27,7 @@ export const TRAP_DEFINITIONS: Record<TrapId, TrapDefinition> = {
   pit: {
     id: "pit",
     name: "Pit Trap",
-    cost: 26,
+    cost: RAID.traps.pit,
     damage: 30,
     model: dungeon("floor_tile_big_grate_open"),
     file: "floor_tile_big_grate_open.gltf",
@@ -35,7 +36,7 @@ export const TRAP_DEFINITIONS: Record<TrapId, TrapDefinition> = {
   boulder: {
     id: "boulder",
     name: "Rolling Cask",
-    cost: 22,
+    cost: RAID.traps.boulder,
     damage: 20,
     model: dungeon("barrel_large"),
     file: "barrel_large.gltf",
@@ -44,7 +45,7 @@ export const TRAP_DEFINITIONS: Record<TrapId, TrapDefinition> = {
   bait: {
     id: "bait",
     name: "Bait Plate",
-    cost: 8,
+    cost: RAID.bait,
     damage: 0,
     model: dungeon("plate_food_A"),
     file: "plate_food_A.gltf",
