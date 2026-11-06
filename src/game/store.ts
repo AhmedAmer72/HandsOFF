@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from "react";
 import type { Quality, ScreenId, WorldMode } from "./content";
 import { CELL } from "./content";
-import { ECONOMY } from "./config/economyRules";
+import { ECONOMY, goodsRule } from "./config/economyRules";
+import { quotePrice } from "./engine/pricing";
 import { isWalkable, RULES } from "./config/gameRules";
 import { TRAP_DEFINITIONS, type TrapId } from "./config/trapDefinitions";
 import { applyPurchase, chooseRaider, playerBuy } from "./engine/decisions";
@@ -25,13 +26,17 @@ interface Session extends SaveData {
   selectedTrap: TrapId | null;
   selection: { label: string; file: string; pack: string; note?: string } | null;
   fps: number;
+  minFps: number;
+  avgFps: number;
+  drawCalls: number;
   triangles: number;
+  rendererInfo: string;
   lastDecision: string;
   priceNote: string;
   pageResult: "idle" | "decision" | "burned" | "escaped";
 }
 
-let state: Session = { ...createSave("menu"), quality: "high", worldMode: "prototype", screen: "menu", selectedTrap: null, selection: null, fps: 0, triangles: 0, lastDecision: "", priceNote: "", pageResult: "idle" };
+let state: Session = { ...createSave("menu"), quality: "high", worldMode: "prototype", screen: "menu", selectedTrap: null, selection: null, fps: 0, minFps: 0, avgFps: 0, drawCalls: 0, triangles: 0, rendererInfo: "", lastDecision: "", priceNote: "", pageResult: "idle" };
 const listeners = new Set<() => void>();
 let dungeonApi: { ready: Promise<void>; playRoute: (steps: VisualStep[]) => Promise<void>; focusHero: () => void } | null = null;
 
@@ -52,6 +57,7 @@ function emit() {
     ledger: state.ledger,
     raids: state.raids,
     tutorialStep: state.tutorialStep,
+    upgrades: state.upgrades,
     phase: state.phase,
     pending: state.pending,
     screen: state.screen,
@@ -76,7 +82,7 @@ export function useGame() {
 export async function hydrate() {
   const saved = await readSave();
   if (!saved) return;
-  state = { ...state, ...saved, screen: (saved.screen as ScreenId) || "menu" };
+  state = { ...state, ...saved, upgrades: saved.upgrades ?? [], screen: (saved.screen as ScreenId) || "menu" };
   listeners.forEach((listener) => listener());
 }
 
@@ -109,13 +115,13 @@ export function selectInfo(selection: Session["selection"]) {
   emit();
 }
 
-export function setStats(fps: number, triangles: number) {
-  state = { ...state, fps, triangles };
+export function setStats(stats: { fps: number; min: number; avg: number; triangles: number; calls: number; renderer: string }) {
+  state = { ...state, fps: stats.fps, minFps: stats.min, avgFps: stats.avg, triangles: stats.triangles, drawCalls: stats.calls, rendererInfo: stats.renderer };
   listeners.forEach((listener) => listener());
 }
 
 export function newGame() {
-  state = { ...createSave("dungeon"), quality: state.quality, worldMode: "prototype", screen: "dungeon", selectedTrap: null, selection: null, fps: 0, triangles: 0, lastDecision: "A new dungeon day begins.", priceNote: "", pageResult: "idle" };
+  state = { ...createSave("dungeon"), quality: state.quality, worldMode: "prototype", screen: "dungeon", selectedTrap: null, selection: null, fps: 0, minFps: 0, avgFps: 0, drawCalls: 0, triangles: 0, rendererInfo: state.rendererInfo, lastDecision: "A new dungeon day begins.", priceNote: "", pageResult: "idle" };
   void clearSave();
   emit();
 }
@@ -168,13 +174,14 @@ export function startRaid() {
     seed: save.seed + save.day,
     hero: save.heroes[decision.heroId],
     traps: save.traps,
-    tutorial: save.tutorialStep < 5,
+    tutorial: save.tutorialStep < 2,
+    upgrades: save.upgrades,
   });
   const report: RaidReport = { ...simulated.report, decision };
   const heroes = { ...save.heroes, [decision.heroId]: simulated.hero };
   const gold = Math.max(0, save.gold - (simulated.report.survived ? simulated.report.goldLost : 0));
   const reputation = save.reputation + (simulated.report.survived ? RULES.reputationPerSurvival : RULES.reputationPerDeath);
-  const tutorialStep = save.tutorialStep < 2 ? 2 : save.tutorialStep;
+  const tutorialStep = save.tutorialStep < 2 ? 2 : save.tutorialStep >= 4 ? Math.max(save.tutorialStep, 5) : save.tutorialStep;
   state = {
     ...state,
     ...save,
@@ -229,10 +236,51 @@ export function resolvePage(choice: "burn" | "escape") {
   return { ok: true, reason: "Orrin has the page." };
 }
 
+function settleListings(save: SaveData): SaveData {
+  let gold = save.gold;
+  let listings = [...save.listings];
+  const merchants = {
+    mira: { ...save.merchants.mira, stock: save.merchants.mira.stock.map((line) => ({ ...line })) },
+    orrin: { ...save.merchants.orrin, stock: save.merchants.orrin.stock.map((line) => ({ ...line })) },
+    tallow: { ...save.merchants.tallow, stock: save.merchants.tallow.stock.map((line) => ({ ...line })) },
+  };
+  const notes: SaveData["ledger"] = [];
+  for (const listing of [...listings]) {
+    const rule = goodsRule(listing.itemId);
+    if (!rule) continue;
+    const merchant = merchants[rule.merchant];
+    const line = merchant.stock.find((entry) => entry.itemId === listing.itemId);
+    const stock = line?.qty ?? 0;
+    const quote = quotePrice(listing.itemId, Math.max(stock, 1));
+    if (listing.price > quote.price || merchant.gold < listing.price || stock >= rule.maxStock) continue;
+    merchant.gold -= listing.price;
+    gold += listing.price;
+    if (line) line.qty += 1;
+    else merchant.stock.push({ itemId: listing.itemId, qty: 1 });
+    listings = listings.filter((entry) => entry.id !== listing.id);
+    notes.push({ id: `npc-${listing.id}`, day: save.day, text: `${merchant.name} bought ${rule.name} from your stall for ${listing.price} Gold. Their quote was ${quote.price}.` });
+  }
+  return { ...save, gold, listings, merchants, ledger: [...notes, ...save.ledger] };
+}
+
+export function buyUpgrade(id: "vault-brace") {
+  if (state.upgrades.includes(id) || state.gold < RULES.vaultBraceCost) return { ok: false, reason: "Cannot buy that upgrade." };
+  state = {
+    ...state,
+    gold: state.gold - RULES.vaultBraceCost,
+    upgrades: [...state.upgrades, id],
+    ledger: [{ id: `up-${id}-${state.day}`, day: state.day, text: `Vault brace installed. Raiders take ${RULES.vaultBraceReduction} less Gold.` }, ...state.ledger],
+    tutorialStep: Math.max(state.tutorialStep, 7),
+  };
+  emit();
+  return { ok: true, reason: "Vault brace is active." };
+}
+
 export function nextDay() {
   if (state.phase !== "report") return;
-  const stepped = state.tutorialStep === 3 ? 4 : state.tutorialStep === 4 ? 5 : state.tutorialStep >= 5 ? 6 : state.tutorialStep;
-  const saved = restock({ ...state, tutorialStep: stepped });
+  const traded = settleListings(state);
+  const stepped = traded.tutorialStep >= 6 ? 7 : traded.tutorialStep === 3 ? 4 : traded.tutorialStep === 5 ? 6 : traded.tutorialStep;
+  const saved = restock({ ...traded, tutorialStep: stepped });
   state = { ...state, ...saved, screen: state.screen, tutorialStep: stepped, phase: "prep", pageResult: "idle" };
   emit();
 }

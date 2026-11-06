@@ -23,6 +23,8 @@ export interface HeroProfile {
   spendCap: number;
   prefers: string[];
   buysRumours: boolean;
+  /** World units per second. A floor tile is 4 units. */
+  moveSpeed: number;
 }
 
 export const HERO_PROFILES: Record<HeroId, HeroProfile> = {
@@ -47,6 +49,7 @@ export const HERO_PROFILES: Record<HeroId, HeroProfile> = {
     spendCap: 36,
     prefers: ["potion"],
     buysRumours: true,
+    moveSpeed: 6.4,
   },
   brann: {
     id: "brann",
@@ -69,6 +72,7 @@ export const HERO_PROFILES: Record<HeroId, HeroProfile> = {
     spendCap: 48,
     prefers: ["axe", "sword"],
     buysRumours: false,
+    moveSpeed: 4.4,
   },
   ivo: {
     id: "ivo",
@@ -91,6 +95,7 @@ export const HERO_PROFILES: Record<HeroId, HeroProfile> = {
     spendCap: 40,
     prefers: ["staff", "potion"],
     buysRumours: true,
+    moveSpeed: 5.2,
   },
 };
 

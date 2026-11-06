@@ -112,6 +112,7 @@ export interface SaveData {
   ledger: LedgerLine[];
   raids: RaidReport[];
   tutorialStep: number;
+  upgrades: string[];
   phase: "prep" | "choice" | "raid" | "diary" | "report";
   pending: RaidReport | null;
   screen: string;

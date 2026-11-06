@@ -9,7 +9,7 @@ import { sfx } from "../game/audio";
 import {
   bindDungeon,
   buyFromMerchant,
-  buyListing,
+  buyUpgrade,
   cancelListing,
   forgeKit,
   listItem,
@@ -17,6 +17,7 @@ import {
   newGame,
   nextDay,
   note,
+  removeTrap,
   placeTrap,
   resolvePage,
   selectInfo,
@@ -33,12 +34,13 @@ import { mountDungeon } from "../three/dungeon";
 import { mountGallery } from "../three/gallery";
 
 const TUTORIAL = [
-  "Chapter 1. Place a spike on tile 2, 2, the center of the hall. It costs Gold from your local balance.",
-  "Chapter 2. Open the gate. The first raider is fragile. Watch the raid, then read the diary page.",
-  "Chapter 3. Burn the page for Cinder, or let Orrin sell it. The next hero only learns facts that escape.",
-  "Chapter 4. Buy one supply from Mira or Tallow. Their Gold and stock are finite.",
-  "Chapter 5. Open the gate again. A hero who bought the rumour walks around the spike.",
-  "The loop is yours. Prepare, raid, decide the page, and face the next day.",
+  "Chapter 1. Place a spike on tile 4, 6 in the main hall. Gold pays for it.",
+  "Chapter 2. Open the gate. Kara enters from the south gate and walks the hall.",
+  "Chapter 3. Read the page. Burn it, or let it reach Orrin.",
+  "Chapter 4. If the page escaped, Orrin can sell that fact. Heroes buy it with their own Gold.",
+  "Chapter 5. Open the gate again. A hero who owns the rumour takes the west hall, not tile 4, 6.",
+  "Chapter 6. Buy a supply from Mira or Tallow. Watch their Gold and stock change.",
+  "Chapter 7. The vault brace is in the workshop. After that, the next day is yours.",
 ];
 
 export function App() {
@@ -112,7 +114,7 @@ function DungeonScreen() {
       onEnemies: () => undefined,
       tryPlace: (trapId, ix, iz) => placeTrap(trapId, ix, iz).ok,
       getTraps: () => hooks.current.traps,
-      onStats: (fps, triangles) => setStats(fps, triangles),
+      onStats: (stats) => setStats(stats),
       onDiary: () => markDiary(),
       diaryChoice: () => hooks.current.pageResult === "idle" ? "idle" : hooks.current.pageResult,
     });
@@ -151,7 +153,7 @@ function DungeonScreen() {
         <span>Day {game.day}</span>
         <span>Reputation {game.reputation}</span>
         <span>{game.phase}</span>
-        <span className="ml-auto text-parchment/60">{game.fps.toFixed(0)} fps · {game.triangles} tris</span>
+        <span className="ml-auto text-parchment/60">{game.fps.toFixed(0)} fps · avg {game.avgFps.toFixed(0)} · min {game.minFps.toFixed(0)} · {game.drawCalls} draws · {game.triangles} tris · {game.rendererInfo || "renderer pending"}</span>
       </div>
       <aside className="space-y-3 overflow-auto border-white/10 p-3 lg:border-r">
         <p className="text-sm text-gold">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
@@ -209,6 +211,11 @@ function DungeonScreen() {
             {TRAP_DEFINITIONS[id].name} · {TRAP_DEFINITIONS[id].cost}g
           </button>
         ))}
+        <button className="rounded border border-gold/40 px-3 py-1 text-sm" onClick={() => {
+          const placed = placeTrap("spike", RULES.spikeTutorialCell.ix, RULES.spikeTutorialCell.iz);
+          if (placed.ok) api.current?.showTrap(RULES.spikeTutorialCell.ix, RULES.spikeTutorialCell.iz, TRAP_DEFINITIONS.spike.model);
+        }}>Place hall spike</button>
+        <button className="rounded border border-white/20 px-3 py-1 text-sm" onClick={() => { const last = game.traps.at(-1); if (last) removeTrap(last.id); }}>Lift last trap</button>
         <button className="rounded bg-ember px-3 py-1 text-sm text-ink" disabled={game.phase === "raid" || game.phase === "diary"} onClick={() => { startRaid(); sfx.ui(); }}>Open the gate</button>
         <button className="rounded border border-white/20 px-3 py-1 text-sm" onClick={() => api.current?.focusHero()}>Focus</button>
         <button className="rounded border border-white/20 px-3 py-1 text-sm" onClick={() => setWorldMode(game.worldMode === "prototype" ? "full" : "prototype")}>
@@ -309,7 +316,6 @@ function Marketplace() {
             <li key={listing.id} className="flex items-center justify-between rounded border border-white/10 px-3 py-2 text-sm">
               <span>{goodsRule(listing.itemId)?.name ?? listing.itemId} · {listing.price}g</span>
               <span className="flex gap-2">
-                <button className="rounded bg-gold px-2 py-1 text-ink" onClick={() => buyListing(listing.id)}>Buy back</button>
                 <button className="rounded border border-white/20 px-2 py-1" onClick={() => cancelListing(listing.id)}>Cancel</button>
               </span>
             </li>
@@ -341,6 +347,8 @@ function Workshop() {
       <p className="text-sm text-parchment/70">Four iron nails become a spike kit. The next spike trap then costs no Gold.</p>
       <p className="mt-3 text-sm">Nails in hand: {game.inventory.nail ?? 0}. Kits: {game.inventory.kit ?? 0}. Cinder: {game.cinder}.</p>
       <button className="mt-4 rounded bg-ember px-3 py-1 text-ink" onClick={() => forgeKit()}>Forge spike kit</button>
+      <button className="mt-4 ml-3 rounded border border-gold/40 px-3 py-1" onClick={() => buyUpgrade("vault-brace")}>Vault brace · {RULES.vaultBraceCost}g</button>
+      <p className="mt-3 text-sm">Installed: {game.upgrades.join(", ") || "none"}.</p>
     </section>
   );
 }

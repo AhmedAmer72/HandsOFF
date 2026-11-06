@@ -1,11 +1,7 @@
 # Current status
 
-The core loop is playable: prepare traps, open the gate, watch a rules-driven raid, burn or release the diary page, trade with finite merchants, and advance the day.
+Ashgate is a connected set of rooms. Raiders pathfind on that same grid. A known spike changes the route, and that detour was visible in the browser replay as tiles 5,7 then 5,6 then 5,5.
 
-Prototype graphics are unchanged. The raid result comes from `src/game/engine/raid.ts`.
+The walk uses delta time and one walk clip. The renderer here is SwiftShader. Average fps in this session was 41, minimum 20.
 
-Tests: `npx vitest run` — 13 passed. `npx tsc --noEmit` passed after the diary countdown type fix.
-
-Browser: spike at 2,2 costs 18 Gold (140 to 122), Kara dies on that spike, the parchment offers Burn, and burning spends 3 Cinder (8 to 5). Replay lists the ticks.
-
-Report: `docs/UNDERREALM_GAMEPLAY_IMPLEMENTATION_REPORT.md`.
+Report: `docs/UNDERREALM_COMPLETE_GAME_AND_PERFORMANCE_REPORT.md`.

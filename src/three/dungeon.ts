@@ -1,6 +1,9 @@
 import gsap from "gsap";
 import * as THREE from "three";
-import { ANIMATION_FILES, CELL, CLIP_ALIASES, ENEMIES, HEROES, fullLayout, item, prototypeLayout, type HeroId, type Piece, type Quality, type WorldMode } from "../game/content";
+import { ANIMATION_FILES, CELL, CLIP_ALIASES, HEROES, item, monsterModel, type HeroId, type Piece, type Quality, type WorldMode } from "../game/content";
+import { HERO_PROFILES } from "../game/config/heroProfiles";
+import { RULES } from "../game/config/gameRules";
+import { ashgatePieces } from "../game/world";
 import { TRAP_DEFINITIONS, type TrapId } from "../game/config/trapDefinitions";
 import type { PlacedTrap } from "../game/engine/types";
 import type { VisualStep } from "../game/store";
@@ -19,7 +22,7 @@ export interface DungeonHooks {
   onEnemies: (enemies: { id: string; name: string; hp: number; maxHp: number; file: string }[]) => void;
   tryPlace: (trapId: TrapId, ix: number, iz: number) => boolean;
   getTraps: () => PlacedTrap[];
-  onStats: (fps: number, triangles: number) => void;
+  onStats: (stats: { fps: number; min: number; avg: number; triangles: number; calls: number; renderer: string }) => void;
   onDiary: (phase: "decision") => void;
   diaryChoice: () => "idle" | "decision" | "burned" | "escaped";
 }
@@ -32,6 +35,8 @@ interface Actor {
   clips: THREE.AnimationClip[];
   family: "hero" | "skeleton";
   action: string;
+  current: THREE.AnimationAction | null;
+  speed: number;
   hp: number;
   maxHp: number;
   file: string;
@@ -84,9 +89,14 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   let fpsAccum = 0;
   let frames = 0;
   let lastStat = 0;
+  let minFps = 999;
+  let avgFps = 0;
+  let samples = 0;
+  let rendererInfo = "";
   let placing: THREE.Group | null = null;
   let diaryPlayed = false;
   let scripted = false;
+  const movers: { actor: Actor; x: number; z: number; resolve: () => void }[] = [];
   let aggro = false;
   let burnStarted = false;
   let releaseStarted = false;
@@ -160,17 +170,24 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   }
 
   function play(actor: Actor, logical: string, once = false) {
-    if (actor.action === logical && (!once || performance.now() < actor.busyUntil)) return;
+    if (actor.action === logical && !once) return;
+    if (once && actor.action === logical && performance.now() < actor.busyUntil) return;
     const names = [...CLIP_ALIASES[logical]];
     const ordered = actor.family === "hero" ? names.reverse() : names;
     const clip = actor.clips.find((entry) => ordered.includes(entry.name));
     if (!clip) return;
-    actor.mixer.stopAllAction();
     const action = actor.mixer.clipAction(clip);
     action.reset();
     action.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, once ? 1 : Infinity);
     action.clampWhenFinished = once;
-    action.play();
+    action.setEffectiveWeight(1);
+    if (actor.current && actor.current !== action) {
+      actor.current.fadeOut(0.18);
+      action.fadeIn(0.18).play();
+    } else {
+      action.fadeIn(0.05).play();
+    }
+    actor.current = action;
     actor.action = logical;
     if (once) actor.busyUntil = performance.now() + clip.duration * 1000 * 0.85;
   }
@@ -207,6 +224,8 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       clips,
       family: options.family,
       action: "",
+      current: null,
+      speed: options.family === "hero" ? (HERO_PROFILES[options.id as HeroId]?.moveSpeed ?? 5) : 3.6,
       hp: options.hp,
       maxHp: options.hp,
       file: options.file,
@@ -223,7 +242,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     return actor;
   }
 
-  async function buildLevel(mode: WorldMode) {
+  async function buildLevel() {
     for (const child of [...scene.children]) {
       if (child.userData.level) scene.remove(child);
     }
@@ -231,7 +250,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     floors.length = 0;
     selectables.push(groundPick);
     floors.push(groundPick);
-    const layout = mode === "full" ? fullLayout() : prototypeLayout();
+    const layout = ashgatePieces();
     const groups = new Map<string, Piece[]>();
     for (const entry of layout) {
       const list = groups.get(entry.url) ?? [];
@@ -271,14 +290,16 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     const loaded = await Promise.all(ANIMATION_FILES.map((url) => loadGltf(url)));
     clips = loaded.flatMap((gltf) => gltf.animations.map((clip) => stripRootMotion(clip)));
     applyQuality(hooks.getQuality());
-    await buildLevel(hooks.getMode());
+    const gl = renderer.getContext();
+    const debug = gl.getExtension("WEBGL_debug_renderer_info");
+    rendererInfo = debug ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER));
+    await buildLevel();
     for (const trap of hooks.getTraps()) {
       const mesh = await spawn(TRAP_DEFINITIONS[trap.trapId].model, "cast");
       mesh.position.set(trap.ix * CELL, 0.05, trap.iz * CELL);
       mesh.userData.level = true;
       scene.add(mesh);
     }
-    const mode = hooks.getMode();
     const lead = HEROES.find((entry) => entry.id === hooks.getHero()) ?? HEROES[0];
     hero = await addActor({
       id: lead.id,
@@ -286,25 +307,27 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       model: lead.model,
       file: lead.modelFile,
       family: "hero",
-      x: mode === "full" ? 3 * CELL : 2 * CELL,
-      z: mode === "full" ? 5 * CELL : 3.2 * CELL,
+      x: RULES.grid.entrance.ix * CELL,
+      z: RULES.grid.entrance.iz * CELL,
       weapon: lead.weapon,
       hp: 100,
     });
     focus.set(hero.root.position.x, 0, hero.root.position.z);
-    const roster = mode === "prototype" ? ENEMIES.slice(0, 1) : ENEMIES;
-    for (const enemy of roster) {
-      const [hx, hz] = mode === "full" ? enemy.home : [2, 0];
+    const posts = [
+      { ...RULES.skeletons[0], model: monsterModel("Skeleton_Minion"), file: "Skeleton_Minion.glb", weapon: undefined as string | undefined },
+      { ...RULES.skeletons[1], model: monsterModel("Skeleton_Warrior"), file: "Skeleton_Warrior.glb", weapon: undefined as string | undefined },
+    ];
+    for (const enemy of posts) {
       await addActor({
         id: enemy.id,
         name: enemy.name,
         model: enemy.model,
-        file: enemy.modelFile,
+        file: enemy.file,
         family: "skeleton",
-        x: (mode === "full" ? hx + (enemy.id === "archer" || enemy.id === "mage" ? 7 : 0) : hx) * CELL,
-        z: hz * CELL,
+        x: enemy.ix * CELL,
+        z: enemy.iz * CELL,
         weapon: enemy.weapon,
-        hp: 70,
+        hp: enemy.hp,
       });
     }
     const page = await spawn(item("journal_open"));
@@ -596,13 +619,48 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
         obj.visible = !(camSide && meta.z > focus.z - 1);
       }
     });
+    const pending = [];
+    for (const mover of movers) {
+      const dx = mover.x - mover.actor.root.position.x;
+      const dz = mover.z - mover.actor.root.position.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance < 0.08) {
+        mover.actor.root.position.x = mover.x;
+        mover.actor.root.position.z = mover.z;
+        mover.resolve();
+        continue;
+      }
+      const step = Math.min(distance, mover.actor.speed * dt);
+      mover.actor.root.position.x += (dx / distance) * step;
+      mover.actor.root.position.z += (dz / distance) * step;
+      mover.actor.root.rotation.y = Math.atan2(dx, dz);
+      if (mover.actor.action !== "walk") play(mover.actor, "walk");
+      pending.push(mover);
+    }
+    movers.length = 0;
+    movers.push(...pending);
+    if (scripted && hero) {
+      focus.x += (hero.root.position.x - focus.x) * (1 - Math.exp(-4 * dt));
+      focus.z += (hero.root.position.z - focus.z) * (1 - Math.exp(-4 * dt));
+    }
     stepActors(dt);
     aimCamera();
     renderer.render(scene, camera);
     frames += 1;
     fpsAccum += dt;
     if (now - lastStat > 500) {
-      hooks.onStats(fpsAccum > 0 ? frames / fpsAccum : 0, renderer.info.render.triangles);
+      const fps = fpsAccum > 0 ? frames / fpsAccum : 0;
+      minFps = Math.min(minFps, fps);
+      samples += 1;
+      avgFps += (fps - avgFps) / samples;
+      hooks.onStats({
+        fps,
+        min: minFps,
+        avg: avgFps,
+        triangles: renderer.info.render.triangles,
+        calls: renderer.info.render.calls,
+        renderer: rendererInfo,
+      });
       frames = 0;
       fpsAccum = 0;
       lastStat = now;
@@ -631,29 +689,57 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     async playRoute(steps: VisualStep[]) {
       scripted = true;
       aggro = false;
+      const glide = (actor: Actor, x: number, z: number) => new Promise<void>((resolve) => {
+        movers.push({ actor, x, z, resolve });
+      });
+      const pause = (seconds: number) => new Promise<void>((resolve) => {
+        gsap.delayedCall(seconds, resolve);
+      });
       if (hero && steps[0]) hero.root.position.set(steps[0].x, 0, steps[0].z);
       for (const step of steps) {
         if (!running || !hero) break;
-        focus.set(step.x, 0, step.z);
         if (step.type === "move" || step.type === "enter") {
-          play(hero, "walk");
-          await gsap.to(hero.root.position, { x: step.x, z: step.z, duration: 0.45, ease: "none" });
+          await glide(hero, step.x, step.z);
+        } else if (step.type === "trap" && step.trapId === "boulder") {
+          play(hero, "hit", true);
+          sfx.hit();
+          const cask = await spawn(TRAP_DEFINITIONS.boulder.model, "cast");
+          cask.position.set(step.x, 0.2, step.z);
+          scene.add(cask);
+          const roll = { t: 0 };
+          gsap.to(roll, {
+            t: 1,
+            duration: 0.8,
+            onUpdate: () => {
+              cask.position.x = step.x + roll.t * CELL * 2;
+              cask.rotation.z = -roll.t * Math.PI * 3;
+            },
+            onComplete: () => scene.remove(cask),
+          });
+          await pause(0.85);
         } else if (step.type === "trap" || step.type === "combat") {
           play(hero, step.type === "combat" ? "attack" : "hit", true);
           if (step.type === "combat") sfx.attack();
           else sfx.hit();
-          await gsap.to({}, { duration: 0.35 });
+          await pause(0.32);
         } else if (step.type === "death") {
           play(hero, "death", true);
           hooks.onDiary("decision");
-          await gsap.to({}, { duration: 0.5 });
+          await pause(0.45);
         } else if (step.type === "survive" || step.type === "vault" || step.type === "flee") {
           play(hero, "interact", true);
-          await gsap.to({}, { duration: 0.35 });
+          await pause(0.3);
         }
       }
       scripted = false;
       if (hero && hero.hp > 0) play(hero, "idle");
+    },
+    showTrap(ix: number, iz: number, url: string) {
+      void spawn(url, "cast").then((mesh) => {
+        mesh.position.set(ix * CELL, 0.05, iz * CELL);
+        mesh.userData.level = true;
+        scene.add(mesh);
+      });
     },
     focusHero() {
       if (hero) gsap.to(focus, { x: hero.root.position.x, z: hero.root.position.z, duration: 0.5 });

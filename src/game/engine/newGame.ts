@@ -46,6 +46,7 @@ export function createSave(screen = "menu"): SaveData {
     ledger: [{ id: "open", day: 1, text: "Ashgate opens. Gold and Cinder are local counts on this machine." }],
     raids: [],
     tutorialStep: 0,
+    upgrades: [],
     phase: "prep",
     pending: null,
     screen,

@@ -8,7 +8,7 @@ import { quotePrice } from "./pricing";
 import { sameRaid, simulateRaid } from "./raid";
 import type { Fact, HeroState } from "./types";
 
-const spike = { id: "s1", trapId: "spike" as const, ix: 2, iz: 2 };
+const spike = { id: "s1", trapId: "spike" as const, ix: 4, iz: 6 };
 
 function kara(extra: Partial<HeroState> = {}): HeroState {
   const save = createSave();
@@ -18,14 +18,15 @@ function kara(extra: Partial<HeroState> = {}): HeroState {
 describe("pathing", () => {
   it("walks the center corridor when the spike is unknown", () => {
     const path = findPath([spike], [], HERO_PROFILES.kara);
-    expect(path.some((cell) => cell.ix === 2 && cell.iz === 2)).toBe(true);
+    expect(path.some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(true);
+    expect(path.at(-1)).toEqual({ ix: 4, iz: 0 });
   });
 
   it("Kara walks around a spike she knows", () => {
-    const fact: Fact = { id: "spike-2,2-d1", kind: "spike", ix: 2, iz: 2, text: "Spike Trap at tile 2, 2.", quality: 3, burned: false };
+    const fact: Fact = { id: "spike-4,6-d1", kind: "spike", ix: 4, iz: 6, text: "Spike Trap at tile 4, 6.", quality: 3, burned: false };
     const path = findPath([spike], [fact], HERO_PROFILES.kara);
-    expect(path.some((cell) => cell.ix === 2 && cell.iz === 2)).toBe(false);
-    expect(path.at(-1)).toEqual({ ix: 2, iz: 0 });
+    expect(path.some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(false);
+    expect(path.at(-1)).toEqual({ ix: 4, iz: 0 });
   });
 });
 
@@ -45,7 +46,7 @@ describe("raid", () => {
   });
 
   it("lets Kara live when she already knows the spike and can walk around it", () => {
-    const fact: Fact = { id: "spike-2,2-d1", kind: "spike", ix: 2, iz: 2, text: "Spike Trap at tile 2, 2.", quality: 3, burned: false };
+    const fact: Fact = { id: "spike-4,6-d1", kind: "spike", ix: 4, iz: 6, text: "Spike Trap at tile 4, 6.", quality: 3, burned: false };
     const result = simulateRaid({
       day: 2,
       seed: 1105,
@@ -122,7 +123,7 @@ describe("hero decisions", () => {
 
   it("moves Gold to Orrin when Kara buys a rumour and keeps the fact", () => {
     const save = createSave();
-    const fact: Fact = { id: "spike-2,2-d1", kind: "spike", ix: 2, iz: 2, text: "Spike Trap at tile 2, 2.", quality: 3, burned: false };
+    const fact: Fact = { id: "spike-4,6-d1", kind: "spike", ix: 4, iz: 6, text: "Spike Trap at tile 4, 6.", quality: 3, burned: false };
     save.merchants.orrin.rumours = [fact];
     const next = applyPurchase(save, "kara", { merchantId: "orrin", itemId: fact.id, price: 20, reason: "Kara buys the rumour." });
     expect(next.heroes.kara.gold).toBe(save.heroes.kara.gold - 20);

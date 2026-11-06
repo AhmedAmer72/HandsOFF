@@ -11,6 +11,7 @@ export interface RaidInput {
   hero: HeroState;
   traps: PlacedTrap[];
   tutorial: boolean;
+  upgrades?: string[];
 }
 
 export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "decision">; hero: HeroState } {
@@ -33,7 +34,7 @@ export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "deci
   let survived = true;
   let goldEarned = 0;
   let goldLost = 0;
-  let foughtSkeleton = false;
+  const fought = new Set<string>();
 
   const push = (event: Omit<RaidEvent, "tick" | "heroHp">) => {
     events.push({ ...event, tick: tick++, heroHp: hero.hp });
@@ -72,11 +73,11 @@ export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "deci
       }
     }
 
-    const skeleton = RULES.skeleton;
-    if (!foughtSkeleton && cell.ix === skeleton.ix && cell.iz === skeleton.iz && hero.hp > 0 && survived) {
-      foughtSkeleton = true;
+    const skeleton = RULES.skeletons.find((guard) => !fought.has(guard.id) && guard.ix === cell.ix && guard.iz === cell.iz);
+    if (skeleton && hero.hp > 0 && survived) {
+      fought.add(skeleton.id);
       let enemyHp = Number(skeleton.hp);
-      const armor = profile.armor + (hero.equipment.includes("axe") || hero.equipment.includes("sword") ? 0 : 0);
+      const armor = profile.armor;
       const attack = profile.attack + (hero.equipment.includes("axe") ? 4 : hero.equipment.includes("staff") ? 3 : 0);
       while (hero.hp > 0 && enemyHp > 0) {
         if (hero.hp / hero.maxHp < profile.fleeAt) {
@@ -86,21 +87,21 @@ export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "deci
           break;
         }
         enemyHp -= attack;
-        push({ type: "combat", text: `${profile.name} strikes the skeleton for ${attack}.`, ix: cell.ix, iz: cell.iz, damage: attack });
+        push({ type: "combat", text: `${profile.name} strikes ${skeleton.name} for ${attack}.`, ix: cell.ix, iz: cell.iz, damage: attack });
         if (enemyHp <= 0) {
-          push({ type: "combat", text: `The skeleton falls.`, ix: cell.ix, iz: cell.iz, damage: 0 });
+          push({ type: "combat", text: `${skeleton.name} falls.`, ix: cell.ix, iz: cell.iz, damage: 0 });
           break;
         }
         const taken = Math.max(1, skeleton.attack - armor);
         hero.hp = Math.max(0, hero.hp - taken);
-        push({ type: "combat", text: `The skeleton hits ${profile.name} for ${taken}.`, ix: cell.ix, iz: cell.iz, damage: taken });
+        push({ type: "combat", text: `${skeleton.name} hits ${profile.name} for ${taken}.`, ix: cell.ix, iz: cell.iz, damage: taken });
       }
       learned.push({
-        id: `skeleton-${input.day}-${hero.id}`,
+        id: `skeleton-${skeleton.id}-${input.day}`,
         kind: "skeleton",
         ix: skeleton.ix,
         iz: skeleton.iz,
-        text: `A skeleton guards ${skeleton.ix}, ${skeleton.iz}.`,
+        text: `${skeleton.name} guards ${skeleton.ix}, ${skeleton.iz}.`,
         quality: 2,
         burned: false,
       });
@@ -114,7 +115,8 @@ export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "deci
 
   if (survived && hero.hp > 0 && events.some((event) => event.ix === RULES.grid.vault.ix && event.iz === RULES.grid.vault.iz && event.type === "move")) {
     goldEarned = ECONOMY.heroPayOnSurvival;
-    goldLost = ECONOMY.vaultSteal;
+    const brace = input.upgrades?.includes("vault-brace") ? RULES.vaultBraceReduction : 0;
+    goldLost = Math.max(0, ECONOMY.vaultSteal - brace);
     hero.gold += goldEarned;
     push({ type: "vault", text: `${profile.name} reaches the vault and leaves with ${goldEarned} gold.` });
     push({ type: "survive", text: `${profile.name} survives the raid.` });
