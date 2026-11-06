@@ -1,0 +1,22 @@
+{
+  "id": "rpg-tools",
+  "product": "KayKit : RPG Tools Bits (1.0)",
+  "archive": "KayKit_RPGToolsBits_1.0_FREE.zip",
+  "sha256": "a17c2a54df93d525e90d960baf3c68638defb4f424e204ceead6ea1f89e9c7dd",
+  "bytes": 3885168,
+  "extractedFiles": 339,
+  "extensions": {
+    ".url": 3,
+    ".png": 21,
+    ".txt": 1,
+    ".obj": 59,
+    ".mtl": 59,
+    ".fbx": 98,
+    ".gltf": 49,
+    ".bin": 49
+  },
+  "runtimeFiles": 102,
+  "license": "CC0-1.0",
+  "licenseStatus": "APPROVED_CC0",
+  "verified": "2026-11-05 (Africa/Cairo)"
+}

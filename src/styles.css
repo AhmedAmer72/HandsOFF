@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: #100c0a;
+  color: #f6efe4;
+}
+
+body {
+  font-family: "Source Sans 3", "Segoe UI", sans-serif;
+}
+
+canvas.view {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.hud-glass {
+  background: rgba(12, 9, 8, 0.72);
+  border: 1px solid rgba(228, 196, 138, 0.28);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+}

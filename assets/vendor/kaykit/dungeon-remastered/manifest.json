@@ -1,0 +1,22 @@
+{
+  "id": "dungeon-remastered",
+  "product": "KayKit : Dungeon Asset Pack (1.1), formerly Dungeon Remastered 1.1",
+  "archive": "KayKit_Dungeon_Pack_1.1_FREE.zip",
+  "sha256": "6acb859d1aefae074f937d1e6f13656a7312b2bdb6d9f1232ebdade8d93d6a1c",
+  "bytes": 32868755,
+  "extractedFiles": 1303,
+  "extensions": {
+    ".url": 3,
+    ".png": 23,
+    ".txt": 1,
+    ".obj": 216,
+    ".mtl": 216,
+    ".fbx": 422,
+    ".bin": 211,
+    ".gltf": 211
+  },
+  "runtimeFiles": 423,
+  "license": "CC0-1.0",
+  "licenseStatus": "APPROVED_CC0",
+  "verified": "2026-11-05 (Africa/Cairo)"
+}

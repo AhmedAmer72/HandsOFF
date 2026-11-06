@@ -1,0 +1,19 @@
+{
+  "id": "character-animations",
+  "product": "KayKit : Character Animations (1.1)",
+  "archive": "KayKit_Character_Animations_1.1.zip",
+  "sha256": "65882f31f905ad2e953819648a59287cdeab8f623908d5ef701971d3758be20f",
+  "bytes": 14858957,
+  "extractedFiles": 37,
+  "extensions": {
+    ".url": 3,
+    ".txt": 1,
+    ".fbx": 16,
+    ".glb": 16,
+    ".png": 1
+  },
+  "runtimeFiles": 14,
+  "license": "CC0-1.0",
+  "licenseStatus": "APPROVED_CC0",
+  "verified": "2026-11-05 (Africa/Cairo)"
+}

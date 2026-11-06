@@ -1,0 +1,6 @@
+verified: 2026-11-05 (Africa/Cairo)
+product_page: https://kaylousberg.com/game-assets/characters-skeletons
+download_page: https://kaylousberg.itch.io/kaykit-skeletons/
+archive: KayKit_Skeletons_1.1_FREE.zip
+free_upload: Free 1.1
+license: https://creativecommons.org/publicdomain/zero/1.0/legalcode
