@@ -41,6 +41,7 @@ import {
 import { mountDungeon } from "../three/dungeon";
 import { mountGallery } from "../three/gallery";
 import { MainMenu } from "./screens/MainMenu";
+import { MockSandbox } from "./screens/MockSandbox";
 
 const TUTORIAL = [
   "Click the spiked floor piece on the gold ring, then click tile 4, 6.",
@@ -77,6 +78,7 @@ export function App() {
         {game.screen === "chronicle" && <Chronicle />}
         {game.screen === "settings" && <Settings />}
         {game.screen === "gallery" && <Gallery />}
+        {game.screen === "sandbox" && <MockSandbox />}
       </main>
     </div>
   );
@@ -448,6 +450,8 @@ function Settings() {
       </div>
       <p className="mt-3 text-sm text-parchment/70">Low drops shadows. The fps counter in the dungeon is a measurement from this machine.</p>
       <button className="mt-6 rounded border border-blood px-3 py-1 text-blood" onClick={() => newGame()}>New game (clears this browser save)</button>
+      <button className="mt-3 block rounded border border-gold/40 px-3 py-2 text-sm" onClick={() => setScreen("sandbox")}>Ownership details</button>
+      <p className="mt-2 text-xs text-parchment/50">Ownership details is a mock environment. It does not move real funds.</p>
     </section>
   );
 }

@@ -10,7 +10,9 @@
     "catalog": "python3 tools/stage_assets.py",
     "verify:assets": "node tools/verify-catalog.mjs",
     "test": "vitest run",
-    "verify:economy": "vitest run src/game/rules/money.test.ts scripts/economy-sim.test.ts"
+    "verify:economy": "vitest run src/game/rules/money.test.ts scripts/economy-sim.test.ts",
+    "mock:seed": "vitest run src/blockchain/MockChain.test.ts",
+    "mock:reset": "vitest run src/blockchain/MockChain.test.ts"
   },
   "dependencies": {
     "gsap": "^3.12.7",

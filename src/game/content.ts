@@ -8,7 +8,8 @@ export type ScreenId =
   | "registry"
   | "chronicle"
   | "settings"
-  | "gallery";
+  | "gallery"
+  | "sandbox";
 
 export type HeroId = "brann" | "kara" | "ivo";
 export type Quality = "low" | "medium" | "high";
