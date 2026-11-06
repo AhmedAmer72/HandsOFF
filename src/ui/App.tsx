@@ -44,7 +44,7 @@ import { MainMenu } from "./screens/MainMenu";
 import { MockSandbox } from "./screens/MockSandbox";
 
 const TUTORIAL = [
-  "Click the spiked floor piece on the gold ring, then click tile 4, 6.",
+  "Choose Spike Trap on the bar. It follows the cursor. Click tile 4, 6.",
   "Click the red banner in the south doorway. The chosen hero walks in.",
   "Click the flying page to burn it, or let the moment pass.",
   "Orrin keeps a landed page. Click him to buy it back.",
@@ -88,7 +88,7 @@ function DungeonScreen() {
   const game = useGame();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [seconds, setSeconds] = useState<number>(RAID.pageFlightSec);
-  const [hint, setHint] = useState("Click a gold ring, then a floor tile.");
+  const [hint, setHint] = useState("Choose a trap on the bar. It follows the cursor until you click a tile.");
   const [toast, setToast] = useState("");
   const hooks = useRef(game);
   hooks.current = game;
@@ -240,7 +240,7 @@ function DungeonScreen() {
       </div>
       <div className="absolute bottom-24 left-1/2 flex -translate-x-1/2 gap-2">
         {TRAP_IDS.map((id) => (
-          <button key={id} className={`hud-glass rounded-full px-3 py-2 text-xs ${game.selectedTrap === id ? "text-gold" : "text-parchment"}`} onClick={() => armTrap(id)}>
+          <button key={id} className={`hud-glass rounded-full px-3 py-2 text-xs ${game.selectedTrap === id ? "bg-gold text-ink" : "text-parchment"}`} onClick={() => game.selectedTrap === id ? clearTrap() : armTrap(id)}>
             {TRAP_DEFINITIONS[id].name} · {TRAP_DEFINITIONS[id].cost}
           </button>
         ))}

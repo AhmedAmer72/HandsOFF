@@ -108,7 +108,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   let avgFps = 0;
   let samples = 0;
   let rendererInfo = "";
-  let placing: THREE.Group | null = null;
+  let placing: THREE.Object3D | null = null;
   let diaryPlayed = false;
   let scripted = false;
   const movers: { actor: Actor; x: number; z: number; resolve: () => void }[] = [];
@@ -410,34 +410,6 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       });
       actor.root.rotation.y = Math.PI / 2;
     }
-    const rackSlots: Record<TrapId, { x: number; z: number }> = {
-      spike: { x: 2 * CELL, z: 7 * CELL },
-      pit: { x: 3 * CELL, z: 7 * CELL },
-      boulder: { x: 5 * CELL, z: 7 * CELL },
-      bait: { x: 6 * CELL, z: 7 * CELL },
-    };
-    for (const trapId of ["spike", "pit", "boulder", "bait"] as TrapId[]) {
-      const rule = TRAP_DEFINITIONS[trapId];
-      const mesh = await spawn(rule.model, "cast");
-      const slot = rackSlots[trapId];
-      mesh.position.set(slot.x, 0.05, slot.z);
-      mesh.scale.setScalar(trapId === "boulder" ? 0.85 : 1.35);
-      const proxy = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.4, 2.6), new THREE.MeshBasicMaterial({ visible: false }));
-      proxy.position.y = 1.1;
-      proxy.userData.rack = trapId;
-      mesh.add(proxy);
-      const marker = new THREE.Mesh(
-        new THREE.TorusGeometry(1.05, 0.07, 8, 24),
-        new THREE.MeshBasicMaterial({ color: "#e4c48a", toneMapped: false }),
-      );
-      marker.rotation.x = Math.PI / 2;
-      marker.position.y = 0.06;
-      mesh.add(marker);
-      mesh.userData.level = true;
-      mesh.userData.rack = trapId;
-      scene.add(mesh);
-      selectables.push(mesh);
-    }
     const gate = await spawn(dungeon("banner_red"), "cast");
     gate.position.set(4 * CELL, 0, 11 * CELL - 0.4);
     gate.scale.setScalar(1.35);
@@ -497,38 +469,53 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     return new THREE.Vector3(Math.round(point.x / CELL) * CELL, 0, Math.round(point.z / CELL) * CELL);
   }
 
+  const carried = new Map<string, THREE.Object3D>();
+  let carrying: string | null = null;
+
   async function previewTrap(clientX: number, clientY: number) {
     const trapId = hooks.getTrap();
     if (!trapId) {
       if (placing) placing.visible = false;
+      ring.visible = false;
+      carrying = null;
       return;
     }
     const hit = hitFloor(clientX, clientY);
-    if (!hit) return;
+    if (!hit) {
+      if (placing) placing.visible = false;
+      ring.visible = false;
+      return;
+    }
     const trap = TRAP_DEFINITIONS[trapId as TrapId];
     if (!trap) return;
-    if (!placing) {
-      placing = new THREE.Group();
-      scene.add(placing);
-    }
-    placing.clear();
-    const mesh = await spawn(trap.model);
-    const cell = snap(hit.point);
-    const blocked = actors.some((actor) => actor.root.position.distanceTo(cell) < 1.4);
-    mesh.traverse((obj: THREE.Object3D) => {
-      const material = (obj as THREE.Mesh).material;
-      if (material instanceof THREE.Material) {
-        material.transparent = true;
-        material.opacity = 0.55;
+    if (carrying !== trapId || !placing) {
+      if (placing) placing.visible = false;
+      let mesh = carried.get(trapId);
+      if (!mesh) {
+        mesh = await spawn(trap.model);
+        if (hooks.getTrap() !== trapId) return;
+        mesh.traverse((obj: THREE.Object3D) => {
+          const source = (obj as THREE.Mesh).material;
+          if (source instanceof THREE.Material) {
+            const ghost = source.clone();
+            ghost.transparent = true;
+            ghost.opacity = 0.55;
+            (obj as THREE.Mesh).material = ghost;
+          }
+        });
+        carried.set(trapId, mesh);
+        scene.add(mesh);
       }
-    });
-    placing.add(mesh);
-    placing.position.copy(cell);
+      placing = mesh;
+      carrying = trapId;
+    }
+    const cell = snap(hit.point);
+    const blocked = actors.some((actor) => actor.root.position.distanceTo(cell) < 1.4) || !hooks.getPhase || hooks.getPhase() === "raid";
+    placing.position.set(cell.x, 0.7, cell.z);
     placing.visible = true;
-    placing.userData.valid = !blocked;
     ring.position.set(cell.x, 0.08, cell.z);
     ring.visible = true;
-    (ring.material as THREE.MeshBasicMaterial).color.set(blocked ? "#c4493a" : "#e4c48a");
+    (ring.material as THREE.MeshBasicMaterial).color.set(blocked ? "#c4493a" : "#F2C14E");
   }
 
   function say(text: string) {
@@ -557,13 +544,12 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
 
   function caption(found: { node: THREE.Object3D } | null) {
     if (!found) {
-      if (hooks.getTrap()) return "Click a floor tile to set the trap.";
+      if (hooks.getTrap()) return "The trap is on your cursor. Click a floor tile to set it.";
       if (pendingRelay) return "Click a neighboring tile to move that trap.";
-      return "Click a trap, the gate, a person, or the page.";
+      return "Choose a trap from the bar, then click a floor tile.";
     }
     const data = found.node.userData;
     if (data.action === "burn") return "Click the page to burn it.";
-    if (data.rack) return `${TRAP_DEFINITIONS[data.rack as TrapId].name}. Click it, then a floor tile.`;
     if (data.placedId) return "Placed trap. Click it, then a neighboring tile.";
     if (data.action === "gate") return hooks.getPhase() === "report" ? "Red banner. Click for the next day." : "Red banner. Click to open the raid.";
     if (data.action === "craft") return "Anvil. Click to craft a spike from iron and bone.";
@@ -606,12 +592,6 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     const data = found?.node.userData;
     if (data?.action === "burn") {
       hooks.onBurn();
-      return;
-    }
-    if (data?.rack) {
-      pendingRelay = null;
-      hooks.armTrap(data.rack as TrapId);
-      say(caption(found));
       return;
     }
     if (data?.placedId && hooks.getPhase() === "prep") {
