@@ -25,3 +25,10 @@ button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+.hud-glass {
+  background: rgba(12, 9, 8, 0.72);
+  border: 1px solid rgba(228, 196, 138, 0.28);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+}

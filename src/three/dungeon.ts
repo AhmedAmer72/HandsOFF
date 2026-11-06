@@ -1,6 +1,6 @@
 import gsap from "gsap";
 import * as THREE from "three";
-import { ANIMATION_FILES, CELL, CLIP_ALIASES, HEROES, item, monsterModel, type HeroId, type Piece, type Quality, type WorldMode } from "../game/content";
+import { ANIMATION_FILES, CELL, CLIP_ALIASES, HEROES, dungeon, heroModel, item, monsterModel, type HeroId, type Piece, type Quality, type WorldMode } from "../game/content";
 import { HERO_PROFILES } from "../game/config/heroProfiles";
 import { RULES } from "../game/config/gameRules";
 import { ashgatePieces } from "../game/world";
@@ -20,11 +20,23 @@ export interface DungeonHooks {
   onHeroDamage: (amount: number) => void;
   onEnemyDamage: (id: string, amount: number) => void;
   onEnemies: (enemies: { id: string; name: string; hp: number; maxHp: number; file: string }[]) => void;
-  tryPlace: (trapId: TrapId, ix: number, iz: number) => boolean;
+  tryPlace: (trapId: TrapId, ix: number, iz: number) => string;
+  relayTo: (id: string, ix: number, iz: number) => boolean;
   getTraps: () => PlacedTrap[];
   onStats: (stats: { fps: number; min: number; avg: number; triangles: number; calls: number; renderer: string }) => void;
   onDiary: (phase: "decision") => void;
   diaryChoice: () => "idle" | "decision" | "burned" | "escaped";
+  onPrompt: (text: string) => void;
+  onGate: () => void;
+  onBurn: () => void;
+  onPossess: () => void;
+  onMerchant: (id: string) => void;
+  onCraft: () => void;
+  onBrace: () => void;
+  armTrap: (trapId: TrapId) => void;
+  clearArm: () => void;
+  getPhase: () => string;
+  getDay: () => number;
 }
 
 interface Actor {
@@ -33,7 +45,7 @@ interface Actor {
   root: THREE.Group;
   mixer: THREE.AnimationMixer;
   clips: THREE.AnimationClip[];
-  family: "hero" | "skeleton";
+  family: "hero" | "skeleton" | "merchant";
   action: string;
   current: THREE.AnimationAction | null;
   speed: number;
@@ -74,7 +86,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 120);
   const focus = new THREE.Vector3(8, 0, 8);
   let yaw = 0;
-  let view = 9;
+  let view = 11;
   const pointer = new THREE.Vector2();
   const raycaster = new THREE.Raycaster();
   const selectables: THREE.Object3D[] = [];
@@ -83,6 +95,8 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const placed: { id: string; trapId: string; mesh: THREE.Object3D; x: number; z: number; spent: boolean }[] = [];
   let clips: THREE.AnimationClip[] = [];
   let hero: Actor | null = null;
+  let pendingRelay: string | null = null;
+  let lastPrompt = "";
   let journal: THREE.Object3D | null = null;
   let running = true;
   let last = performance.now();
@@ -173,7 +187,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     if (actor.action === logical && !once) return;
     if (once && actor.action === logical && performance.now() < actor.busyUntil) return;
     const names = [...CLIP_ALIASES[logical]];
-    const ordered = actor.family === "hero" ? names.reverse() : names;
+    const ordered = actor.family === "skeleton" ? names : [...names].reverse();
     const clip = actor.clips.find((entry) => ordered.includes(entry.name));
     if (!clip) return;
     const action = actor.mixer.clipAction(clip);
@@ -197,7 +211,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     name: string;
     model: string;
     file: string;
-    family: "hero" | "skeleton";
+    family: "hero" | "skeleton" | "merchant";
     x: number;
     z: number;
     weapon?: string;
@@ -225,7 +239,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       family: options.family,
       action: "",
       current: null,
-      speed: options.family === "hero" ? (HERO_PROFILES[options.id as HeroId]?.moveSpeed ?? 5) : 3.6,
+      speed: options.family === "hero" ? (HERO_PROFILES[options.id as HeroId]?.moveSpeed ?? 5) : options.family === "merchant" ? 0 : 3.6,
       hp: options.hp,
       maxHp: options.hp,
       file: options.file,
@@ -266,9 +280,12 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
           mesh.userData.level = true;
           mesh.userData.meta = entry;
           scene.add(mesh);
-          if (entry.kind === "floor" || entry.kind === "trap" || entry.kind === "prop" || entry.kind === "vault" || entry.kind === "light") {
+          if (entry.kind === "floor" || entry.kind === "trap" || entry.kind === "prop" || entry.kind === "vault" || entry.kind === "light" || entry.label === "Entrance gate") {
             selectables.push(mesh);
           }
+          if (entry.label === "Entrance gate") mesh.userData.action = "gate";
+          if (entry.id === "anvil") mesh.userData.action = "craft";
+          if (entry.kind === "vault") mesh.userData.action = "brace";
           if (entry.kind === "floor") floors.push(mesh);
           if (entry.kind === "light") {
             const light = new THREE.PointLight(TORCH, hooks.getQuality() === "low" ? 3 : 7, 9, 1.4);
@@ -298,21 +315,91 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       const mesh = await spawn(TRAP_DEFINITIONS[trap.trapId].model, "cast");
       mesh.position.set(trap.ix * CELL, 0.05, trap.iz * CELL);
       mesh.userData.level = true;
+      mesh.userData.placedId = trap.id;
       scene.add(mesh);
+      selectables.push(mesh);
+      placed.push({ id: trap.id, trapId: trap.trapId, mesh, x: trap.ix * CELL, z: trap.iz * CELL, spent: false });
     }
-    const lead = HEROES.find((entry) => entry.id === hooks.getHero()) ?? HEROES[0];
-    hero = await addActor({
-      id: lead.id,
-      name: lead.name,
-      model: lead.model,
-      file: lead.modelFile,
-      family: "hero",
-      x: RULES.grid.entrance.ix * CELL,
-      z: RULES.grid.entrance.iz * CELL,
-      weapon: lead.weapon,
-      hp: 100,
-    });
-    focus.set(hero.root.position.x, 0, hero.root.position.z);
+    const heroPosts: Record<HeroId, { x: number; z: number }> = {
+      kara: { x: 4 * CELL, z: 10 * CELL },
+      brann: { x: 2 * CELL, z: 5 * CELL },
+      ivo: { x: 6 * CELL, z: 5 * CELL },
+    };
+    for (const lead of HEROES) {
+      const spot = heroPosts[lead.id];
+      const actor = await addActor({
+        id: lead.id,
+        name: lead.name,
+        model: lead.model,
+        file: lead.modelFile,
+        family: "hero",
+        x: spot.x,
+        z: spot.z,
+        weapon: lead.weapon,
+        hp: 100,
+      });
+      actor.root.rotation.y = Math.PI;
+      if (lead.id === "kara") hero = actor;
+    }
+    const merchants = [
+      { id: "mira", name: "Mira", model: heroModel("Knight"), file: "Knight.glb", weapon: item("hammer"), x: 0, z: 6 },
+      { id: "orrin", name: "Orrin", model: heroModel("Rogue_Hooded"), file: "Rogue_Hooded.glb", weapon: item("map"), x: 0, z: 4 },
+      { id: "tallow", name: "Tallow", model: heroModel("Ranger"), file: "Ranger.glb", weapon: item("lantern"), x: 1, z: 5 },
+    ];
+    for (const merchant of merchants) {
+      const actor = await addActor({
+        id: merchant.id,
+        name: merchant.name,
+        model: merchant.model,
+        file: merchant.file,
+        family: "merchant",
+        x: merchant.x * CELL,
+        z: merchant.z * CELL,
+        weapon: merchant.weapon,
+        hp: 1,
+      });
+      actor.root.rotation.y = Math.PI / 2;
+    }
+    const rackSlots: Record<TrapId, { x: number; z: number }> = {
+      spike: { x: 2 * CELL, z: 7 * CELL },
+      pit: { x: 3 * CELL, z: 7 * CELL },
+      boulder: { x: 5 * CELL, z: 7 * CELL },
+      bait: { x: 6 * CELL, z: 7 * CELL },
+    };
+    for (const trapId of ["spike", "pit", "boulder", "bait"] as TrapId[]) {
+      const rule = TRAP_DEFINITIONS[trapId];
+      const mesh = await spawn(rule.model, "cast");
+      const slot = rackSlots[trapId];
+      mesh.position.set(slot.x, 0.05, slot.z);
+      mesh.scale.setScalar(trapId === "boulder" ? 0.85 : 1.35);
+      const proxy = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.4, 2.6), new THREE.MeshBasicMaterial({ visible: false }));
+      proxy.position.y = 1.1;
+      proxy.userData.rack = trapId;
+      mesh.add(proxy);
+      const marker = new THREE.Mesh(
+        new THREE.TorusGeometry(1.05, 0.07, 8, 24),
+        new THREE.MeshBasicMaterial({ color: "#e4c48a", toneMapped: false }),
+      );
+      marker.rotation.x = Math.PI / 2;
+      marker.position.y = 0.06;
+      mesh.add(marker);
+      mesh.userData.level = true;
+      mesh.userData.rack = trapId;
+      scene.add(mesh);
+      selectables.push(mesh);
+    }
+    const gate = await spawn(dungeon("banner_red"), "cast");
+    gate.position.set(4 * CELL, 0, 11 * CELL - 0.4);
+    gate.scale.setScalar(1.35);
+    gate.userData.action = "gate";
+    gate.userData.level = true;
+    const gateHit = new THREE.Mesh(new THREE.BoxGeometry(2.4, 3.2, 1.4), new THREE.MeshBasicMaterial({ visible: false }));
+    gateHit.position.y = 1.5;
+    gateHit.userData.action = "gate";
+    gate.add(gateHit);
+    scene.add(gate);
+    selectables.push(gate);
+    focus.set(4 * CELL, 0, 6 * CELL);
     const posts = [
       { ...RULES.skeletons[0], model: monsterModel("Skeleton_Minion"), file: "Skeleton_Minion.glb", weapon: undefined as string | undefined },
       { ...RULES.skeletons[1], model: monsterModel("Skeleton_Warrior"), file: "Skeleton_Warrior.glb", weapon: undefined as string | undefined },
@@ -332,7 +419,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     }
     const page = await spawn(item("journal_open"));
     page.visible = false;
-    page.scale.setScalar(1.6);
+    page.scale.setScalar(2.2);
     scene.add(page);
     journal = page;
     hooks.onEnemies(
@@ -392,69 +479,138 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     (ring.material as THREE.MeshBasicMaterial).color.set(blocked ? "#c4493a" : "#e4c48a");
   }
 
+  function say(text: string) {
+    if (text === lastPrompt) return;
+    lastPrompt = text;
+    hooks.onPrompt(text);
+  }
+
+  function pickedNode(clientX: number, clientY: number) {
+    const rect = canvas.getBoundingClientRect();
+    pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    const hits = raycaster.intersectObjects(selectables, true);
+    for (const hit of hits) {
+      let node: THREE.Object3D | null = hit.object;
+      while (node) {
+        if (node.userData.rack || node.userData.placedId || node.userData.action || node.userData.pick || node.userData.meta) {
+          return { node, point: hit.point };
+        }
+        node = node.parent;
+      }
+    }
+    return null;
+  }
+
+  function caption(found: { node: THREE.Object3D } | null) {
+    if (!found) {
+      if (hooks.getTrap()) return "Click a floor tile to set the trap.";
+      if (pendingRelay) return "Click a neighboring tile to move that trap.";
+      return "Click a trap, the gate, a person, or the page.";
+    }
+    const data = found.node.userData;
+    if (data.action === "burn") return "Click the page to burn it.";
+    if (data.rack) return `${TRAP_DEFINITIONS[data.rack as TrapId].name}. Click it, then a floor tile.`;
+    if (data.placedId) return "Placed trap. Click it, then a neighboring tile.";
+    if (data.action === "gate") return hooks.getPhase() === "report" ? "Red banner. Click for the next day." : "Red banner. Click to open the raid.";
+    if (data.action === "craft") return "Anvil. Click to craft a spike from iron and bone.";
+    if (data.action === "brace") return "Vault chest. Click to brace it.";
+    if (data.pick) {
+      const actor = data.pick as Actor;
+      if (actor.family === "merchant" && actor.id === "mira") return "Mira. Click to supply 5 iron.";
+      if (actor.family === "merchant" && actor.id === "orrin") return "Orrin. Click to buy back an unsold page.";
+      if (actor.family === "merchant" && actor.id === "tallow") return "Tallow. Click to buy a green phial.";
+      if (actor.family === "skeleton" && actor.id === "guard") return hooks.getDay() < 2 ? "Hall guard. Possess opens on raid 2." : "Hall guard. Click to pull them off the tile.";
+      if (actor.family === "hero") return `${actor.name}. They choose their own raid.`;
+      return actor.name;
+    }
+    const meta = data.meta as Piece | undefined;
+    return meta?.label ?? "";
+  }
+
+  function dropTrap(trapId: TrapId, ix: number, iz: number) {
+    const id = hooks.tryPlace(trapId, ix, iz);
+    if (!id) return;
+    const trap = TRAP_DEFINITIONS[trapId];
+    spawn(trap.model).then((mesh) => {
+      mesh.position.set(ix * CELL, 0.05, iz * CELL);
+      mesh.userData.level = true;
+      mesh.userData.placedId = id;
+      scene.add(mesh);
+      selectables.push(mesh);
+      placed.push({ id, trapId, mesh, x: ix * CELL, z: iz * CELL, spent: false });
+    });
+    sfx.place();
+    pendingRelay = null;
+  }
+
   function onPointerDown(event: PointerEvent) {
     if (event.button === 2 || event.shiftKey) {
       canvas.dataset.pan = `${event.clientX},${event.clientY}`;
       return;
     }
-    const trapId = hooks.getTrap();
-    if (trapId) {
-      const hit = hitFloor(event.clientX, event.clientY);
-      const trap = TRAP_DEFINITIONS[trapId as TrapId];
-      if (hit && trap) {
-        const ix = Math.round(hit.point.x / CELL);
-        const iz = Math.round(hit.point.z / CELL);
-        if (hooks.tryPlace(trap.id, ix, iz)) {
-          const id = `${trap.id}-${ix}-${iz}`;
-          spawn(trap.model).then((mesh) => {
-            mesh.position.set(ix * CELL, 0.05, iz * CELL);
-            mesh.userData.level = true;
-            scene.add(mesh);
-            placed.push({ id, trapId, mesh, x: ix * CELL, z: iz * CELL, spent: false });
-          });
-          sfx.place();
-        }
-      }
+    const found = pickedNode(event.clientX, event.clientY);
+    const data = found?.node.userData;
+    if (data?.action === "burn") {
+      hooks.onBurn();
       return;
     }
-    const rect = canvas.getBoundingClientRect();
-    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    raycaster.setFromCamera(pointer, camera);
-    const hits = raycaster.intersectObjects(selectables, true);
-    const hit = hits.find((entry) => entry.object.userData.meta || entry.object.userData.pick);
-    if (!hit) {
-      hooks.onSelect(null);
-      ring.visible = false;
+    if (data?.rack) {
+      pendingRelay = null;
+      hooks.armTrap(data.rack as TrapId);
+      say(caption(found));
       return;
     }
-    let node: THREE.Object3D | null = hit.object;
-    while (node && !node.userData.meta && !node.userData.pick) node = node.parent;
-    if (node?.userData.pick) {
-      const actor = node.userData.pick as Actor;
+    if (data?.placedId && hooks.getPhase() === "prep") {
+      pendingRelay = String(data.placedId);
+      hooks.clearArm();
+      say("Click a neighboring tile to re-lay this trap.");
+      return;
+    }
+    if (data?.action === "gate") {
+      hooks.onGate();
+      return;
+    }
+    if (data?.action === "craft") {
+      hooks.onCraft();
+      return;
+    }
+    if (data?.action === "brace") {
+      hooks.onBrace();
+      return;
+    }
+    if (data?.pick) {
+      const actor = data.pick as Actor;
       focus.copy(actor.root.position);
       gsap.to(focus, { duration: 0.45, overwrite: true });
-      hooks.onSelect({
-        label: actor.name,
-        file: actor.file,
-        pack: actor.family === "hero" ? "characters-adventurers" : "characters-skeletons",
-        note: actor.family === "hero" ? "Rig_Medium hero. Animations come from KayKit Character Animations 1.1." : "Skeleton rig shares Rig_Medium clip names.",
-      });
       ring.position.set(actor.root.position.x, 0.08, actor.root.position.z);
       ring.visible = true;
+      if (actor.family === "merchant") hooks.onMerchant(actor.id);
+      else if (actor.family === "skeleton" && actor.id === "guard") hooks.onPossess();
+      else hooks.onSelect({ label: actor.name, file: actor.file, pack: actor.family === "hero" ? "characters-adventurers" : "characters-skeletons" });
       return;
     }
-    const meta = node?.userData.meta as Piece | undefined;
-    if (!meta) return;
-    if (meta.kind === "floor" && hero && hero.hp > 0) {
-      const cell = snap(hit.point);
-      hero.home.copy(cell);
-      aggro = true;
-      play(hero, "walk");
+    const floorHit = hitFloor(event.clientX, event.clientY);
+    if (!floorHit) return;
+    const ix = Math.round(floorHit.point.x / CELL);
+    const iz = Math.round(floorHit.point.z / CELL);
+    if (pendingRelay) {
+      const id = pendingRelay;
+      if (hooks.relayTo(id, ix, iz)) {
+        const entry = placed.find((trap) => trap.id === id);
+        if (entry) {
+          entry.mesh.position.set(ix * CELL, 0.05, iz * CELL);
+          entry.x = ix * CELL;
+          entry.z = iz * CELL;
+        }
+        sfx.place();
+      }
+      pendingRelay = null;
+      return;
     }
-    hooks.onSelect({ label: meta.label, file: meta.file, pack: meta.pack, note: meta.note });
-    ring.position.set(meta.x, 0.08, meta.z);
-    ring.visible = true;
+    const trapId = hooks.getTrap();
+    if (trapId) dropTrap(trapId as TrapId, ix, iz);
   }
 
   function onPointerMove(event: PointerEvent) {
@@ -467,6 +623,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       return;
     }
     void previewTrap(event.clientX, event.clientY);
+    say(caption(pickedNode(event.clientX, event.clientY)));
   }
 
   function onWheel(event: WheelEvent) {
@@ -501,6 +658,8 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     diaryPlayed = true;
     hooks.onDiary("decision");
     journal.visible = true;
+    journal.userData.action = "burn";
+    if (!selectables.includes(journal)) selectables.push(journal);
     journal.position.copy(hero.root.position);
     journal.position.y = 1.2;
     const gate = new THREE.Vector3(0, 1.6, 3 * CELL);
@@ -695,6 +854,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       const pause = (seconds: number) => new Promise<void>((resolve) => {
         gsap.delayedCall(seconds, resolve);
       });
+      hero = actors.find((actor) => actor.family === "hero" && actor.id === hooks.getHero()) ?? hero;
       if (hero && steps[0]) hero.root.position.set(steps[0].x, 0, steps[0].z);
       for (const step of steps) {
         if (!running || !hero) break;
@@ -724,8 +884,8 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
           await pause(0.32);
         } else if (step.type === "death") {
           play(hero, "death", true);
-          hooks.onDiary("decision");
-          await pause(0.45);
+          triggerDiary();
+          await pause(1.2);
         } else if (step.type === "survive" || step.type === "vault" || step.type === "flee") {
           play(hero, "interact", true);
           await pause(0.3);

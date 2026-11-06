@@ -130,7 +130,7 @@ export function newGame() {
   emit();
 }
 
-export function placeTrap(trapId: TrapId, ix: number, iz: number): { ok: boolean; reason: string } {
+export function placeTrap(trapId: TrapId, ix: number, iz: number): { ok: boolean; reason: string; id?: string } {
   const rule = TRAP_DEFINITIONS[trapId];
   if (!rule) return { ok: false, reason: "Unknown trap." };
   if (state.phase !== "prep") return { ok: false, reason: "Traps can be placed before the raid." };
@@ -153,7 +153,7 @@ export function placeTrap(trapId: TrapId, ix: number, iz: number): { ok: boolean
     ledger: [{ id: trap.id, day: state.day, text: `Placed ${rule.name} at ${ix}, ${iz} for ${cost} Gold.` }, ...state.ledger],
   };
   emit();
-  return { ok: true, reason: rule.note };
+  return { ok: true, reason: rule.note, id: trap.id };
 }
 
 export function relayTrap(id: string) {
@@ -174,6 +174,38 @@ export function relayTrap(id: string) {
   };
   emit();
   return { ok: true, reason: "The trap moved." };
+}
+
+export function relayTrapTo(id: string, ix: number, iz: number) {
+  const trap = state.traps.find((entry) => entry.id === id);
+  if (!trap || state.phase !== "prep") return { ok: false, reason: "Re-lay before the gate opens." };
+  if (Math.abs(trap.ix - ix) + Math.abs(trap.iz - iz) !== 1) return { ok: false, reason: "Re-lay onto a neighboring tile." };
+  if (state.gold < RAID.relay) return { ok: false, reason: `Re-lay costs ${RAID.relay} Gold.` };
+  if (!isWalkable(ix, iz)) return { ok: false, reason: "That tile is not open." };
+  if ((ix === RULES.grid.vault.ix && iz === RULES.grid.vault.iz) || (ix === RULES.grid.entrance.ix && iz === RULES.grid.entrance.iz)) {
+    return { ok: false, reason: "That tile stays clear." };
+  }
+  if (state.traps.some((other) => other.ix === ix && other.iz === iz)) return { ok: false, reason: "A trap already sits there." };
+  const moved: PlacedTrap = { ...trap, ix, iz, epoch: (trap.epoch ?? 1) + 1 };
+  state = {
+    ...state,
+    gold: state.gold - RAID.relay,
+    traps: state.traps.map((entry) => entry.id === id ? moved : entry),
+    ledger: [{ id: `relay-${id}-${moved.epoch}`, day: state.day, text: `Re-laid ${trap.trapId} to ${ix}, ${iz} for ${RAID.relay} Gold. Layout epoch ${moved.epoch}. Older rumours are stale.` }, ...state.ledger],
+  };
+  emit();
+  return { ok: true, reason: "The trap moved." };
+}
+
+export function armTrap(trapId: TrapId) {
+  state = { ...state, selectedTrap: trapId };
+  emit();
+}
+
+export function clearTrap() {
+  if (!state.selectedTrap) return;
+  state = { ...state, selectedTrap: null };
+  emit();
 }
 
 export function armPossess() {

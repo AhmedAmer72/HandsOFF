@@ -4,7 +4,6 @@ import { goodsRule } from "../game/config/economyRules";
 import { RAID } from "../../rules/economy";
 import { HERO_PROFILES } from "../game/config/heroProfiles";
 import { RULES } from "../game/config/gameRules";
-import { TRAP_DEFINITIONS, TRAP_IDS } from "../game/config/trapDefinitions";
 import { quotePrice } from "../game/engine/pricing";
 import { chooseRaider, evaluateHero } from "../game/engine/decisions";
 import { shopState } from "../game/rules/money";
@@ -26,14 +25,14 @@ import {
   nextDay,
   note,
   placeTrap,
-  relayTrap,
+  relayTrapTo,
   resolvePage,
   selectInfo,
-  selectTrap,
+  armTrap,
+  clearTrap,
   setQuality,
   setScreen,
   setStats,
-  setWorldMode,
   startRaid,
   toSteps,
   useGame,
@@ -42,12 +41,12 @@ import { mountDungeon } from "../three/dungeon";
 import { mountGallery } from "../three/gallery";
 
 const TUTORIAL = [
-  "Chapter 1. Place a spike on tile 4, 6 in the main hall. Gold pays for it.",
-  "Chapter 2. Open the gate. Kara enters from the south gate and walks the hall.",
-  "Chapter 3. Read the page. Burn it, or let it reach Orrin.",
-  "Chapter 4. If the page escaped, Orrin can sell that fact. Heroes buy it with their own Gold.",
-  "Chapter 5. Open the gate again. A hero who owns the rumour takes the west hall, not tile 4, 6.",
-  "Chapter 6. Buy a supply from Mira or Tallow. Watch their Gold and stock change.",
+  "Click the spiked floor piece on the gold ring, then click tile 4, 6.",
+  "Click the red banner in the south doorway. The chosen hero walks in.",
+  "Click the flying page to burn it, or let the moment pass.",
+  "Orrin keeps a landed page. Click him to buy it back.",
+  "Click the gate again. A hero who bought the rumour walks around the spike.",
+  "Click Mira to supply iron, or Tallow to buy a phial.",
   "Chapter 7. The vault brace is in the workshop. After that, the next day is yours.",
 ];
 
@@ -55,16 +54,15 @@ export function App() {
   const game = useGame();
   return (
     <div className="flex h-full min-h-screen flex-col bg-ink text-parchment">
-      <header className="flex items-center justify-between gap-3 border-b border-gold/30 px-4 py-3">
-        <button className="font-display text-xl tracking-[0.18em] text-gold" onClick={() => setScreen("menu")}>UNDERREALM</button>
-        <nav className="flex flex-wrap gap-2 text-sm">
+      <header className="z-20 flex items-center justify-between gap-3 border-b border-gold/15 bg-ink/80 px-4 py-2 backdrop-blur">
+        <button className="font-display text-sm tracking-[0.22em] text-gold" onClick={() => setScreen("menu")}>UNDERREALM</button>
+        <nav className="flex flex-wrap gap-1 text-[11px] uppercase tracking-[0.14em]">
           {NAV.map((entry) => (
-            <button key={entry.id} className={`rounded px-2 py-1 ${game.screen === entry.id ? "bg-gold text-ink" : "text-parchment/80 hover:text-gold"}`} onClick={() => { sfx.ui(); setScreen(entry.id === "menu" ? "dungeon" : entry.id); }}>
+            <button key={entry.id} className={`rounded-full px-3 py-1 ${game.screen === entry.id ? "bg-gold text-ink" : "text-parchment/70 hover:bg-white/5 hover:text-gold"}`} onClick={() => { sfx.ui(); setScreen(entry.id === "menu" ? "dungeon" : entry.id); }}>
               {entry.label}
             </button>
           ))}
         </nav>
-        <div className="font-display text-sm text-gold">{game.gold} gold · {game.cinder} cinder · day {game.day}</div>
       </header>
       <main className="min-h-0 flex-1">
         {game.screen === "menu" && <Menu />}
@@ -102,8 +100,9 @@ function Menu() {
 function DungeonScreen() {
   const game = useGame();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const api = useRef<ReturnType<typeof mountDungeon> | null>(null);
   const [seconds, setSeconds] = useState<number>(RAID.pageFlightSec);
+  const [hint, setHint] = useState("Click a gold ring, then a floor tile.");
+  const [toast, setToast] = useState("");
   const hooks = useRef(game);
   hooks.current = game;
 
@@ -120,13 +119,49 @@ function DungeonScreen() {
       onHeroDamage: () => undefined,
       onEnemyDamage: () => undefined,
       onEnemies: () => undefined,
-      tryPlace: (trapId, ix, iz) => placeTrap(trapId, ix, iz).ok,
+      tryPlace: (trapId, ix, iz) => {
+        const result = placeTrap(trapId, ix, iz);
+        if (result.ok) clearTrap();
+        setToast(result.ok ? "The trap is set." : result.reason);
+        return result.ok ? result.id ?? "" : "";
+      },
+      relayTo: (id, ix, iz) => {
+        const result = relayTrapTo(id, ix, iz);
+        setToast(result.reason);
+        return result.ok;
+      },
       getTraps: () => hooks.current.traps,
       onStats: (stats) => setStats(stats),
       onDiary: () => markDiary(),
       diaryChoice: () => hooks.current.pageResult === "idle" ? "idle" : hooks.current.pageResult,
+      onPrompt: (text) => setHint(text),
+      onGate: () => {
+        if (hooks.current.phase === "report") nextDay();
+        else if (hooks.current.phase === "prep") {
+          startRaid();
+          sfx.ui();
+        }
+      },
+      onBurn: () => {
+        const result = resolvePage("burn");
+        if (result.ok) sfx.burn();
+        setToast(result.reason);
+      },
+      onPossess: () => setToast(armPossess().reason),
+      onMerchant: (id) => {
+        if (id === "mira") setToast(supplyIron(5).reason);
+        else if (id === "orrin") {
+          const rumour = hooks.current.merchants.orrin.rumours[0];
+          setToast(rumour ? buyBackRumour(rumour.id).reason : "Orrin has no unsold page.");
+        } else setToast(buyFromMerchant("tallow", "potion").reason);
+      },
+      onCraft: () => setToast(craftTrap("spike").reason),
+      onBrace: () => setToast(buyUpgrade("vault-brace").reason),
+      armTrap: (trapId) => armTrap(trapId),
+      clearArm: () => clearTrap(),
+      getPhase: () => hooks.current.phase,
+      getDay: () => hooks.current.day,
     });
-    api.current = mounted;
     bindDungeon(mounted);
     void mounted.ready.then(() => {
       const current = hooks.current;
@@ -156,85 +191,49 @@ function DungeonScreen() {
   const hero = report ? HERO_PROFILES[report.heroId] : HERO_PROFILES.kara;
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_1fr_auto] lg:grid-cols-[240px_1fr_280px] lg:grid-rows-[auto_1fr]">
-      <div className="flex flex-wrap items-center gap-4 border-b border-white/10 px-4 py-2 text-sm lg:col-span-3">
-        <span>Vault {game.vault}</span>
-        <span className="text-gold">{game.gold} gold</span>
-        <span className="text-ember">{game.cinder} cinder</span>
-        <span>Day {game.day}</span>
-        <span>Reputation {game.reputation}</span>
-        <span>{game.phase}</span>
-        <span className="ml-auto text-parchment/60">{game.fps.toFixed(0)} fps · avg {game.avgFps.toFixed(0)} · min {game.minFps.toFixed(0)} · {game.drawCalls} draws · {game.triangles} tris · {game.rendererInfo || "renderer pending"}</span>
-      </div>
-      <aside className="space-y-3 overflow-auto border-white/10 p-3 lg:border-r">
-        <p className="text-sm text-gold">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
-        {(["kara", "brann", "ivo"] as const).map((id) => {
-          const profile = HERO_PROFILES[id];
-          const body = game.heroes[id];
-          return (
-            <div key={id} className="rounded border border-white/10 p-3">
-              <div className="font-display text-gold">{profile.name}</div>
-              <div className="text-xs text-parchment/70">{profile.role} · {body.gold} gold</div>
-              <div className="mt-2 h-2 overflow-hidden rounded bg-black/40">
-                <div className="h-full bg-blood" style={{ width: `${(body.hp / body.maxHp) * 100}%` }} />
+    <div className="relative h-full min-h-[640px]">
+      <canvas ref={canvasRef} className="view absolute inset-0 h-full w-full" />
+      <div className="pointer-events-none absolute inset-x-0 top-3 flex flex-wrap items-start justify-between gap-3 px-3">
+        <div className="flex gap-2">
+          {(["kara", "brann", "ivo"] as const).map((id) => {
+            const body = game.heroes[id];
+            const profile = HERO_PROFILES[id];
+            return (
+              <div key={id} className="hud-glass w-36 rounded-2xl px-3 py-2">
+                <div className="flex items-baseline justify-between">
+                  <span className="font-display text-sm text-gold">{profile.name}</span>
+                  <span className="text-[10px] uppercase tracking-wider text-parchment/50">{profile.role}</span>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <div className="h-full bg-blood" style={{ width: `${(body.hp / body.maxHp) * 100}%` }} />
+                </div>
+                <p className="mt-1 truncate text-[11px] text-parchment/70">{body.memory[0]}</p>
               </div>
-              <p className="mt-1 text-xs">{body.memory[0]}</p>
-            </div>
-          );
-        })}
-      </aside>
-      <div className="relative min-h-[420px]">
-        <canvas ref={canvasRef} className="view h-full w-full" />
-        {game.pageResult === "decision" && report && (
-          <div className="fixed bottom-24 left-1/2 z-50 w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 rounded border border-gold/50 bg-parchment p-4 text-ink shadow-panel">
-            <div className="font-display text-lg">The page is at the gate. {seconds > 0 ? `${seconds}s remain.` : "Choose now."}</div>
-            <ul className="mt-2 list-disc pl-4 text-sm">
-              {report.facts.map((fact) => <li key={fact.id}>{fact.text}</li>)}
-              {report.facts.length === 0 && <li>The page only records that {hero.name} fell.</li>}
-            </ul>
-            <div className="mt-3 flex gap-2">
-              <button className="min-h-11 min-w-11 rounded bg-ember px-3 py-1" disabled={game.cinder < RAID.cinder.burnCost} onClick={() => { resolvePage("burn"); sfx.burn(); }}>Burn ({RAID.cinder.burnCost} cinder)</button>
-              <button className="min-h-11 rounded border border-ink/30 px-3 py-1" onClick={() => resolvePage("escape")}>Let it land</button>
-            </div>
-          </div>
-        )}
-        {game.phase === "report" && report && (
-          <div className="absolute left-4 top-4 max-w-sm rounded bg-black/75 p-3 text-sm">
-            <div className="font-display text-gold">Raid report</div>
-            <p>{report.survived ? `${hero.name} survived.` : `${hero.name} died.`}</p>
-            <p>Gold lost from the vault: {report.goldLost}. Hero gold gained: {report.goldEarned}.</p>
-            <p>Traps triggered: {report.trapsTriggered.length}.</p>
-            <button className="mt-2 rounded bg-gold px-2 py-1 text-ink" onClick={() => nextDay()}>Next day</button>
-          </div>
-        )}
+            );
+          })}
+        </div>
+        <div className="hud-glass flex items-center gap-4 rounded-2xl px-4 py-2 text-sm">
+          <span>Vault <b className="text-gold">{game.vault}</b></span>
+          <span>Gold <b className="text-gold">{game.gold}</b></span>
+          <span>Cinder <b className="text-ember">{game.cinder}</b></span>
+          <span className="text-parchment/60">Day {game.day}</span>
+        </div>
       </div>
-      <aside className="space-y-3 overflow-auto border-white/10 p-3 text-sm lg:border-l">
-        <div className="font-display text-gold">Decision</div>
-        <p>{game.lastDecision || "No raid yet. Place traps, then open the gate."}</p>
-        {game.selection && <p className="text-parchment/70">{game.selection.label} · {game.selection.file}</p>}
-        <div className="font-display text-gold">Log</div>
-        {game.ledger.slice(0, 6).map((line) => <p key={line.id}>{line.text}</p>)}
-        <p className="text-xs text-parchment/50">Spike for the lesson goes on tile {RULES.spikeTutorialCell.ix}, {RULES.spikeTutorialCell.iz}. Q/E rotate. Wheel zooms.</p>
-      </aside>
-      <footer className="flex flex-wrap items-center gap-2 border-t border-white/10 px-3 py-2 lg:col-span-3">
-        {TRAP_IDS.map((id) => (
-          <button key={id} className={`rounded border px-3 py-1 text-sm ${game.selectedTrap === id ? "border-gold text-gold" : "border-white/15"}`} onClick={() => selectTrap(id)}>
-            {TRAP_DEFINITIONS[id].name} · {TRAP_DEFINITIONS[id].cost}g
-          </button>
-        ))}
-        <button className="rounded border border-gold/40 px-3 py-1 text-sm" onClick={() => {
-          const placed = placeTrap("spike", RULES.spikeTutorialCell.ix, RULES.spikeTutorialCell.iz);
-          if (placed.ok) api.current?.showTrap(RULES.spikeTutorialCell.ix, RULES.spikeTutorialCell.iz, TRAP_DEFINITIONS.spike.model);
-        }}>Place hall spike</button>
-        <button className="min-h-11 rounded border border-white/20 px-3 py-1 text-sm" onClick={() => { const last = game.traps.at(-1); if (last) relayTrap(last.id); }}>Re-lay last trap ({RAID.relay} gold)</button>
-        <button className="min-h-11 rounded border border-white/20 px-3 py-1 text-sm" disabled={game.day < RAID.possess.fromWave || game.possessArmed} onClick={() => armPossess()}>Possess the hall guard ({RAID.possess.cost} gold)</button>
-        <button className="rounded bg-ember px-3 py-1 text-sm text-ink" disabled={game.phase === "raid" || game.phase === "diary"} onClick={() => { startRaid(); sfx.ui(); }}>Open the gate</button>
-        <button className="rounded border border-white/20 px-3 py-1 text-sm" onClick={() => api.current?.focusHero()}>Focus</button>
-        <button className="rounded border border-white/20 px-3 py-1 text-sm" onClick={() => setWorldMode(game.worldMode === "prototype" ? "full" : "prototype")}>
-          {game.worldMode === "prototype" ? "Open full Ashgate" : "Back to prototype room"}
-        </button>
-        <button className="rounded border border-white/20 px-3 py-1 text-sm" onClick={() => setScreen("gate")}>Gate market</button>
-      </footer>
+      {game.phase === "report" && report && (
+        <div className="hud-glass pointer-events-none absolute left-3 top-28 max-w-sm rounded-2xl p-4 text-sm">
+          <div className="font-display text-gold">Raid</div>
+          <p>{report.survived ? `${hero.name} survived.` : `${hero.name} died.`}</p>
+          <p className="text-parchment/70">Traps sprung: {report.trapsTriggered.length}. Click the gate for the next day.</p>
+        </div>
+      )}
+      <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-3">
+        <div className="hud-glass w-[min(42rem,100%)] rounded-2xl px-4 py-3 text-center">
+          <p className="text-sm text-parchment">{game.pageResult === "decision" ? `The page is in the air. Click it to burn for ${RAID.cinder.burnCost} cinder. ${seconds}s.` : hint}</p>
+          {toast && <p className="mt-1 text-xs text-gold">{toast}</p>}
+          <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-parchment/45">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
+        </div>
+      </div>
+      <p className="pointer-events-none absolute bottom-1 right-3 text-[10px] text-parchment/35">{game.fps.toFixed(0)} fps · {game.rendererInfo || "renderer"}</p>
     </div>
   );
 }

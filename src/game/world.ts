@@ -1,4 +1,4 @@
-import { dungeon } from "./content";
+import { dungeon, item } from "./content";
 import { cellKey, isWalkable, walkableCells, type Cell } from "./config/gameRules";
 import type { Piece } from "./content";
 
@@ -49,7 +49,7 @@ export function ashgatePieces(): Piece[] {
         rot,
         kind: "wall",
         label: doorway ? "Entrance gate" : "Wall",
-        cutaway: edge.side === "s" || edge.side === "e",
+        cutaway: !doorway && (edge.side === "s" || edge.side === "e"),
       }));
     }
   }
@@ -59,6 +59,7 @@ export function ashgatePieces(): Piece[] {
     { id: "banner", file: "banner_red", ix: 6, iz: 7, label: "Hall banner" },
     { id: "store-barrel", file: "barrel_small", ix: 0, iz: 5, label: "Store barrel" },
     { id: "store-table", file: "table_small", ix: 1, iz: 6, label: "Store table" },
+    { id: "anvil", file: "anvil", ix: 1, iz: 4, label: "Mira's anvil", url: item("anvil"), pack: "rpg-tools" },
     { id: "chamber-pillar", file: "pillar", ix: 9, iz: 5, label: "Trap chamber pillar" },
     { id: "combat-rubble", file: "rubble_half", ix: 9, iz: 2, label: "Combat rubble" },
     { id: "torch-a", file: "torch_mounted", ix: 2, iz: 7, y: 1.7, kind: "light", label: "Hall torch" },
@@ -71,7 +72,7 @@ export function ashgatePieces(): Piece[] {
       id: prop.id,
       url: prop.url ?? dungeon(prop.file),
       file: `${prop.file}.gltf`,
-      pack: "dungeon-remastered",
+      pack: prop.pack ?? "dungeon-remastered",
       x: prop.ix * CELL,
       z: prop.iz * CELL,
       y: prop.y ?? 0,
