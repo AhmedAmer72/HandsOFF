@@ -38,9 +38,10 @@ interface Session extends SaveData {
   priceNote: string;
   pageResult: "idle" | "decision" | "burned" | "escaped";
   possessArmed: boolean;
+  continueReady: boolean;
 }
 
-let state: Session = { ...createSave("menu"), quality: "high", worldMode: "prototype", screen: "menu", selectedTrap: null, selection: null, fps: 0, minFps: 0, avgFps: 0, drawCalls: 0, triangles: 0, rendererInfo: "", lastDecision: "", priceNote: "", pageResult: "idle", possessArmed: false };
+let state: Session = { ...createSave("menu"), quality: "high", worldMode: "prototype", screen: "menu", selectedTrap: null, selection: null, fps: 0, minFps: 0, avgFps: 0, drawCalls: 0, triangles: 0, rendererInfo: "", lastDecision: "", priceNote: "", pageResult: "idle", possessArmed: false, continueReady: false };
 const listeners = new Set<() => void>();
 let dungeonApi: { ready: Promise<void>; playRoute: (steps: VisualStep[]) => Promise<void>; focusHero: () => void } | null = null;
 
@@ -86,12 +87,26 @@ export function useGame() {
 export async function hydrate() {
   const saved = await readSave();
   if (!saved) return;
-  state = { ...state, ...saved, upgrades: saved.upgrades ?? [], screen: (saved.screen as ScreenId) || "menu" };
+  state = { ...state, ...saved, upgrades: saved.upgrades ?? [], continueReady: true, screen: (saved.screen as ScreenId) || "menu" };
   listeners.forEach((listener) => listener());
 }
 
 export function bindDungeon(api: typeof dungeonApi) {
   dungeonApi = api;
+}
+
+export function enterDungeon() {
+  let stored = false;
+  try {
+    stored = Boolean(localStorage.getItem("underrealm-save-v3"));
+  } catch {
+    stored = false;
+  }
+  if (state.continueReady || stored) {
+    setScreen("dungeon");
+    return;
+  }
+  newGame();
 }
 
 export function setScreen(screen: ScreenId) {
@@ -125,7 +140,7 @@ export function setStats(stats: { fps: number; min: number; avg: number; triangl
 }
 
 export function newGame() {
-  state = { ...createSave("dungeon"), quality: state.quality, worldMode: "prototype", screen: "dungeon", selectedTrap: null, selection: null, fps: 0, minFps: 0, avgFps: 0, drawCalls: 0, triangles: 0, rendererInfo: state.rendererInfo, lastDecision: "A new dungeon day begins.", priceNote: "", pageResult: "idle", possessArmed: false };
+  state = { ...createSave("dungeon"), quality: state.quality, worldMode: "prototype", screen: "dungeon", selectedTrap: null, selection: null, fps: 0, minFps: 0, avgFps: 0, drawCalls: 0, triangles: 0, rendererInfo: state.rendererInfo, lastDecision: "A new dungeon day begins.", priceNote: "", pageResult: "idle", possessArmed: false, continueReady: true };
   void clearSave();
   emit();
 }

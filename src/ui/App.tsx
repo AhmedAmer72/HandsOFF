@@ -40,6 +40,7 @@ import {
 } from "../game/store";
 import { mountDungeon } from "../three/dungeon";
 import { mountGallery } from "../three/gallery";
+import { MainMenu } from "./screens/MainMenu";
 
 const TUTORIAL = [
   "Click the spiked floor piece on the gold ring, then click tile 4, 6.",
@@ -55,7 +56,7 @@ export function App() {
   const game = useGame();
   return (
     <div className="flex h-full min-h-screen flex-col bg-ink text-parchment">
-      <header className="z-20 flex items-center justify-between gap-3 border-b border-gold/15 bg-ink/80 px-4 py-2 backdrop-blur">
+      {game.screen !== "menu" && <header className="z-20 flex items-center justify-between gap-3 border-b border-gold/15 bg-ink/80 px-4 py-2 backdrop-blur">
         <button className="font-display text-sm tracking-[0.22em] text-gold" onClick={() => setScreen("menu")}>UNDERREALM</button>
         <nav className="flex flex-wrap gap-1 text-[11px] uppercase tracking-[0.14em]">
           {NAV.map((entry) => (
@@ -64,9 +65,9 @@ export function App() {
             </button>
           ))}
         </nav>
-      </header>
+      </header>}
       <main className="min-h-0 flex-1">
-        {game.screen === "menu" && <Menu />}
+        {game.screen === "menu" && <MainMenu />}
         {game.screen === "dungeon" && <DungeonScreen />}
         {game.screen === "map" && <WorldMap />}
         {game.screen === "gate" && <GateMarket />}
@@ -78,23 +79,6 @@ export function App() {
         {game.screen === "gallery" && <Gallery />}
       </main>
     </div>
-  );
-}
-
-function Menu() {
-  return (
-    <section className="mx-auto max-w-3xl px-6 py-12">
-      <p className="text-xs uppercase tracking-[0.25em] text-gold">Local dungeon · local gold</p>
-      <h1 className="mt-3 font-display text-5xl text-gold">Will you burn the page?</h1>
-      <p className="mt-4 text-lg text-parchment/80">
-        Ashgate is yours. Heroes choose their own raids. A death leaves a diary page. Burn it, or let the knowledge reach Orrin and change the next walk.
-      </p>
-      <div className="mt-6 flex flex-wrap gap-3">
-        <button className="rounded bg-ember px-4 py-2 font-display text-ink" onClick={() => { newGame(); sfx.ui(); }}>New game</button>
-        <button className="rounded border border-gold/40 px-4 py-2" onClick={() => setScreen("dungeon")}>Continue</button>
-        <button className="rounded border border-gold/40 px-4 py-2" onClick={() => setScreen("gallery")}>Asset gallery</button>
-      </div>
-    </section>
   );
 }
 
