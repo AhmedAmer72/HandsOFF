@@ -42,6 +42,7 @@ import { mountDungeon } from "../three/dungeon";
 import { mountGallery } from "../three/gallery";
 import { MainMenu } from "./screens/MainMenu";
 import { MockSandbox } from "./screens/MockSandbox";
+import { renderTrapIcons } from "./trapIcons";
 
 const TUTORIAL = [
   "Choose Spike Trap on the bar. It follows the cursor. Click tile 4, 6.",
@@ -89,6 +90,16 @@ function DungeonScreen() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [seconds, setSeconds] = useState<number>(RAID.pageFlightSec);
   const [hint, setHint] = useState("Choose a trap on the bar. It follows the cursor until you click a tile.");
+  const [trapIcons, setTrapIcons] = useState<Partial<Record<(typeof TRAP_IDS)[number], string>>>({});
+  useEffect(() => {
+    let live = true;
+    void renderTrapIcons().then((icons) => {
+      if (live) setTrapIcons(icons);
+    }).catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
   const [toast, setToast] = useState("");
   const hooks = useRef(game);
   hooks.current = game;
@@ -239,11 +250,17 @@ function DungeonScreen() {
         </div>
       </div>
       <div className="absolute bottom-24 left-1/2 flex -translate-x-1/2 gap-2">
-        {TRAP_IDS.map((id) => (
-          <button key={id} className={`hud-glass rounded-full px-3 py-2 text-xs ${game.selectedTrap === id ? "bg-gold text-ink" : "text-parchment"}`} onClick={() => game.selectedTrap === id ? clearTrap() : armTrap(id)}>
-            {TRAP_DEFINITIONS[id].name} · {TRAP_DEFINITIONS[id].cost}
-          </button>
-        ))}
+        {TRAP_IDS.map((id) => {
+          const trap = TRAP_DEFINITIONS[id];
+          const selected = game.selectedTrap === id;
+          return (
+            <button key={id} className={`hud-glass flex w-24 flex-col items-center gap-1 rounded-2xl px-2 py-2 text-xs ${selected ? "ring-2 ring-gold" : ""}`} onClick={() => selected ? clearTrap() : armTrap(id)}>
+              {trapIcons[id] ? <img src={trapIcons[id]} alt="" className="h-14 w-14 object-contain" /> : <span className="h-14 w-14 rounded-xl bg-white/5" />}
+              <span className={selected ? "text-gold" : "text-parchment"}>{trap.name}</span>
+              <span className="text-[10px] text-gold">{trap.cost} gold</span>
+            </button>
+          );
+        })}
       </div>
       <p className="pointer-events-none absolute bottom-1 right-3 text-[10px] text-parchment/35">{game.fps.toFixed(0)} fps · {game.rendererInfo || "renderer"}</p>
     </div>
