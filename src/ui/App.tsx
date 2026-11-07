@@ -45,16 +45,10 @@ import { mountDungeon } from "../three/dungeon";
 import { mountGallery } from "../three/gallery";
 import { MainMenu } from "./screens/MainMenu";
 import { MockSandbox } from "./screens/MockSandbox";
+import { DeedScreen, GuildScreen, HomeScreen, ReportScreen, TakeHomeScreen, WeekScreen } from "./screens/PlayScreens";
 import { renderTrapIcons } from "./trapIcons";
-
-function chronicleKind(text: string) {
-  const line = text.toLowerCase();
-  if (line.includes("page") || line.includes("rumour") || line.includes("burn")) return "Rumours";
-  if (line.includes("vault") || line.includes("bled")) return "Vault";
-  if (line.includes("trap") || line.includes("spike") || line.includes("placed") || line.includes("re-laid")) return "Traps";
-  if (line.includes("bought") || line.includes("supplied") || line.includes("price")) return "Market";
-  return "Raid";
-}
+import { Shell } from "./shell";
+import { CHRONICLE, chronicleKind } from "./kit";
 
 const TUTORIAL = [
   "Choose Spike Trap on the bar. It follows the cursor. Click tile 4, 6.",
@@ -68,29 +62,12 @@ const TUTORIAL = [
 
 export function App() {
   const game = useGame();
-  const playerNav = [
-    { id: "dungeon" as const, label: "Raid" },
-    { id: "gate" as const, label: "Gate" },
-    { id: "workshop" as const, label: "Workshop" },
-    { id: "map" as const, label: "Map" },
-    { id: "market" as const, label: "Market" },
-    { id: "chronicle" as const, label: "Replay" },
-    { id: "settings" as const, label: "Settings" },
-  ];
   return (
-    <div className="flex h-full min-h-screen flex-col bg-ink text-parchment">
-      {game.screen !== "menu" && <header className="z-20 flex items-center justify-between gap-3 border-b border-gold/15 bg-ink/80 px-4 py-2 backdrop-blur">
-        <button className="font-display text-sm tracking-[0.22em] text-gold" onClick={() => setScreen("menu")}>UNDERREALM</button>
-        <nav className="flex flex-wrap gap-1 text-[11px] uppercase tracking-[0.14em]">
-          {playerNav.map((entry) => (
-            <button key={entry.id} className={`rounded-full px-3 py-1 ${game.screen === entry.id ? "bg-gold text-ink" : "text-parchment/70 hover:bg-white/5 hover:text-gold"}`} onClick={() => { sfx.ui(); setScreen(entry.id); }}>
-              {entry.label}
-            </button>
-          ))}
-        </nav>
-      </header>}
+    <div className="flex h-full min-h-screen flex-col bg-ink font-body text-parchment">
+      {game.screen !== "menu" && <Shell screen={game.screen} />}
       <main className="min-h-0 flex-1">
         {game.screen === "menu" && <MainMenu />}
+        {game.screen === "home" && <HomeScreen />}
         {game.screen === "dungeon" && <DungeonScreen />}
         {game.screen === "map" && <WorldMap />}
         {game.screen === "gate" && <GateMarket />}
@@ -98,6 +75,11 @@ export function App() {
         {game.screen === "workshop" && <Workshop />}
         {game.screen === "registry" && <Registry />}
         {game.screen === "chronicle" && <Chronicle />}
+        {game.screen === "report" && <ReportScreen />}
+        {game.screen === "week" && <WeekScreen />}
+        {game.screen === "deed" && <DeedScreen />}
+        {game.screen === "guild" && <GuildScreen />}
+        {game.screen === "takehome" && <TakeHomeScreen />}
         {game.screen === "settings" && <Settings />}
         {game.screen === "gallery" && <Gallery />}
         {game.screen === "sandbox" && <MockSandbox />}
@@ -114,6 +96,7 @@ function DungeonScreen() {
   const [trapIcons, setTrapIcons] = useState<Partial<Record<(typeof TRAP_IDS)[number], string>>>({});
   const [openHero, setOpenHero] = useState<"kara" | "brann" | "ivo" | null>(null);
   const [feed, setFeed] = useState("All");
+  const [logOpen, setLogOpen] = useState(false);
   useEffect(() => {
     let live = true;
     void renderTrapIcons().then((icons) => {
@@ -248,39 +231,42 @@ function DungeonScreen() {
   return (
     <div className="relative h-full min-h-[640px]">
       <canvas ref={canvasRef} className="view absolute inset-0 h-full w-full" />
-      <div className="pointer-events-none absolute inset-x-0 top-3 flex flex-wrap items-start justify-between gap-3 px-3">
-        <div className="flex gap-2">
+      <div className="pointer-events-none absolute inset-x-0 top-2 flex flex-col gap-2 px-2 sm:px-3">
+        <div className="hud-glass pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl px-3 py-2 text-sm">
+          <span>Vault <b className={game.vault < RAID.vaultStart * 0.25 ? "text-blood" : "text-gold"}>{game.vault}</b></span>
+          <span>{game.phase === "raid" ? `−${RAID.bleedPerHeroPerSec}/s` : "−0/s"}</span>
+          <span>Gold <b className="text-gold">{Math.round(game.gold)}</b></span>
+          <span className="text-ember" aria-label={`${game.cinder} cinder`}>Cinder {"●".repeat(game.cinder)}{"○".repeat(Math.max(0, RAID.cinder.cap - game.cinder))}</span>
+          <span>Wave {game.day}</span>
+          <span>Tier {dungeonTier(game.raidsCleared ?? 0)}</span>
+          <span>Chain ×{game.chain ?? 0}</span>
+          <button className="ml-auto min-h-11 rounded-2xl border border-gold/30 px-3 lg:hidden" onClick={() => setLogOpen((value) => !value)}>Chronicle</button>
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1">
           {(["kara", "brann", "ivo"] as const).map((id) => {
             const body = game.heroes[id];
             const profile = HERO_PROFILES[id];
             const known = body.facts.filter((fact) => !fact.burned);
             const open = openHero === id;
+            const bounty = game.raids.filter((raid) => raid.heroId === id && raid.survived).length;
             return (
-              <button key={id} className="hud-glass pointer-events-auto w-48 rounded-2xl px-3 py-2 text-left" onClick={() => setOpenHero(open ? null : id)}>
+              <button key={id} className="hud-glass pointer-events-auto w-52 shrink-0 rounded-2xl px-3 py-2 text-left" onClick={() => setOpenHero(open ? null : id)}>
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="font-display text-lg text-gold">{profile.name}</span>
-                  <span className="text-[10px] uppercase tracking-wider text-parchment/50">{profile.role}</span>
+                  <span className="font-display text-xl text-gold">{profile.name}</span>
+                  <span className="text-xs uppercase tracking-wider text-parchment/70">{profile.role}</span>
                 </div>
-                <p className="text-xs">HP {body.hp}/{body.maxHp} · Purse {body.gold}</p>
-                <p className="text-[10px] uppercase tracking-wider text-parchment/50">Risk {profile.risk} · appetite {profile.rumourAppetite}</p>
+                <p className="text-sm">HP {body.hp}/{body.maxHp}</p>
+                <p className="text-sm">Purse {body.gold} · Bounty {bounty}</p>
+                <p className="text-xs text-parchment/70">Gear {body.equipment.join(", ") || "pack only"}</p>
                 <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
                   <div className="h-full bg-blood" style={{ width: `${Math.max(0, (body.hp / body.maxHp) * 100)}%` }} />
                 </div>
-                {known[0] ? <p className="mt-1 text-xs text-memory">{known[0].memory ?? "warned"} · {known[0].source ?? "record"}</p> : <p className="mt-1 text-xs text-parchment/60">No trap memory yet</p>}
-                {open && <p className="mt-1 text-xs text-parchment/80">{body.memory[0]}</p>}
-                {open && known.slice(0, 3).map((fact) => <p key={fact.id} className="text-xs">{fact.text}</p>)}
+                {known[0] ? <p className="mt-1 text-sm text-memory">{known[0].memory ?? "warned"} · {known[0].source ?? "record"}</p> : <p className="mt-1 text-sm text-parchment/70">No trap memory yet</p>}
+                {open && <p className="mt-1 text-sm text-parchment/90">{body.memory[0]}</p>}
+                {open && known.slice(0, 3).map((fact) => <p key={fact.id} className="text-sm">{fact.text}</p>)}
               </button>
             );
           })}
-        </div>
-        <div className="hud-glass flex flex-wrap items-center gap-3 rounded-2xl px-4 py-2 text-sm">
-          <span>Vault <b className={game.vault < RAID.vaultStart * 0.25 ? "text-blood" : "text-gold"}>{game.vault}</b></span>
-          <span className="text-parchment/70">{game.phase === "raid" ? `−${RAID.bleedPerHeroPerSec}/s` : "−0/s"}</span>
-          <span>Gold <b className="text-gold">{game.gold}</b></span>
-          <span className="text-ember">Cinder {"●".repeat(game.cinder)}{"○".repeat(Math.max(0, RAID.cinder.cap - game.cinder))}</span>
-          <span>Wave {game.day}</span>
-          <span>Tier {dungeonTier(game.raidsCleared ?? 0)}</span>
-          <span>×{game.chain ?? 0}</span>
         </div>
       </div>
       {game.phase === "report" && report && (
@@ -293,7 +279,10 @@ function DungeonScreen() {
           <p>Salvage in hand: iron {game.inventory.iron ?? 0}, ash {game.inventory.ash ?? 0}, bone {game.inventory.bone ?? 0}.</p>
           <p>Spike kills {game.trapKills?.spike ?? 0}. Tier {dungeonTier(game.raidsCleared ?? 0)}.</p>
           {game.dungeonClosed && <p className="text-blood">The vault is empty. The next wave restocks it.</p>}
-          <button className="mt-2 rounded-full bg-gold px-3 py-1 text-ink" onClick={() => nextDay()}>{game.dungeonClosed ? "Restock and continue" : "Next wave"}</button>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button className="min-h-11 rounded-2xl bg-gold px-3 text-ink" onClick={() => nextDay()}>{game.dungeonClosed ? "Restock and continue" : "Next wave"}</button>
+            <button className="min-h-11 rounded-2xl border border-gold/40 px-3" onClick={() => setScreen("report")}>Full report</button>
+          </div>
         </div>
       )}
       <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-3">
@@ -303,35 +292,39 @@ function DungeonScreen() {
           <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-parchment/45">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
         </div>
       </div>
-      <div className="pointer-events-auto absolute right-3 top-24 hidden w-72 lg:block">
-        <div className="hud-glass max-h-80 overflow-auto rounded-2xl p-3 text-xs">
-          <div className="font-display text-lg text-gold">Chronicle</div>
+      <div className={`pointer-events-auto absolute right-2 top-36 z-20 w-[min(20rem,calc(100%-1rem))] lg:right-3 ${logOpen ? "block" : "hidden lg:block"}`}>
+        <div className="hud-glass max-h-72 overflow-auto rounded-2xl p-3 text-sm">
+          <div className="flex items-center justify-between">
+            <div className="font-display text-xl text-gold">Chronicle</div>
+            <button className="min-h-11 px-2 lg:hidden" onClick={() => setLogOpen(false)}>Close</button>
+          </div>
           <div className="mt-2 flex flex-wrap gap-1">
-            {["All", "Traps", "Vault", "Rumours", "Market", "Raid"].map((label) => (
-              <button key={label} className={`rounded-full px-2 py-1 ${feed === label ? "bg-gold text-ink" : "bg-white/5"}`} onClick={() => setFeed(label)}>{label}</button>
+            {["All", ...CHRONICLE].map((label) => (
+              <button key={label} className={`min-h-11 rounded-full px-3 ${feed === label ? "bg-gold text-ink" : "bg-white/5"}`} onClick={() => setFeed(label)}>{label}</button>
             ))}
           </div>
           {game.ledger.filter((line) => feed === "All" || chronicleKind(line.text) === feed).slice(0, 8).map((line) => (
-            <article key={line.id} className="mt-2 border-t border-white/10 pt-2">
-              <p className="text-[10px] uppercase tracking-wider text-memory">{chronicleKind(line.text)} · day {line.day}</p>
-              <p className="text-parchment/85">{line.text}</p>
+            <article key={line.id} className="mt-2 rounded-xl border border-gold/15 bg-ink/40 p-2">
+              <p className="text-xs uppercase tracking-wider text-memory">{chronicleKind(line.text)} · day {line.day}</p>
+              <p>{line.text}</p>
             </article>
           ))}
+          {game.ledger.length === 0 && <p className="mt-2 text-parchment/70">The chronicle is empty.</p>}
         </div>
       </div>
-      <div className="absolute bottom-24 left-1/2 flex -translate-x-1/2 gap-2">
+      <div className="absolute bottom-24 left-0 right-0 flex justify-start gap-2 overflow-x-auto px-3 pb-1 sm:justify-center">
         {TRAP_IDS.map((id) => {
           const trap = TRAP_DEFINITIONS[id];
           const selected = game.selectedTrap === id;
           return (
-            <button key={id} className={`hud-glass flex w-24 flex-col items-center gap-1 rounded-2xl px-2 py-2 text-xs ${selected ? "ring-2 ring-gold" : ""}`} onClick={() => selected ? clearTrap() : armTrap(id)}>
+            <button key={id} className={`hud-glass flex min-h-11 w-24 shrink-0 flex-col items-center gap-1 rounded-2xl px-2 py-2 text-sm ${selected ? "ring-2 ring-gold" : "hover:ring-1 hover:ring-gold/50"}`} onClick={() => selected ? clearTrap() : armTrap(id)}>
               {trapIcons[id] ? <img src={trapIcons[id]} alt="" className="h-14 w-14 object-contain" /> : <span className="h-14 w-14 rounded-xl bg-white/5" />}
               <span className={selected ? "text-gold" : "text-parchment"}>{trap.name}</span>
               <span className="text-[10px] text-gold">{trap.cost} gold</span>
             </button>
           );
         })}
-        <button className={`hud-glass w-24 rounded-2xl px-2 py-2 text-xs ${game.possessArmed ? "ring-2 ring-gold text-gold" : ""}`} disabled={game.day < RAID.possess.fromWave} onClick={() => armPossess()}>
+        <button className={`hud-glass min-h-11 w-24 shrink-0 rounded-2xl px-2 py-2 text-sm ${game.possessArmed ? "ring-2 ring-gold text-gold" : ""}`} disabled={game.day < RAID.possess.fromWave} onClick={() => armPossess()}>
           Possess
           <span className="mt-1 block text-[10px] text-gold">{RAID.possess.cost} gold</span>
         </button>
@@ -517,6 +510,13 @@ function Registry() {
             <p className="text-sm">Gold {hero.gold}. Mock NEAR {(hero.near ?? profile.nearStart).toFixed(4)}. Health {hero.hp}/{hero.maxHp}. Gear {hero.equipment.join(", ") || "pack only"}.</p>
             <p className="mt-2 text-sm text-parchment/70">{hero.memory[0]}</p>
             {hero.facts.filter((fact) => !fact.burned).map((fact) => <p key={fact.id} className="text-sm">{fact.memory ?? "warned"} · {fact.source ?? "record"} · {fact.text}</p>)}
+            <div className="mt-3 rounded-2xl border border-gold/20 p-3 text-sm">
+              <p className="font-display text-gold">Verified</p>
+              <p className="text-parchment/70">Each row is a simulated check. A mark here is not a live proof.</p>
+              {["Agent response", "Gateway attestation", "Model evidence", "Spend policy", "Seed", "Execution pin", "Raid settlement", "Item ownership"].map((row) => (
+                <p key={row}>✗ {row} — unverified on this device.</p>
+              ))}
+            </div>
           </article>
         );
       })}
@@ -534,24 +534,68 @@ function Chronicle() {
   const game = useGame();
   const raid = game.raids[0];
   const rows = useMemo(() => raid?.events ?? [], [raid]);
+  const [speed, setSpeed] = useState<1 | 2 | 4>(1);
+  const [playing, setPlaying] = useState(false);
+  const [cursor, setCursor] = useState(0);
+  const [feed, setFeed] = useState("All");
+  useEffect(() => {
+    if (!playing || rows.length === 0) return;
+    const timer = window.setInterval(() => {
+      setCursor((value) => {
+        if (value >= rows.length - 1) {
+          setPlaying(false);
+          return value;
+        }
+        return value + 1;
+      });
+    }, 800 / speed);
+    return () => window.clearInterval(timer);
+  }, [playing, speed, rows.length]);
   return (
-    <section className="mx-auto max-w-3xl p-6">
-      <h2 className="font-display text-3xl text-gold">Replay & chronicles</h2>
-      <p className="text-sm text-parchment/70">The latest raid is the event list from the rules engine. The same traps and day produce the same list.</p>
-      {raid && <p className="mt-3 text-sm">Day {raid.day} · {raid.heroId} · {raid.decision.reason}</p>}
-      <ol className="mt-4 space-y-2">
-        {rows.map((event, index) => <li key={`${event.tick}-${index}`} className="border-b border-white/10 py-2 text-sm">Tick {event.tick}. {event.text}</li>)}
-        {rows.length === 0 && <li className="text-parchment/60">No raid has been recorded.</li>}
+    <section className="mx-auto flex max-w-3xl flex-col gap-4 p-4">
+      <h2 className="font-display text-3xl text-gold">Replay</h2>
+      <p className="text-sm text-parchment/75">Replayed from recorded inputs. Diary text and hero decisions are the ones already stored.</p>
+      {raid && <p className="text-sm">Day {raid.day} · {raid.heroId}. {raid.decision.reason}</p>}
+      <div className="flex flex-wrap gap-2">
+        <button className="min-h-11 rounded-2xl bg-gold px-4 text-ink" onClick={() => setPlaying((value) => !value)}>{playing ? "Pause" : "Play"}</button>
+        {([1, 2, 4] as const).map((value) => (
+          <button key={value} className={`min-h-11 rounded-2xl px-4 ${speed === value ? "bg-gold text-ink" : "border border-gold/40"}`} onClick={() => setSpeed(value)}>{value}×</button>
+        ))}
+      </div>
+      <ol className="space-y-2">
+        {rows.map((event, index) => (
+          <li key={`${event.tick}-${index}`} className={`rounded-2xl border px-3 py-2 text-sm ${index === cursor ? "border-gold bg-panel" : "border-white/10"}`}>Tick {event.tick}. {event.text}</li>
+        ))}
+        {rows.length === 0 && <li className="text-parchment/70">No raid has been recorded.</li>}
       </ol>
+      <div className="flex flex-wrap gap-1">
+        {["All", ...CHRONICLE].map((label) => (
+          <button key={label} className={`min-h-11 rounded-full px-3 text-sm ${feed === label ? "bg-gold text-ink" : "border border-gold/20"}`} onClick={() => setFeed(label)}>{label}</button>
+        ))}
+      </div>
+      {game.ledger.filter((line) => feed === "All" || chronicleKind(line.text) === feed).slice(0, 12).map((line) => (
+        <article key={line.id} className="rounded-2xl border border-gold/20 bg-panel/80 p-3 text-sm">
+          <p className="text-xs uppercase tracking-wider text-memory">{chronicleKind(line.text)} · day {line.day}</p>
+          <p>{line.text}</p>
+        </article>
+      ))}
     </section>
   );
 }
 
 function Settings() {
   const game = useGame();
+  const [sound, setSound] = useState(true);
+  const [music, setMusic] = useState(false);
+  const [motion, setMotion] = useState(true);
   return (
     <section className="mx-auto max-w-xl p-6">
       <h2 className="font-display text-3xl text-gold">Settings</h2>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button className={`min-h-11 rounded-2xl px-3 ${sound ? "bg-gold text-ink" : "border border-gold/30"}`} onClick={() => setSound((value) => !value)}>Sound {sound ? "on" : "off"}</button>
+        <button className={`min-h-11 rounded-2xl px-3 ${music ? "bg-gold text-ink" : "border border-gold/30"}`} onClick={() => setMusic((value) => !value)}>Music {music ? "on" : "off"}</button>
+        <button className={`min-h-11 rounded-2xl px-3 ${motion ? "bg-gold text-ink" : "border border-gold/30"}`} onClick={() => setMotion((value) => !value)}>Motion {motion ? "on" : "off"}</button>
+      </div>
       <div className="mt-4 flex gap-2">
         {(["low", "medium", "high"] as const).map((quality) => (
           <button key={quality} className={`rounded px-3 py-1 ${game.quality === quality ? "bg-gold text-ink" : "border border-white/20"}`} onClick={() => setQuality(quality)}>{quality}</button>

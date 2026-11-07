@@ -26,6 +26,17 @@ button:disabled {
   cursor: not-allowed;
 }
 
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid #f2c14e;
+  outline-offset: 2px;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
 .hud-glass {
   background: rgba(12, 9, 8, 0.72);
   border: 1px solid rgba(228, 196, 138, 0.28);
