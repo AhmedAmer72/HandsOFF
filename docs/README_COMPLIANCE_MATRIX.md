@@ -1,5 +1,13 @@
 # README v10.2 compliance matrix
 
+## Economy pass (7 November 2026, about 5:05 PM Africa/Cairo)
+
+Merchants price canonical goods through `stockPrice` / `liveQuote` in `src/game/rules/money.ts`. Stall goods use the same `stockCurve`. Rumours use `rumourPrice`. Buy-back uses `buybackPrice`. Shop state uses `MERCHANT.reserveNEAR` 0.02 and `closeBelowNEAR` 0.01 on the mock NEAR purse. A sale splits 90 / 5 / 5. Play-only goods cannot be listed for NEAR. Craft output class is the lowest input class.
+
+Browser, fresh game: crafting a spike reported `PLAY_ONLY`. Supplying 5 ash quoted stock 80 / target 80 / base 8, then stock 85. The gate showed Mira, Orrin, and Tallow open with 0.1000 mock NEAR, and a Why line with those inputs. Listing iron for play gold put it in escrow; cancel returned it. Listing it for NEAR was rejected and the stack did not move. `npx vitest run`: 7 files, 57 tests.
+
+The live hall still does not call a network. Mock NEAR is a number on the save.
+
 ## Hero behavior pass (7 November 2026, about 4:30 PM Africa/Cairo)
 
 Kara, Brann, and Ivo now read the v10.2 agent table: risk 0.3 / 0.8 / 0.5, rumour appetite 0.7 / 0.2 / 0.9, mock purse 0.05. The hall still spends play Gold. A browser raid on one spike at 4, 6 showed Kara walk `4,11 · 4,10 · 4,9 · 4,8 · 4,7 · 4,6`, die, and keep `observed · eyes` after the page landed. Ivo bought that rumour, then walked `4,11 · 4,10 · 4,9 · 4,8 · 4,7 · 5,7 · 5,6 · 5,5 · 4,5 · 4,4 · 4,3 · 4,2 · 4,1 · 4,0` and survived with traps sprung 0. Brann’s card stayed “No trap memory yet.” `npx vitest run` is the automated check for the same split, plus dodged, countered, bait, and a stale epoch.
@@ -52,9 +60,9 @@ Workshop, from this pass’s navigation notes and the craft buttons in `src/ui/A
 | 3.5 | 3.5 | Five memory levels change the route | Unseen walks the spike. Observed does not detour. Warned and dodged detour. A baited brute can step on a dodge. Countered costs the same as open floor. Another dungeon’s fact does not count | `path.ts`, `raid.ts`, `heroBehavior.test.ts` | DONE | The film showed unseen, observed, and warned. Dodged and countered were the unit tests | Browser second raid, plus `heroBehavior.test.ts` |
 | 3.6a | 3.6 | Three different heroes | Profiles differ. The gate board showed three different danger scores | `heroProfiles.ts`, `decisions.ts` | DONE | — | Gate screen this pass |
 | 3.6b | 3.6 | Contract balances, one counter, gear changes survival | Risk, appetite, and the 0.05 mock purse come from `AGENTS`. One counter adds 5 points to the agent share and leaves the price alone. Armor −1, a phial, and boots ×1.3 apply outside the first lesson | `heroProfiles.ts`, `decisions.ts`, `raid.ts` | PARTIAL | The hall spends play Gold. The 0.05 figure is not charged | Same offer in `heroBehavior.test.ts`; Kara’s counter line on the gate |
-| 3.7a | 3.7 | Mira buys salvage for Gold. Tallow’s NEAR gear stays NEAR | Supply pays play Gold. Stalls sell nails and phials for Gold | `store.ts`, `economyRules.ts` | PARTIAL | No NEAR-backed shelf in the gate UI | Supply iron and read the price inputs |
-| 3.7b | 3.7 | Shop OPEN → LOW_STOCK → UNDERCAPITALISED → CLOSED → recover | Badges use a 40/20 Gold stand-in, not 0.02 / 0.01 NEAR | `money.ts` `shopState` | PARTIAL | Live shops were all OPEN. No close/reopen was seen | Drive Mira’s gold under the close line |
-| 3.7c | 3.7 | Salvage and the six recipes | Death adds bone, ash, or iron. UI crafts a spike only | `store.ts`, `App.tsx` | PARTIAL | Pit, boulder, potion, armor, boots buttons are absent. No wave-clear iron | Craft each recipe |
+| 3.7a | 3.7 | Mira buys salvage for Gold. Tallow’s NEAR gear stays NEAR | Supply pays play Gold from `stockPrice`. The gate lists `nb:gear` potions, armor, and boots in mock NEAR | `store.ts`, `money.ts`, `App.tsx` | DONE | The NEAR number is local. No network transfer | Supply ash in the browser; `economyMarket.test.ts` |
+| 3.7b | 3.7 | Shop OPEN → LOW_STOCK → UNDERCAPITALISED → CLOSED → recover | `shopState` uses 0.02 and 0.01 mock NEAR. Recovery stays closed until both cash and stock clear the floor | `money.ts`, `market.ts` | DONE | The browser shops were OPEN. Closure and recovery are the unit test | `economyMarket.test.ts` |
+| 3.7c | 3.7 | Salvage and the six recipes | Workshop buttons call every recipe in `RECIPES`. The browser crafted the spike as PLAY_ONLY | `store.ts`, `App.tsx` | PARTIAL | Pit, boulder, potion, armor, and boots were not clicked in the browser. They use the same craft function | Click the other five after a fresh inventory |
 | 3.8 | 3.8 | Vault 0 closes the dungeon. Mastery at 10 kills. Tiers at 0/10/30/60 | Vault brace exists. No close, no blueprint, no tier | — | MISSING | All three | Kill the vault, then count trap kills |
 | 3.9 | 3.9 | 0.01 offer, split-only counter, TTL refund, no patron control | Gate lists accept/refuse in play Gold. `MockChain` can fund, counter, settle, and refund | `App.tsx` Gate, `MockChain.ts` | PARTIAL | The board does not escrow 0.01 or show a counter | Fund, counter, expire on the gate |
 | 3.11 | 3.11 | First 60 seconds script | Tutorial is seven text lines | `App.tsx` | MISSING | The timed beats are not enforced | Fresh guest, stopwatch |
@@ -66,7 +74,7 @@ Workshop, from this pass’s navigation notes and the craft buttons in `src/ui/A
 |---|---|---|---|---|---|---|---|
 | 4.1 | 4.1 | Two currencies, three classes | `MockChain` keeps `gold` and `near`. Classes go through `canTrade` | `money.ts`, `MockChain.ts` | DONE | Raid Gold is a separate purse | Browser NEAR rejection, balance unchanged |
 | 4.2 | 4.2 | Canonical price. Iron 200 / target 100 / buys 2 / sells 10 ≈ 5.65 | `stockPrice` matches | `money.test.ts` | DONE | Gate prices still use the older stall quote | `money.test.ts` |
-| 4.6 | 4.6 | ≤5 listings, 24 h, cheapest, 10% fee, cancel returns the item | Both the stall settler and `MockChain` implement pieces of this | `store.ts`, `MockChain.ts` | PARTIAL | Two books. No 24-hour clock in the browser | One purchase that hits both |
+| 4.6 | 4.6 | ≤5 listings, 24 h, cheapest, 10% fee, cancel returns the item | Live listings escrow, cancel, expire on the next day, and split 90/5/5. A failed settlement leaves the purse unchanged | `market.ts`, `MockChain.ts` | DONE | One wave stands for the 24 hour expiry in this local clock. Rumours stay off the player stall | Browser list/cancel; `economyMarket.test.ts` |
 | 4.8 | 4.8 | No Gold-to-NEAR path | Salvage → craft → NEAR list is rejected and NEAR does not rise | `MockChain.test.ts` | DONE | — | That test |
 | 4.10 | 4.10 | 60 days, ≥1000 raids, many scenarios, SIMULATED | One 1020-raid iron script. It hits the 5 and 20 bounds | `docs/sim/economy-60d.json` | PARTIAL | Bankruptcy, wash trades, permit demand, cinder variants are only partly represented | Re-run `verify:economy` and do not treat it as a freeze |
 | 7.x | 7 | Mainnet contracts, login, VRF, Intents, DAO | Guard throws on NEAR host strings. No RPC client | `guard.ts` | BLOCKED | Real network work is out of scope | `MockChain.test.ts` host check |

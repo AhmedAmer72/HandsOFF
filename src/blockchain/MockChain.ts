@@ -196,6 +196,12 @@ export class MockChain {
         return { ok: false, receipt: this.receipt({ caller: buyerId, receiver: "market", method: "buy", amount: 0, currency: "NONE", status: "REJECTED", reason: "That listing is not open.", idempotencyKey: key }) };
       }
       if (this.now > listing.expiry) {
+        const expiredItem = this.items.find((entry) => entry.id === listing.itemId);
+        if (expiredItem && expiredItem.owner === "escrow") {
+          expiredItem.owner = listing.seller;
+          expiredItem.history.push("expired");
+        }
+        listing.status = "EXPIRED";
         return { ok: false, receipt: this.receipt({ caller: buyerId, receiver: listing.seller, method: "buy", amount: listing.price, currency: listing.currency, status: "EXPIRED", reason: "Listing expired. Your item was returned to your inventory.", itemId: listing.itemId, idempotencyKey: key }) };
       }
       const selling = this.items.find((entry) => entry.id === listing.itemId);

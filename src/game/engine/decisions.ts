@@ -1,5 +1,7 @@
 import { ECONOMY, goodsRule } from "../config/economyRules";
 import { HERO_PROFILES, HERO_ORDER } from "../config/heroProfiles";
+import { GOODS } from "../../../rules/economy";
+import { canTrade, rumourPrice } from "../rules/money";
 import { quotePrice } from "./pricing";
 import type { DecisionTrace, Fact, HeroState, MerchantState, SaveData } from "./types";
 
@@ -52,17 +54,21 @@ function planPurchase(save: SaveData, hero: HeroState): DecisionTrace["purchase"
     const orrin = save.merchants.orrin;
     const rumour = orrin.rumours.find((fact) => !fact.burned && !hero.facts.some((known) => known.id === fact.id && known.memory !== "observed"));
     if (rumour) {
-      const quote = ECONOMY.rumourBasePrice + rumour.quality * 4;
       const epochs = Math.max(0, save.day - (rumour.bornDay ?? save.day));
       const freshness = Math.max(0.2, 0.85 ** epochs);
-      const willing = Math.round(quote * (0.55 + profile.rumourAppetite) * (0.5 + freshness));
-      const price = Math.min(profile.spendCap, quote);
-      if (willing >= price && hero.gold >= price && orrin.gold >= 0) {
+      const raids = save.raidsCleared ?? 0;
+      const tier = raids >= 60 ? 4 : raids >= 30 ? 3 : raids >= 10 ? 2 : 1;
+      const quote = rumourPrice(orrin.sales, epochs, tier);
+      const near = hero.near ?? profile.nearStart;
+      const spent = hero.spentTodayNear ?? 0;
+      const affordable = near + 1e-9 >= quote.price && quote.price <= profile.maxSingle && spent + quote.price <= profile.daily;
+      if (profile.rumourAppetite * freshness >= 0.45 && affordable) {
         return {
           merchantId: "orrin",
           itemId: rumour.id,
-          price,
-          reason: `${profile.name} buys the rumour "${rumour.text}" for ${price} gold. Freshness ${freshness.toFixed(2)}. Appetite ${profile.rumourAppetite}. Purse before ${hero.gold}, after ${hero.gold - price}.`,
+          price: quote.price,
+          currency: "NEAR",
+          reason: `${profile.name} buys the rumour "${rumour.text}" for ${quote.price.toFixed(4)} mock NEAR. Freshness ${quote.inputs.freshness.toFixed(2)}, demand ${quote.inputs.demand}, richness ${quote.inputs.richness.toFixed(2)}, base ${quote.inputs.base}. Appetite ${profile.rumourAppetite}. Purse before ${near.toFixed(4)}, after ${(near - quote.price).toFixed(4)}.`,
         };
       }
     }
@@ -88,15 +94,19 @@ function planPurchase(save: SaveData, hero: HeroState): DecisionTrace["purchase"
 
 export function applyPurchase(save: SaveData, heroId: HeroState["id"], purchase: NonNullable<DecisionTrace["purchase"]>): SaveData {
   const hero = save.heroes[heroId];
-  if (hero.gold < purchase.price) return save;
+  if (purchase.currency !== "NEAR" && hero.gold < purchase.price) return save;
   const merchant = save.merchants[purchase.merchantId as MerchantState["id"]];
   if (purchase.merchantId === "orrin") {
     const rumour = merchant.rumours.find((fact) => fact.id === purchase.itemId);
     if (rumour) {
-      if (hero.gold < purchase.price) return save;
+      const nearPay = purchase.currency === "NEAR";
+      if (nearPay && (hero.near ?? 0) + 1e-9 < purchase.price) return save;
+      if (!nearPay && hero.gold < purchase.price) return save;
       const nextHero: HeroState = {
         ...hero,
-        gold: hero.gold - purchase.price,
+        gold: nearPay ? hero.gold : hero.gold - purchase.price,
+        near: nearPay ? (hero.near ?? 0) - purchase.price : hero.near,
+        spentTodayNear: nearPay ? (hero.spentTodayNear ?? 0) + purchase.price : hero.spentTodayNear,
         facts: [...hero.facts, { ...rumour, burned: false, memory: "warned", source: "bought rumour", dungeonId: rumour.dungeonId ?? "ashgate" }],
         history: [{ id: `buy-${save.day}-${rumour.id}`, day: save.day, text: purchase.reason }, ...hero.history],
       };
@@ -105,7 +115,14 @@ export function applyPurchase(save: SaveData, heroId: HeroState["id"], purchase:
         heroes: { ...save.heroes, [heroId]: nextHero },
         merchants: {
           ...save.merchants,
-          orrin: { ...merchant, gold: merchant.gold + purchase.price, sales: merchant.sales + 1, rumours: merchant.rumours.filter((fact) => fact.id !== rumour.id) },
+          orrin: {
+            ...merchant,
+            gold: nearPay ? merchant.gold : merchant.gold + purchase.price,
+            near: nearPay ? (merchant.near ?? 0) + purchase.price : merchant.near,
+            sales: merchant.sales + 1,
+            rumours: merchant.rumours.filter((fact) => fact.id !== rumour.id),
+            history: [{ id: `orrin-${rumour.id}`, day: save.day, text: purchase.reason }, ...(merchant.history ?? [])],
+          },
         },
         ledger: [{ id: `led-${save.day}-${rumour.id}`, day: save.day, text: purchase.reason }, ...save.ledger],
       };
@@ -145,25 +162,37 @@ export function playerBuy(save: SaveData, merchantId: MerchantState["id"], itemI
   }
   const line = merchant.stock.find((entry) => entry.itemId === itemId);
   if (!line || line.qty < 1) return { save, ok: false, reason: "That item is out of stock." };
+  const canonical = itemId in GOODS ? GOODS[itemId as keyof typeof GOODS] : undefined;
+  if (canonical && !canTrade(canonical.cls, canonical.currency)) {
+    return { save, ok: false, reason: `Purchase rejected: this item is ${canonical.cls} and cannot be sold for ${canonical.currency}.` };
+  }
   const quote = quotePrice(itemId, line.qty);
-  if (save.gold < quote.price) return { save, ok: false, reason: "Not enough Gold." };
+  const currency = canonical?.currency ?? "PLAY_GOLD";
+  const purse = currency === "NEAR" ? (save.near ?? 0) : save.gold;
+  if (purse + 1e-9 < quote.price) return { save, ok: false, reason: `Not enough ${currency}. Price ${quote.price}. Nothing was taken.` };
+  const book = merchant.quoteBook?.[itemId];
   return {
     ok: true,
     reason: quote.reason,
     save: {
       ...save,
-      gold: save.gold - quote.price,
+      gold: currency === "NEAR" ? save.gold : save.gold - quote.price,
+      near: currency === "NEAR" ? (save.near ?? 0) - quote.price : save.near,
+      classes: { ...save.classes, [itemId]: canonical?.cls ?? "PLAY_ONLY" },
       inventory: { ...save.inventory, [itemId]: (save.inventory[itemId] ?? 0) + 1 },
       merchants: {
         ...save.merchants,
         [merchantId]: {
           ...merchant,
-          gold: merchant.gold + quote.price,
+          gold: currency === "NEAR" ? merchant.gold : merchant.gold + quote.price,
+          near: currency === "NEAR" ? (merchant.near ?? 0) + quote.price : merchant.near,
           sales: merchant.sales + 1,
           stock: merchant.stock.map((entry) => entry.itemId === itemId ? { ...entry, qty: entry.qty - 1 } : entry),
+          quoteBook: { ...merchant.quoteBook, [itemId]: { ema: book?.ema ?? 0, price: quote.price, buys: book?.buys ?? 0, sells: (book?.sells ?? 0) + 1 } },
+          history: [{ id: `sold-${itemId}-${save.day}-${line.qty}`, day: save.day, text: quote.reason }, ...(merchant.history ?? [])],
         },
       },
-      ledger: [{ id: `player-${save.day}-${itemId}-${line.qty}`, day: save.day, text: `You bought ${itemId} for ${quote.price} Gold. ${quote.reason}` }, ...save.ledger],
+      ledger: [{ id: `player-${save.day}-${itemId}-${line.qty}`, day: save.day, text: `You bought ${itemId} for ${quote.price} ${currency}. ${quote.reason}` }, ...save.ledger],
     },
   };
 }

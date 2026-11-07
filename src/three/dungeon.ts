@@ -39,6 +39,7 @@ export interface DungeonHooks {
   getPhase: () => string;
   getDay: () => number;
   getShelf: () => { mira: number; tallow: number; orrin: number };
+  getCue?: () => { id: string; action: string; nonce: number } | null;
 }
 
 interface Actor {
@@ -153,6 +154,8 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   ash.visible = false;
   scene.add(ash);
   const shelves: { id: string; meshes: THREE.Object3D[] }[] = [];
+  const shelfSeen: Record<string, number> = {};
+  let lastCue = 0;
   const emberPositions = new Float32Array(36 * 3);
   const embers = new THREE.Points(
     new THREE.BufferGeometry(),
@@ -425,6 +428,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     selectables.push(gate);
     await stockShelf("mira", item("nail"), 0.6, 6 * CELL + 0.9);
     await stockShelf("tallow", dungeon("bottle_A_green"), CELL + 0.6, 5 * CELL + 0.9);
+    await stockShelf("orrin", item("map"), 0.8, 4 * CELL + 0.4);
     focus.set(4 * CELL, 0, 6 * CELL);
     const posts = [
       { ...RULES.skeletons[0], model: monsterModel("Skeleton_Minion"), file: "Skeleton_Minion.glb", weapon: undefined as string | undefined },
@@ -849,8 +853,23 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       if (actor.hp <= 0 && actor.action !== "death") play(actor, "death", true);
     }
     const shelf = hooks.getShelf();
+    const cue = hooks.getCue?.() ?? null;
+    if (cue && cue.nonce !== lastCue) {
+      lastCue = cue.nonce;
+      const actor = actors.find((entry) => entry.id === cue.id);
+      if (actor) play(actor, cue.action, true);
+    }
     for (const row of shelves) {
-      const count = row.id === "mira" ? shelf.mira : shelf.tallow;
+      const count = row.id === "mira" ? shelf.mira : row.id === "orrin" ? shelf.orrin : shelf.tallow;
+      const was = shelfSeen[row.id] ?? count;
+      if (count > was) {
+        const actor = actors.find((entry) => entry.id === row.id);
+        if (actor) play(actor, "restock", true);
+      } else if (count < was) {
+        const actor = actors.find((entry) => entry.id === row.id);
+        if (actor) play(actor, row.id === "mira" ? "work" : "talk", true);
+      }
+      shelfSeen[row.id] = count;
       row.meshes.forEach((mesh, index) => {
         mesh.visible = index < count;
       });

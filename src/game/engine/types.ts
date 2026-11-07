@@ -1,5 +1,6 @@
 import type { HeroId } from "../content";
 import type { TrapId } from "../config/trapDefinitions";
+import type { Currency, ItemClass } from "../../../rules/economy";
 
 export interface Fact {
   id: string;
@@ -35,14 +36,23 @@ export interface MerchantState {
   name: string;
   role: string;
   gold: number;
+  /** Local mock NEAR. Not a wallet. */
+  near?: number;
   stock: StockLine[];
   rumours: Fact[];
   sales: number;
+  history?: LedgerLine[];
+  spentTodayNear?: number;
+  spentTodayGold?: number;
+  quoteBook?: Record<string, { ema: number; price: number; buys: number; sells: number }>;
 }
 
 export interface HeroState {
   id: HeroId;
   gold: number;
+  /** Local mock NEAR purse from the v10.2 agent table. */
+  near?: number;
+  spentTodayNear?: number;
   hp: number;
   maxHp: number;
   inventory: Record<string, number>;
@@ -55,12 +65,13 @@ export interface HeroState {
 export interface Listing {
   id: string;
   itemId: string;
-  seller: "player";
+  seller: "player" | "traveler";
   price: number;
   qty: number;
   listedDay?: number;
-  currency?: "PLAY_GOLD";
-  cls?: "PLAY_ONLY";
+  currency?: Currency;
+  cls?: ItemClass;
+  status?: "LISTED" | "SOLD" | "CANCELLED" | "EXPIRED";
 }
 
 export interface PlacedTrap {
@@ -91,7 +102,7 @@ export interface DecisionTrace {
   reward: number;
   danger: number;
   reason: string;
-  purchase?: { merchantId: string; itemId: string; price: number; reason: string };
+  purchase?: { merchantId: string; itemId: string; price: number; reason: string; currency?: Currency };
   counterShift?: number;
   route?: string;
 }
@@ -115,6 +126,12 @@ export interface SaveData {
   day: number;
   seed: number;
   gold: number;
+  /** Local mock NEAR. Not a wallet. */
+  near?: number;
+  guildGold?: number;
+  opsGold?: number;
+  travelerGold?: number;
+  classes?: Record<string, ItemClass>;
   cinder: number;
   reputation: number;
   vault: number;
