@@ -1,5 +1,11 @@
 # README v10.2 compliance matrix
 
+## Rendering pass (7 November 2026, about 7:00 PM Africa/Cairo)
+
+The hall was measured on SwiftShader, not a hardware GPU. A half-second window moved between 28 and 58 fps. The 95th percentile frame stayed near 56–58 ms. The scene drew 141 calls, 72,249 triangles, and 88 textures, with 8 skinned characters. Low and High shared those draw counts, so the shadow map was not the limiter on this renderer. Details are in `docs/PERFORMANCE_REPORT.md`. This is not a 60 fps result.
+
+Hit-stop, shake, damage marks, the vault coin burst, and the page slow-down use `rules/feel.ts` and only run for a real raid step. Reduce Motion turns them off.
+
 ## Interface pass (7 November 2026, about 5:40 PM Africa/Cairo)
 
 Home, Gate, Raid, Workshop, Market, Map, Heroes, Replay, A Week of Raids, Charter, Guild, Take it home, Settings, and Mock chain share one stone-and-gold shell. Titles use Lilita One. Body text uses Fredoka. Cards are 16px rounds. Portrait width collapses the links into a Menu drawer. The raid chronicle is a set of category cards and stays closed on a narrow hall until Chronicle is opened. Guild “Post a restock task” wrote a real simulated proposal. Take it home shows a simulated fee and does not send anything. Play screens do not use wallet, token, gas, chain, or NFT wording. The verified rows on Heroes are marked unverified.

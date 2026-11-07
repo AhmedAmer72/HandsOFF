@@ -19,6 +19,7 @@ export interface VisualStep {
   z: number;
   text: string;
   trapId?: string;
+  damage?: number;
 }
 
 interface Session extends SaveData {
@@ -38,6 +39,9 @@ interface Session extends SaveData {
   pageResult: "idle" | "decision" | "burned" | "escaped";
   possessArmed: boolean;
   continueReady: boolean;
+  reduceMotion?: boolean;
+  frameP95?: number;
+  textureCount?: number;
   merchantCue?: { id: string; action: string; nonce: number };
 }
 
@@ -145,8 +149,13 @@ export function selectInfo(selection: Session["selection"]) {
   emit();
 }
 
-export function setStats(stats: { fps: number; min: number; avg: number; triangles: number; calls: number; renderer: string }) {
-  state = { ...state, fps: stats.fps, minFps: stats.min, avgFps: stats.avg, triangles: stats.triangles, drawCalls: stats.calls, rendererInfo: stats.renderer };
+export function setStats(stats: { fps: number; min: number; avg: number; triangles: number; calls: number; renderer: string; p95?: number; textures?: number }) {
+  state = { ...state, fps: stats.fps, minFps: stats.min, avgFps: stats.avg, triangles: stats.triangles, drawCalls: stats.calls, rendererInfo: stats.renderer, frameP95: stats.p95 ?? state.frameP95, textureCount: stats.textures ?? state.textureCount };
+  listeners.forEach((listener) => listener());
+}
+
+export function setReduceMotion(value: boolean) {
+  state = { ...state, reduceMotion: value };
   listeners.forEach((listener) => listener());
 }
 
@@ -575,6 +584,7 @@ export function toSteps(report: RaidReport): VisualStep[] {
     z: (event.iz ?? RULES.grid.entrance.iz) * CELL,
     text: event.text,
     trapId: event.trapId,
+    damage: event.damage,
   }));
 }
 

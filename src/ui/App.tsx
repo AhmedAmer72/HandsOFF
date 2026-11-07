@@ -35,6 +35,7 @@ import {
   dungeonTier,
   clearTrap,
   setQuality,
+  setReduceMotion,
   setScreen,
   setStats,
   startRaid,
@@ -177,6 +178,9 @@ function DungeonScreen() {
         };
       },
       getCue: () => hooks.current.merchantCue ?? null,
+      getReduceMotion: () => Boolean(hooks.current.reduceMotion),
+      getChain: () => hooks.current.chain ?? 0,
+      getVault: () => hooks.current.vault,
     });
     bindDungeon(mounted);
     void mounted.ready.then(() => {
@@ -240,7 +244,7 @@ function DungeonScreen() {
           <span>Wave {game.day}</span>
           <span>Tier {dungeonTier(game.raidsCleared ?? 0)}</span>
           <span>Chain ×{game.chain ?? 0}</span>
-          <button className="ml-auto min-h-11 rounded-2xl border border-gold/30 px-3 lg:hidden" onClick={() => setLogOpen((value) => !value)}>Chronicle</button>
+          <button className="ml-auto min-h-11 rounded-2xl border border-gold/30 px-3" onClick={() => setLogOpen((value) => !value)}>Chronicle</button>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
           {(["kara", "brann", "ivo"] as const).map((id) => {
@@ -292,11 +296,11 @@ function DungeonScreen() {
           <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-parchment/45">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
         </div>
       </div>
-      <div className={`pointer-events-auto absolute right-2 top-36 z-20 w-[min(20rem,calc(100%-1rem))] lg:right-3 ${logOpen ? "block" : "hidden lg:block"}`}>
+      <div className={`pointer-events-auto absolute right-2 top-36 z-20 w-[min(20rem,calc(100%-1rem))] lg:right-3 ${logOpen ? "block" : "hidden"}`}>
         <div className="hud-glass max-h-72 overflow-auto rounded-2xl p-3 text-sm">
           <div className="flex items-center justify-between">
             <div className="font-display text-xl text-gold">Chronicle</div>
-            <button className="min-h-11 px-2 lg:hidden" onClick={() => setLogOpen(false)}>Close</button>
+            <button className="min-h-11 px-2" onClick={() => setLogOpen(false)}>Close</button>
           </div>
           <div className="mt-2 flex flex-wrap gap-1">
             {["All", ...CHRONICLE].map((label) => (
@@ -329,7 +333,7 @@ function DungeonScreen() {
           <span className="mt-1 block text-[10px] text-gold">{RAID.possess.cost} gold</span>
         </button>
       </div>
-      <p className="pointer-events-none absolute bottom-1 right-3 text-[10px] text-parchment/35">{game.fps.toFixed(0)} fps · {game.rendererInfo || "renderer"}</p>
+      <p className="pointer-events-none absolute bottom-1 right-3 text-[10px] text-parchment/35">{game.fps.toFixed(0)} fps · p95 {(game.frameP95 ?? 0).toFixed(0)} ms · {game.drawCalls} draws · {game.triangles} tris · {game.textureCount ?? 0} tex · {game.rendererInfo || "renderer"}</p>
     </div>
   );
 }
@@ -587,14 +591,13 @@ function Settings() {
   const game = useGame();
   const [sound, setSound] = useState(true);
   const [music, setMusic] = useState(false);
-  const [motion, setMotion] = useState(true);
   return (
     <section className="mx-auto max-w-xl p-6">
       <h2 className="font-display text-3xl text-gold">Settings</h2>
       <div className="mt-4 flex flex-wrap gap-2">
         <button className={`min-h-11 rounded-2xl px-3 ${sound ? "bg-gold text-ink" : "border border-gold/30"}`} onClick={() => setSound((value) => !value)}>Sound {sound ? "on" : "off"}</button>
         <button className={`min-h-11 rounded-2xl px-3 ${music ? "bg-gold text-ink" : "border border-gold/30"}`} onClick={() => setMusic((value) => !value)}>Music {music ? "on" : "off"}</button>
-        <button className={`min-h-11 rounded-2xl px-3 ${motion ? "bg-gold text-ink" : "border border-gold/30"}`} onClick={() => setMotion((value) => !value)}>Motion {motion ? "on" : "off"}</button>
+        <button className={`min-h-11 rounded-2xl px-3 ${game.reduceMotion ? "border border-gold/30" : "bg-gold text-ink"}`} onClick={() => setReduceMotion(!game.reduceMotion)}>Motion {game.reduceMotion ? "reduced" : "on"}</button>
       </div>
       <div className="mt-4 flex gap-2">
         {(["low", "medium", "high"] as const).map((quality) => (
