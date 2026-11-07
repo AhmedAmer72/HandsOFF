@@ -32,6 +32,7 @@ export interface DungeonHooks {
   onPossess: () => void;
   onMerchant: (id: string) => void;
   onCraft: () => void;
+  onTrigger: (id: string) => void;
   onBrace: () => void;
   armTrap: (trapId: TrapId) => void;
   clearArm: () => void;
@@ -97,6 +98,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   let clips: THREE.AnimationClip[] = [];
   let hero: Actor | null = null;
   let pendingRelay: string | null = null;
+  let trapDrag: { id: string; x: number; y: number } | null = null;
   let lastPrompt = "";
   let journal: THREE.Object3D | null = null;
   let running = true;
@@ -594,10 +596,9 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       hooks.onBurn();
       return;
     }
-    if (data?.placedId && hooks.getPhase() === "prep") {
-      pendingRelay = String(data.placedId);
+    if (data?.placedId && (hooks.getPhase() === "prep" || hooks.getPhase() === "raid")) {
+      trapDrag = { id: String(data.placedId), x: event.clientX, y: event.clientY };
       hooks.clearArm();
-      say("Click a neighboring tile to re-lay this trap.");
       return;
     }
     if (data?.action === "gate") {
@@ -648,6 +649,29 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     }
     const trapId = hooks.getTrap();
     if (trapId) dropTrap(trapId as TrapId, ix, iz);
+  }
+
+  function onPointerUp(event: PointerEvent) {
+    if (!trapDrag) return;
+    const drag = trapDrag;
+    trapDrag = null;
+    const moved = Math.hypot(event.clientX - drag.x, event.clientY - drag.y);
+    const floorHit = hitFloor(event.clientX, event.clientY);
+    if (moved > 18 && floorHit) {
+      const ix = Math.round(floorHit.point.x / CELL);
+      const iz = Math.round(floorHit.point.z / CELL);
+      if (hooks.relayTo(drag.id, ix, iz)) {
+        const entry = placed.find((trap) => trap.id === drag.id);
+        if (entry) {
+          entry.mesh.position.set(ix * CELL, 0.05, iz * CELL);
+          entry.x = ix * CELL;
+          entry.z = iz * CELL;
+        }
+        sfx.place();
+      }
+      return;
+    }
+    hooks.onTrigger(drag.id);
   }
 
   function onPointerMove(event: PointerEvent) {
@@ -877,7 +901,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const listeners: [string, EventListenerOrEventListenerObject, boolean?][] = [
     ["pointerdown", onPointerDown as EventListener],
     ["pointermove", onPointerMove as EventListener],
-    ["pointerup", () => { delete canvas.dataset.pan; }],
+    ["pointerup", ((event: PointerEvent) => { delete canvas.dataset.pan; onPointerUp(event); }) as EventListener],
     ["contextmenu", (event) => event.preventDefault()],
     ["wheel", onWheel as EventListener, true],
   ];

@@ -13,6 +13,7 @@ export interface RaidInput {
   tutorial: boolean;
   upgrades?: string[];
   possessGuard?: boolean;
+  spentTrapIds?: string[];
 }
 
 export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "decision">; hero: HeroState } {
@@ -46,22 +47,32 @@ export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "deci
   for (const cell of path) {
     push({ type: "move", text: `${profile.name} steps to ${cell.ix}, ${cell.iz}.`, ix: cell.ix, iz: cell.iz });
     const trap = input.traps.find((entry) => entry.ix === cell.ix && entry.iz === cell.iz);
-    if (trap && !triggered.includes(trap.id)) {
+    if (trap && input.spentTrapIds?.includes(trap.id)) {
+      push({ type: "trap", text: `${TRAP_DEFINITIONS[trap.trapId].name} was triggered early and is spent.`, ix: cell.ix, iz: cell.iz, trapId: trap.trapId, damage: 0 });
+    } else if (trap && !triggered.includes(trap.id)) {
       const rule = TRAP_DEFINITIONS[trap.trapId];
-      const damage = rule.damage;
+      let damage = rule.damage;
+      if (!input.tutorial && damage > 0 && hero.equipment.includes("armor")) damage = Math.max(0, damage - 1);
       if (damage > 0) {
-        hero.hp = Math.max(0, hero.hp - damage);
+        const lethal = hero.hp - damage <= 0;
         triggered.push(trap.id);
         const fact = factFor(trap, input.day);
         learned.push(fact);
-        push({
-          type: "trap",
-          text: `${rule.name} hits ${profile.name} for ${damage}.`,
-          ix: cell.ix,
-          iz: cell.iz,
-          trapId: trap.trapId,
-          damage,
-        });
+        if (!input.tutorial && lethal && (hero.inventory.potion ?? 0) > 0) {
+          hero.inventory.potion -= 1;
+          hero.hp = 1;
+          push({ type: "trap", text: `${profile.name} drinks a phial and stays at 1 health.`, ix: cell.ix, iz: cell.iz, trapId: trap.trapId, damage: 0 });
+        } else {
+          hero.hp = Math.max(0, hero.hp - damage);
+          push({
+            type: "trap",
+            text: `${rule.name} hits ${profile.name} for ${damage}.`,
+            ix: cell.ix,
+            iz: cell.iz,
+            trapId: trap.trapId,
+            damage,
+          });
+        }
       } else {
         triggered.push(trap.id);
         learned.push(factFor(trap, input.day));
@@ -69,7 +80,7 @@ export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "deci
       }
       if (hero.hp <= 0) {
         survived = false;
-        push({ type: "death", text: `${profile.name} dies on the ${rule.name}.`, ix: cell.ix, iz: cell.iz });
+        push({ type: "death", text: `${profile.name} dies on the ${rule.name}.`, ix: cell.ix, iz: cell.iz, trapId: trap.trapId });
         break;
       }
     }

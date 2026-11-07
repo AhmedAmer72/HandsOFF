@@ -63,6 +63,12 @@ function emit() {
     raids: state.raids,
     tutorialStep: state.tutorialStep,
     upgrades: state.upgrades,
+    trapKills: state.trapKills ?? {},
+    raidsCleared: state.raidsCleared ?? 0,
+    dungeonClosed: state.dungeonClosed ?? false,
+    freeReopenUsed: state.freeReopenUsed ?? false,
+    spentTrapIds: state.spentTrapIds ?? [],
+    chain: state.chain ?? 0,
     phase: state.phase,
     pending: state.pending,
     screen: state.screen,
@@ -237,7 +243,31 @@ export function armPossess() {
   return { ok: true, reason: "The guard will be off the tile." };
 }
 
+export function triggerTrap(id: string) {
+  const trap = state.traps.find((entry) => entry.id === id);
+  if (!trap) return { ok: false, reason: "That trap is not placed." };
+  if (state.phase !== "prep" && state.phase !== "raid") return { ok: false, reason: "Trigger a trap before the page flies." };
+  const spent = state.spentTrapIds ?? [];
+  if (spent.includes(id)) return { ok: false, reason: "That trap is cooling down." };
+  state = {
+    ...state,
+    spentTrapIds: [...spent, id],
+    chain: (state.chain ?? 0) + 1,
+    ledger: [{ id: `trig-${id}-${state.day}`, day: state.day, text: `Triggered ${trap.trapId} at ${trap.ix}, ${trap.iz}. It will not hit again this wave.` }, ...state.ledger],
+  };
+  emit();
+  return { ok: true, reason: "The trap is spent." };
+}
+
+export function dungeonTier(raidsCleared: number) {
+  if (raidsCleared >= 60) return 4;
+  if (raidsCleared >= 30) return 3;
+  if (raidsCleared >= 10) return 2;
+  return 1;
+}
+
 export function startRaid() {
+  if (state.dungeonClosed) return;
   if (state.phase !== "prep" && state.phase !== "report") return;
   let save: SaveData = state;
   const decision = chooseRaider(save);
@@ -251,10 +281,12 @@ export function startRaid() {
     tutorial: save.tutorialStep < 2,
     upgrades: save.upgrades,
     possessGuard,
+    spentTrapIds: save.spentTrapIds ?? [],
   });
   const report: RaidReport = { ...simulated.report, decision };
   const heroes = { ...save.heroes, [decision.heroId]: simulated.hero };
-  const speed = HERO_PROFILES[decision.heroId].moveSpeed;
+  const boots = save.heroes[decision.heroId].equipment.includes("boots") ? 1.3 : 1;
+  const speed = HERO_PROFILES[decision.heroId].moveSpeed * boots;
   const steps = simulated.report.events.filter((event) => event.type === "move" || event.type === "enter").length;
   const bleed = Math.floor(steps * (4 / speed) * RAID.bleedPerHeroPerSec);
   const kills = simulated.report.events.filter((event) => event.type === "death").length;
@@ -262,6 +294,16 @@ export function startRaid() {
   const salvageQty = decision.heroId === "brann" ? SALVAGE.brute.iron : decision.heroId === "ivo" ? SALVAGE.mage.ash : SALVAGE.thief.bone;
   const inventory = { ...save.inventory };
   if (!simulated.report.survived) inventory[salvageKind] = (inventory[salvageKind] ?? 0) + salvageQty;
+  if (simulated.report.survived && simulated.report.events.some((event) => event.type === "vault")) {
+    inventory.iron = (inventory.iron ?? 0) + SALVAGE.waveClear.iron;
+  }
+  const trapKills = { ...(save.trapKills ?? {}) };
+  const deathTrap = simulated.report.events.find((event) => event.type === "death");
+  if (deathTrap?.trapId) {
+    trapKills[deathTrap.trapId] = (trapKills[deathTrap.trapId] ?? 0) + 1;
+    if (trapKills[deathTrap.trapId] === 10) inventory[`blueprint:${deathTrap.trapId}`] = (inventory[`blueprint:${deathTrap.trapId}`] ?? 0) + 1;
+  }
+  const vaultLeft = Math.max(0, save.vault - bleed);
   const gold = Math.max(0, save.gold - (simulated.report.survived ? simulated.report.goldLost : 0));
   const reputation = save.reputation + (simulated.report.survived ? RULES.reputationPerSurvival : RULES.reputationPerDeath);
   const tutorialStep = save.tutorialStep < 2 ? 2 : save.tutorialStep >= 4 ? Math.max(save.tutorialStep, 5) : save.tutorialStep;
@@ -271,7 +313,10 @@ export function startRaid() {
     heroes,
     inventory,
     gold,
-    vault: Math.max(0, save.vault - bleed),
+    vault: vaultLeft,
+    trapKills,
+    raidsCleared: (save.raidsCleared ?? 0) + 1,
+    dungeonClosed: vaultLeft === 0,
     cinder: Math.min(RAID.cinder.cap, save.cinder + kills * RAID.cinder.perKill),
     reputation,
     phase: simulated.report.survived ? "report" : "raid",
@@ -384,8 +429,15 @@ export function nextDay() {
   const aged = expireRumours(state);
   const traded = settleListings(aged);
   const stepped = traded.tutorialStep >= 6 ? 7 : traded.tutorialStep === 3 ? 4 : traded.tutorialStep === 5 ? 6 : traded.tutorialStep;
-  const saved = restock({ ...traded, tutorialStep: stepped });
-  state = { ...state, ...saved, screen: state.screen, tutorialStep: stepped, phase: "prep", pageResult: "idle" };
+  let next = { ...state, ...traded, tutorialStep: stepped };
+  if (next.dungeonClosed && !next.freeReopenUsed) {
+    next = { ...next, dungeonClosed: false, freeReopenUsed: true, vault: Math.max(next.vault, 200), ledger: [{ id: `reopen-${next.day}`, day: next.day, text: "The first reopen this season is free. The vault holds 200 Gold." }, ...next.ledger] };
+  } else if (next.dungeonClosed) {
+    if (next.gold < 40) return;
+    next = { ...next, gold: next.gold - 40, dungeonClosed: false, vault: 200, ledger: [{ id: `reopen-pay-${next.day}`, day: next.day, text: "Restocked the vault for 40 Gold." }, ...next.ledger] };
+  }
+  const saved = restock(next);
+  state = { ...state, ...saved, screen: state.screen, tutorialStep: stepped, phase: "prep", pageResult: "idle", spentTrapIds: [], chain: 0, dungeonClosed: false };
   emit();
 }
 

@@ -10,4 +10,6 @@ export const PALETTE = {
   memory: "#3FA7A0",
   rust: "#B5532E",
   critical: "#8E1B1B",
+  ink: "#3A2A1A",
+  fog: "#1B1A22",
 } as const;

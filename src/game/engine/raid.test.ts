@@ -141,6 +141,36 @@ describe("hero decisions", () => {
   });
 });
 
+describe("gear and trigger", () => {
+  it("lets a spent spike stay quiet", () => {
+    const result = simulateRaid({ day: 2, seed: 1, hero: kara({ hp: 64, maxHp: 64 }), traps: [spike], tutorial: false, spentTrapIds: [spike.id] });
+    expect(result.report.events.some((event) => event.damage === 24)).toBe(false);
+    expect(result.report.events.some((event) => event.text.includes("spent"))).toBe(true);
+  });
+
+  it("lets armor shave one point off a spike and a phial stop a lethal hit", () => {
+    const armored = simulateRaid({
+      day: 2,
+      seed: 1,
+      hero: kara({ hp: 64, maxHp: 64, equipment: ["armor"] }),
+      traps: [spike],
+      tutorial: false,
+    });
+    expect(armored.report.events.find((event) => event.trapId === "spike")?.damage).toBe(23);
+
+    const saved = simulateRaid({
+      day: 2,
+      seed: 1,
+      hero: kara({ hp: 20, maxHp: 20, inventory: { potion: 1 } }),
+      traps: [spike],
+      tutorial: false,
+    });
+    expect(saved.report.events.some((event) => event.text.includes("phial"))).toBe(true);
+    expect(saved.hero.inventory.potion).toBe(0);
+    expect(saved.report.events.find((event) => event.type === "death")?.trapId).not.toBe("spike");
+  });
+});
+
 describe("trap rules", () => {
   it("reads spike damage from the single trap table", () => {
     expect(TRAP_DEFINITIONS.spike.damage).toBe(24);
