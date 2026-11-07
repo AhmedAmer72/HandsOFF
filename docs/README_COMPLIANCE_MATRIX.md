@@ -1,6 +1,14 @@
 # README v10.2 compliance matrix
 
-Audit only. No gameplay code was changed in this pass.
+## Raid-loop pass (7 November 2026, about 3:05 PM Africa/Cairo)
+
+Browser, fresh game, spike placed at 4, 7 (on the walk). Kara died. Traps sprung 1. Spike kills 1. Bone went from 6 to 11 (thief salvage). The page was offered for 2 Cinder, then landed. Orrin can sell 1 fact. Tier 1. Next wave advanced the day. An earlier fresh game triggered the spike before the gate: the chronicle said it would not hit again, and the chain read ×1.
+
+Engine tests now also cover a spent spike (no 24 damage) and a phial that stops a lethal spike. The first-lesson raid still kills Kara, because the phial does not fire during that tutorial. 39 tests passed after this change.
+
+Rows below are the earlier audit. Where this pass changed a status, the note above wins: 3.3b is PARTIAL (trigger spends the trap before the gate; it is not a mid-fight tap with a spectacle kill bonus). 3.3c was seen in the browser as a flying page that landed. 3.7c salvage on death was seen (bone 11). 3.8 mastery counter moved to 1 and is still not a blueprint. 5.4 now has a results card with pages, salvage, spike kills, tier, and Next wave. Vault-0 close and the paid reopen exist in `nextDay` and were not driven to 0 in the browser.
+
+## Earlier audit the same day
 
 Checked 7 November 2026, about 2:46 PM Africa/Cairo. The app was open at http://127.0.0.1:5173/. `npx vitest run` reported 5 files, 37 tests, all passed. The renderer line on the raid screen read about 20 fps, ANGLE, SwiftShader. That is software WebGL on this machine, not a desktop GPU average.
 

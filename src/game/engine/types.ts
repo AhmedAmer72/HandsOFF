@@ -123,6 +123,12 @@ export interface SaveData {
   raids: RaidReport[];
   tutorialStep: number;
   upgrades: string[];
+  trapKills?: Record<string, number>;
+  raidsCleared?: number;
+  dungeonClosed?: boolean;
+  freeReopenUsed?: boolean;
+  spentTrapIds?: string[];
+  chain?: number;
   phase: "prep" | "choice" | "raid" | "diary" | "report";
   pending: RaidReport | null;
   screen: string;

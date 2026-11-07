@@ -30,6 +30,8 @@ import {
   resolvePage,
   selectInfo,
   armTrap,
+  triggerTrap,
+  dungeonTier,
   clearTrap,
   setQuality,
   setScreen,
@@ -174,6 +176,7 @@ function DungeonScreen() {
         } else setToast(buyFromMerchant("tallow", "potion").reason);
       },
       onCraft: () => setToast(craftTrap("spike").reason),
+      onTrigger: (id) => setToast(triggerTrap(id).reason),
       onBrace: () => setToast(buyUpgrade("vault-brace").reason),
       armTrap: (trapId) => armTrap(trapId),
       clearArm: () => clearTrap(),
@@ -274,14 +277,20 @@ function DungeonScreen() {
           <span>Gold <b className="text-gold">{game.gold}</b></span>
           <span className="text-ember">Cinder {"●".repeat(game.cinder)}{"○".repeat(Math.max(0, RAID.cinder.cap - game.cinder))}</span>
           <span>Wave {game.day}</span>
-          <span>×{report?.trapsTriggered.length ?? 0}</span>
+          <span>Tier {dungeonTier(game.raidsCleared ?? 0)}</span>
+          <span>×{game.chain ?? 0}</span>
         </div>
       </div>
       {game.phase === "report" && report && (
-        <div className="hud-glass pointer-events-none absolute left-3 top-28 max-w-sm rounded-2xl p-4 text-sm">
-          <div className="font-display text-gold">Raid</div>
+        <div className="hud-glass pointer-events-auto absolute left-3 top-28 max-w-sm rounded-2xl p-4 text-sm">
+          <div className="font-display text-lg text-gold">Raid results</div>
           <p>{report.survived ? `${hero.name} survived.` : `${hero.name} died.`}</p>
-          <p className="text-parchment/70">Traps sprung: {report.trapsTriggered.length}. Click the gate for the next day.</p>
+          <p>Traps sprung: {report.trapsTriggered.length}. Chain ×{game.chain ?? 0}.</p>
+          <p>Pages {game.pageResult === "burned" ? "burned" : game.pageResult === "escaped" ? "landed" : "still in the air"}: {report.facts.length}.</p>
+          <p>Salvage in hand: iron {game.inventory.iron ?? 0}, ash {game.inventory.ash ?? 0}, bone {game.inventory.bone ?? 0}.</p>
+          <p>Spike kills {game.trapKills?.spike ?? 0}. Tier {dungeonTier(game.raidsCleared ?? 0)}.</p>
+          {game.dungeonClosed && <p className="text-blood">The vault is empty. The next wave restocks it.</p>}
+          <button className="mt-2 rounded-full bg-gold px-3 py-1 text-ink" onClick={() => nextDay()}>{game.dungeonClosed ? "Restock and continue" : "Next wave"}</button>
         </div>
       )}
       <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-3">
