@@ -57,6 +57,7 @@ export interface Deed {
   treasury: string;
   status: "ACTIVE" | "TRANSFER_PENDING" | "LOCKED" | "TRANSFERRED" | "RECOVERY_REQUIRED";
   payoutLocked: boolean;
+  previousOwners?: string[];
 }
 
 export interface SessionKey {
@@ -68,6 +69,8 @@ export interface SessionKey {
   nonce: number;
   expiry: number;
   revoked: boolean;
+  spent?: number;
+  dailyCap?: number;
 }
 
 export interface Account {

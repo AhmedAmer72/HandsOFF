@@ -1,5 +1,13 @@
 # README v10.2 compliance matrix
 
+## Mock chain pass (7 November 2026, about 5:20 PM Africa/Cairo)
+
+The developer screen at Settings → Mock chain drives one local `MockChain`. Receipts are labeled SIMULATED. VRF seeds, AI checks, intents custody, the relayer, and guild payouts are marked as not cryptographic and do not open a socket. `installMockGuard` still throws on NEAR host names.
+
+Security tests cover a second buyer, a second settlement, a callback that fails after the debit, an unlisted receiver, a bad relayer receiver, replay, the daily key cap, a revoked key, a previous deed holder, and a guild bounty. Invalid calls leave balances and owners where they were. `npx vitest run src/blockchain/security.test.ts src/blockchain/MockChain.test.ts`: 16 passed.
+
+The dungeon play-gold purse stays the raid book. Resetting the demo ledger does not clear that save.
+
 ## Economy pass (7 November 2026, about 5:05 PM Africa/Cairo)
 
 Merchants price canonical goods through `stockPrice` / `liveQuote` in `src/game/rules/money.ts`. Stall goods use the same `stockCurve`. Rumours use `rumourPrice`. Buy-back uses `buybackPrice`. Shop state uses `MERCHANT.reserveNEAR` 0.02 and `closeBelowNEAR` 0.01 on the mock NEAR purse. A sale splits 90 / 5 / 5. Play-only goods cannot be listed for NEAR. Craft output class is the lowest input class.
@@ -77,9 +85,9 @@ Workshop, from this pass’s navigation notes and the craft buttons in `src/ui/A
 | 4.6 | 4.6 | ≤5 listings, 24 h, cheapest, 10% fee, cancel returns the item | Live listings escrow, cancel, expire on the next day, and split 90/5/5. A failed settlement leaves the purse unchanged | `market.ts`, `MockChain.ts` | DONE | One wave stands for the 24 hour expiry in this local clock. Rumours stay off the player stall | Browser list/cancel; `economyMarket.test.ts` |
 | 4.8 | 4.8 | No Gold-to-NEAR path | Salvage → craft → NEAR list is rejected and NEAR does not rise | `MockChain.test.ts` | DONE | — | That test |
 | 4.10 | 4.10 | 60 days, ≥1000 raids, many scenarios, SIMULATED | One 1020-raid iron script. It hits the 5 and 20 bounds | `docs/sim/economy-60d.json` | PARTIAL | Bankruptcy, wash trades, permit demand, cinder variants are only partly represented | Re-run `verify:economy` and do not treat it as a freeze |
-| 7.x | 7 | Mainnet contracts, login, VRF, Intents, DAO | Guard throws on NEAR host strings. No RPC client | `guard.ts` | BLOCKED | Real network work is out of scope | `MockChain.test.ts` host check |
-| M1 | 7.4 | NPC ledgers with the published caps | Kara/Brann/Ivo start at 0.05 NEAR, single cap 0.003, daily 0.02, on the mock ledger only | `rules/economy.ts`, `MockChain.ts` | PARTIAL | A hall purchase does not spend that NEAR | Kara fund-permit test |
-| M2 | 7.8 | Deed transfer refused during payout | `transferDeed` restores state when payout is locked | `MockChain.test.ts` | PARTIAL | No holder dashboard | That test, not a screen |
+| 7.x | 7 | Mainnet contracts, login, VRF, Intents, DAO | Local adapters only. Guard throws on NEAR host strings. No RPC client | `guard.ts`, `adapters.ts` | BLOCKED | Real network work is out of scope. The mocks are labeled SIMULATED | `security.test.ts` |
+| M1 | 7.4 | NPC ledgers with the published caps | Kara/Brann/Ivo start at 0.05, single 0.003, daily 0.02. Merchants start at 0.10, single 0.005, daily 0.03. An unlisted receiver is rejected | `MockChain.ts` | DONE | The raid hall still spends its own play-gold purse | `security.test.ts` stranger spend |
+| M2 | 7.8 | Deed transfer refused during payout | Transfer during payout rolls back. The previous holder cannot withdraw or recover. The developer screen shows the owner | `MockChain.ts`, `MockSandbox.tsx` | DONE | There is no mainnet deed | `security.test.ts` and the Mock chain screen |
 
 ## Screens
 

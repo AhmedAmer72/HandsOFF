@@ -14,6 +14,8 @@ interface Snapshot {
   permits: PermitOffer[];
   deed: Deed;
   keys: SessionKey[];
+  intents: { itemId: string; owner: string }[];
+  bounties: { id: string; payee: string; amount: number; status: "PROPOSED" | "APPROVED" | "PAID" | "REJECTED" }[];
   block: number;
 }
 
@@ -28,6 +30,11 @@ export class MockChain {
   permits: PermitOffer[] = [];
   keys: SessionKey[] = [];
   journal: Receipt[] = [];
+  audits: { id: string; ok: boolean; method: string; caller: string; reason: string; simulated: true; label: "SIMULATED" }[] = [];
+  verifications: { id: string; kind: string; state: string; genuine: false; detail: string }[] = [];
+  intents: { itemId: string; owner: string }[] = [];
+  bounties: { id: string; payee: string; amount: number; status: "PROPOSED" | "APPROVED" | "PAID" | "REJECTED" }[] = [];
+  private failNext = false;
   deed: Deed = { id: "deed:ashgate", owner: "player", treasury: "dungeon", status: "ACTIVE", payoutLocked: false };
   block = 1;
   now = 1_700_000_000_000;
@@ -65,6 +72,10 @@ export class MockChain {
     this.permits = [];
     this.keys = [];
     this.journal = [];
+    this.audits = [];
+    this.verifications = [];
+    this.intents = [];
+    this.bounties = [];
     this.seen.clear();
     this.deed = { id: "deed:ashgate", owner: "player", treasury: "dungeon", status: "ACTIVE", payoutLocked: false };
     this.block = 1;
@@ -84,6 +95,8 @@ export class MockChain {
       permits: clone(this.permits),
       deed: clone(this.deed),
       keys: clone(this.keys),
+      intents: clone(this.intents),
+      bounties: clone(this.bounties),
       block: this.block,
     };
   }
@@ -95,6 +108,8 @@ export class MockChain {
     this.permits = snapshot.permits;
     this.deed = snapshot.deed;
     this.keys = snapshot.keys;
+    this.intents = snapshot.intents;
+    this.bounties = snapshot.bounties;
     this.block = snapshot.block;
   }
 
@@ -124,6 +139,7 @@ export class MockChain {
       const result = work();
       if (!result.ok) this.restore(snapshot);
       if (key) this.seen.set(key, result.receipt);
+      this.audits.push({ id: result.receipt.id, ok: result.ok, method: result.receipt.method, caller: result.receipt.caller, reason: result.receipt.reason, simulated: true, label: "SIMULATED" });
       return result;
     } catch (error) {
       this.restore(snapshot);
@@ -138,6 +154,7 @@ export class MockChain {
         idempotencyKey: key,
       });
       if (key) this.seen.set(key, receipt);
+      this.audits.push({ id: receipt.id, ok: false, method: receipt.method, caller: receipt.caller, reason: receipt.reason, simulated: true, label: "SIMULATED" });
       return { ok: false, receipt };
     }
   }
@@ -150,11 +167,19 @@ export class MockChain {
       from.near -= amount;
       to.near += amount;
       from.spentTodayNear += amount;
+      if (this.failNext) {
+        this.failNext = false;
+        throw new Error("Callback failed.");
+      }
       return;
     }
     if (from.gold + 1e-9 < amount) throw new Error("Not enough Gold.");
     from.gold -= amount;
     to.gold += amount;
+    if (this.failNext) {
+      this.failNext = false;
+      throw new Error("Callback failed.");
+    }
   }
 
   list(sellerId: string, itemId: string, price: number, currency: Currency, key?: string): ChainResult {
@@ -350,6 +375,7 @@ export class MockChain {
         this.deed.status = "RECOVERY_REQUIRED";
         return { ok: false, receipt: this.receipt({ caller: from, receiver: to, method: "transferDeed", amount: 0, currency: "NONE", status: "REJECTED", reason: "Transfer during payout was refused.", idempotencyKey: key }) };
       }
+      this.deed.previousOwners = [...(this.deed.previousOwners ?? []), from];
       this.deed.owner = to;
       this.deed.status = "TRANSFERRED";
       return { ok: true, receipt: this.receipt({ caller: from, receiver: to, method: "transferDeed", amount: 0, currency: "NONE", status: "CONFIRMED", reason: "MOCK OWNERSHIP moved.", idempotencyKey: key }) };
@@ -366,8 +392,12 @@ export class MockChain {
     });
   }
 
-  issueKey(account: string, receiver: string, methods: string[], txCap: number, expiry: number): SessionKey {
-    const key: SessionKey = { id: `key-${this.seq}`, account, receiver, methods, txCap, nonce: 0, expiry, revoked: false };
+  armCallbackFailure() {
+    this.failNext = true;
+  }
+
+  issueKey(account: string, receiver: string, methods: string[], txCap: number, expiry: number, dailyCap = 0.05): SessionKey {
+    const key: SessionKey = { id: `key-${this.seq}`, account, receiver, methods, txCap, nonce: 0, expiry, revoked: false, spent: 0, dailyCap };
     this.seq += 1;
     this.keys.push(key);
     return key;
@@ -394,9 +424,147 @@ export class MockChain {
       if (amount > session.txCap) {
         return { ok: false, receipt: this.receipt({ caller: session.account, receiver, method, amount, currency: "NEAR", status: "REJECTED", reason: "Amount is over the key cap.", idempotencyKey: key }) };
       }
+      if ((session.spent ?? 0) + amount > (session.dailyCap ?? 0.05)) {
+        return { ok: false, receipt: this.receipt({ caller: session.account, receiver, method, amount, currency: "NEAR", status: "REJECTED", reason: "Amount is over the daily key cap.", idempotencyKey: key }) };
+      }
       session.nonce = nonce;
+      session.spent = (session.spent ?? 0) + amount;
       return { ok: true, receipt: this.receipt({ caller: session.account, receiver, method, amount, currency: "NEAR", status: "CONFIRMED", reason: "Mock relayer accepted the action.", idempotencyKey: key }) };
     });
+  }
+
+  revokeKey(keyId: string, key?: string): ChainResult {
+    return this.run(key, () => {
+      const session = this.keys.find((entry) => entry.id === keyId);
+      if (!session) {
+        return { ok: false, receipt: this.receipt({ caller: "player", receiver: "game.root", method: "revokeKey", amount: 0, currency: "NONE", status: "REJECTED", reason: "Key is missing.", idempotencyKey: key }) };
+      }
+      session.revoked = true;
+      return { ok: true, receipt: this.receipt({ caller: session.account, receiver: "game.root", method: "revokeKey", amount: 0, currency: "NONE", status: "CONFIRMED", reason: "SIMULATED key revoked. It cannot submit again.", idempotencyKey: key }) };
+    });
+  }
+
+  relay(keyId: string, method: string, receiver: string, amount: number, nonce: number, key?: string): ChainResult {
+    if (receiver !== "game.root") {
+      return this.run(key, () => ({
+        ok: false,
+        receipt: this.receipt({ caller: "relayer", receiver, method, amount, currency: "NEAR", status: "REJECTED", reason: "SIMULATED relayer rejected the receiver. No network submission.", idempotencyKey: key }),
+      }));
+    }
+    const result = this.callWithKey(keyId, method, receiver, amount, nonce, key);
+    result.receipt.reason = `SIMULATED relayer. ${result.receipt.reason}`;
+    return result;
+  }
+
+  agentSpend(agentId: string, receiver: string, amount: number, currency: Currency, key?: string): ChainResult {
+    const allowed = new Set(["mira", "orrin", "tallow", "escrow", "board", "dungeon"]);
+    return this.run(key, () => {
+      if (!allowed.has(receiver)) {
+        return { ok: false, receipt: this.receipt({ caller: agentId, receiver, method: "agentSpend", amount, currency, status: "REJECTED", reason: "Unlisted receiver. The ledger was not charged.", idempotencyKey: key }) };
+      }
+      this.pay(this.account(agentId), this.ensure(receiver, receiver), amount, currency);
+      return { ok: true, receipt: this.receipt({ caller: agentId, receiver, method: "agentSpend", amount, currency, status: "CONFIRMED", reason: "SIMULATED contract-held spend.", idempotencyKey: key }) };
+    });
+  }
+
+  verifyDecision(agentId: string, receiver: string, method: string): { genuine: false; state: string; detail: string } {
+    const allowed = new Set(["mira", "orrin", "tallow", "escrow", "board", "dungeon"]);
+    const state = allowed.has(receiver) ? "simulated_unverified" : "simulated_rejected";
+    const detail = "SIMULATED verification. This is not a signature, attestation, or cryptographic proof.";
+    this.verifications.push({ id: `ai-${this.seq}`, kind: "ai", state, genuine: false, detail: `${agentId} ${method} → ${receiver}. ${detail}` });
+    this.seq += 1;
+    return { genuine: false, state, detail };
+  }
+
+  vrfSeed(raidId: string) {
+    const output = (raidId.length * 997 + this.block) % 1000;
+    const row = { id: `vrf-${this.seq}`, kind: "vrf", state: "simulated_seed", genuine: false as const, detail: `SIMULATED seed ${output} for ${raidId}. Not a VRF proof. It does not pay anyone.` };
+    this.seq += 1;
+    this.verifications.push(row);
+    return row;
+  }
+
+  intentDeposit(owner: string, itemId: string, key?: string): ChainResult {
+    return this.run(key, () => {
+      const item = this.items.find((entry) => entry.id === itemId);
+      if (!item || item.owner !== owner) {
+        return { ok: false, receipt: this.receipt({ caller: owner, receiver: "intents.mock", method: "intentDeposit", amount: 0, currency: "NONE", status: "REJECTED", reason: "You do not hold that item.", itemId, idempotencyKey: key }) };
+      }
+      item.owner = "intents.mock";
+      item.history.push("simulated intents deposit");
+      this.intents.push({ itemId, owner });
+      return { ok: true, receipt: this.receipt({ caller: owner, receiver: "intents.mock", method: "intentDeposit", amount: 0, currency: "NONE", status: "CONFIRMED", reason: "SIMULATED item custody. Not a cross-chain transfer.", itemId, idempotencyKey: key }) };
+    });
+  }
+
+  intentWithdraw(owner: string, itemId: string, key?: string): ChainResult {
+    return this.run(key, () => {
+      const held = this.intents.find((entry) => entry.itemId === itemId && entry.owner === owner);
+      const item = this.items.find((entry) => entry.id === itemId);
+      if (!held || !item || item.owner !== "intents.mock") {
+        return { ok: false, receipt: this.receipt({ caller: owner, receiver: "intents.mock", method: "intentWithdraw", amount: 0, currency: "NONE", status: "REJECTED", reason: "Nothing is in simulated custody.", itemId, idempotencyKey: key }) };
+      }
+      item.owner = owner;
+      item.history.push("simulated intents withdraw");
+      this.intents = this.intents.filter((entry) => entry !== held);
+      return { ok: true, receipt: this.receipt({ caller: "intents.mock", receiver: owner, method: "intentWithdraw", amount: 0, currency: "NONE", status: "REFUNDED", reason: "SIMULATED withdraw. The item is back with the depositor.", itemId, idempotencyKey: key }) };
+    });
+  }
+
+  proposeBounty(payee: string, amount: number, key?: string): ChainResult {
+    return this.run(key, () => {
+      const id = `bounty-${this.seq}`;
+      this.bounties.push({ id, payee, amount, status: "PROPOSED" });
+      return { ok: true, receipt: this.receipt({ caller: "player", receiver: "guild", method: "proposeBounty", amount, currency: "NEAR", status: "CONFIRMED", reason: "SIMULATED proposal. The guild has not paid.", idempotencyKey: key }) };
+    });
+  }
+
+  approveBounty(caller: string, bountyId: string, key?: string): ChainResult {
+    return this.run(key, () => {
+      if (caller !== "guild") {
+        return { ok: false, receipt: this.receipt({ caller, receiver: "guild", method: "approveBounty", amount: 0, currency: "NEAR", status: "REJECTED", reason: "Only the guild council approves.", idempotencyKey: key }) };
+      }
+      const bounty = this.bounties.find((entry) => entry.id === bountyId);
+      if (!bounty || bounty.status !== "PROPOSED") {
+        return { ok: false, receipt: this.receipt({ caller, receiver: "guild", method: "approveBounty", amount: 0, currency: "NEAR", status: "REJECTED", reason: "No open proposal.", idempotencyKey: key }) };
+      }
+      this.pay(this.account("guild"), this.account(bounty.payee), bounty.amount, "NEAR");
+      bounty.status = "PAID";
+      return { ok: true, receipt: this.receipt({ caller: "guild", receiver: bounty.payee, method: "approveBounty", amount: bounty.amount, currency: "NEAR", status: "CONFIRMED", reason: "SIMULATED guild payout. Not a DAO transaction.", idempotencyKey: key }) };
+    });
+  }
+
+  recoverDeed(caller: string, key?: string): ChainResult {
+    return this.run(key, () => {
+      if (this.deed.owner !== caller) {
+        return { ok: false, receipt: this.receipt({ caller, receiver: "deeds.root", method: "recoverDeed", amount: 0, currency: "NONE", status: "REJECTED", reason: "A previous owner cannot recover the deed.", idempotencyKey: key }) };
+      }
+      if (this.deed.payoutLocked) {
+        return { ok: false, receipt: this.receipt({ caller, receiver: "deeds.root", method: "recoverDeed", amount: 0, currency: "NONE", status: "REJECTED", reason: "Payout is still in flight.", idempotencyKey: key }) };
+      }
+      this.deed.status = "ACTIVE";
+      return { ok: true, receipt: this.receipt({ caller, receiver: "deeds.root", method: "recoverDeed", amount: 0, currency: "NONE", status: "CONFIRMED", reason: "SIMULATED recovery. Stale holders have no treasury access.", idempotencyKey: key }) };
+    });
+  }
+
+  mtTransfer(from: string, to: string, itemId: string, key?: string): ChainResult {
+    return this.run(key, () => {
+      const item = this.items.find((entry) => entry.id === itemId);
+      if (!item || item.owner !== from) {
+        return { ok: false, receipt: this.receipt({ caller: from, receiver: to, method: "mtTransfer", amount: 0, currency: "NONE", status: "REJECTED", reason: "You do not hold that token.", itemId, idempotencyKey: key }) };
+      }
+      item.owner = to;
+      item.history.push(`simulated mt_transfer to ${to}`);
+      return { ok: true, receipt: this.receipt({ caller: from, receiver: to, method: "mtTransfer", amount: 0, currency: "NONE", status: "CONFIRMED", reason: "SIMULATED NEP-245 transfer. No yocto deposit and no network.", itemId, idempotencyKey: key }) };
+    });
+  }
+
+  mtBalance(owner: string, typeId: string) {
+    return this.items.filter((item) => item.owner === owner && item.typeId === typeId).length;
+  }
+
+  nftOwner(tokenId = "deed:ashgate") {
+    return tokenId === this.deed.id ? this.deed.owner : "";
   }
 
   private ensure(id: string, name: string) {
