@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ITEMS, NAV, SITES } from "../game/content";
+import { ITEMS, SITES } from "../game/content";
 import { goodsRule } from "../game/config/economyRules";
 import { RAID } from "../../rules/economy";
 import { HERO_PROFILES } from "../game/config/heroProfiles";
@@ -44,6 +44,15 @@ import { MainMenu } from "./screens/MainMenu";
 import { MockSandbox } from "./screens/MockSandbox";
 import { renderTrapIcons } from "./trapIcons";
 
+function chronicleKind(text: string) {
+  const line = text.toLowerCase();
+  if (line.includes("page") || line.includes("rumour") || line.includes("burn")) return "Rumours";
+  if (line.includes("vault") || line.includes("bled")) return "Vault";
+  if (line.includes("trap") || line.includes("spike") || line.includes("placed") || line.includes("re-laid")) return "Traps";
+  if (line.includes("bought") || line.includes("supplied") || line.includes("price")) return "Market";
+  return "Raid";
+}
+
 const TUTORIAL = [
   "Choose Spike Trap on the bar. It follows the cursor. Click tile 4, 6.",
   "Click the red banner in the south doorway. The chosen hero walks in.",
@@ -56,13 +65,22 @@ const TUTORIAL = [
 
 export function App() {
   const game = useGame();
+  const playerNav = [
+    { id: "dungeon" as const, label: "Raid" },
+    { id: "gate" as const, label: "Gate" },
+    { id: "workshop" as const, label: "Workshop" },
+    { id: "map" as const, label: "Map" },
+    { id: "market" as const, label: "Market" },
+    { id: "chronicle" as const, label: "Replay" },
+    { id: "settings" as const, label: "Settings" },
+  ];
   return (
     <div className="flex h-full min-h-screen flex-col bg-ink text-parchment">
       {game.screen !== "menu" && <header className="z-20 flex items-center justify-between gap-3 border-b border-gold/15 bg-ink/80 px-4 py-2 backdrop-blur">
         <button className="font-display text-sm tracking-[0.22em] text-gold" onClick={() => setScreen("menu")}>UNDERREALM</button>
         <nav className="flex flex-wrap gap-1 text-[11px] uppercase tracking-[0.14em]">
-          {NAV.map((entry) => (
-            <button key={entry.id} className={`rounded-full px-3 py-1 ${game.screen === entry.id ? "bg-gold text-ink" : "text-parchment/70 hover:bg-white/5 hover:text-gold"}`} onClick={() => { sfx.ui(); setScreen(entry.id === "menu" ? "dungeon" : entry.id); }}>
+          {playerNav.map((entry) => (
+            <button key={entry.id} className={`rounded-full px-3 py-1 ${game.screen === entry.id ? "bg-gold text-ink" : "text-parchment/70 hover:bg-white/5 hover:text-gold"}`} onClick={() => { sfx.ui(); setScreen(entry.id); }}>
               {entry.label}
             </button>
           ))}
@@ -91,6 +109,8 @@ function DungeonScreen() {
   const [seconds, setSeconds] = useState<number>(RAID.pageFlightSec);
   const [hint, setHint] = useState("Choose a trap on the bar. It follows the cursor until you click a tile.");
   const [trapIcons, setTrapIcons] = useState<Partial<Record<(typeof TRAP_IDS)[number], string>>>({});
+  const [openHero, setOpenHero] = useState<"kara" | "brann" | "ivo" | null>(null);
+  const [feed, setFeed] = useState("All");
   useEffect(() => {
     let live = true;
     void renderTrapIcons().then((icons) => {
@@ -196,6 +216,28 @@ function DungeonScreen() {
     return () => window.clearInterval(timer);
   }, [game.pageResult, game.pending?.id]);
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      const key = event.key.toLowerCase();
+      const index = Number(key) - 1;
+      if (index >= 0 && index < TRAP_IDS.length) {
+        const id = TRAP_IDS[index];
+        if (game.selectedTrap === id) clearTrap();
+        else armTrap(id);
+      }
+      if (key === "b") armTrap("bait");
+      if (key === "p") armPossess();
+      if (event.key === " " && game.pageResult === "decision") {
+        event.preventDefault();
+        resolvePage("burn");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [game.selectedTrap, game.pageResult]);
+
   const report = game.pending;
   const hero = report ? HERO_PROFILES[report.heroId] : HERO_PROFILES.kara;
 
@@ -207,25 +249,32 @@ function DungeonScreen() {
           {(["kara", "brann", "ivo"] as const).map((id) => {
             const body = game.heroes[id];
             const profile = HERO_PROFILES[id];
+            const known = body.facts.filter((fact) => !fact.burned);
+            const open = openHero === id;
             return (
-              <div key={id} className="hud-glass w-36 rounded-2xl px-3 py-2">
-                <div className="flex items-baseline justify-between">
-                  <span className="font-display text-sm text-gold">{profile.name}</span>
+              <button key={id} className="hud-glass pointer-events-auto w-48 rounded-2xl px-3 py-2 text-left" onClick={() => setOpenHero(open ? null : id)}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="font-display text-lg text-gold">{profile.name}</span>
                   <span className="text-[10px] uppercase tracking-wider text-parchment/50">{profile.role}</span>
                 </div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-                  <div className="h-full bg-blood" style={{ width: `${(body.hp / body.maxHp) * 100}%` }} />
+                <p className="text-xs">HP {body.hp}/{body.maxHp} · Purse {body.gold}</p>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <div className="h-full bg-blood" style={{ width: `${Math.max(0, (body.hp / body.maxHp) * 100)}%` }} />
                 </div>
-                <p className="mt-1 truncate text-[11px] text-parchment/70">{body.memory[0]}</p>
-              </div>
+                {known[0] ? <p className="mt-1 text-xs text-memory">{known[0].memory ?? "warned"} · {known[0].source ?? "record"}</p> : <p className="mt-1 text-xs text-parchment/60">No trap memory yet</p>}
+                {open && <p className="mt-1 text-xs text-parchment/80">{body.memory[0]}</p>}
+                {open && known.slice(0, 3).map((fact) => <p key={fact.id} className="text-xs">{fact.text}</p>)}
+              </button>
             );
           })}
         </div>
-        <div className="hud-glass flex items-center gap-4 rounded-2xl px-4 py-2 text-sm">
-          <span>Vault <b className="text-gold">{game.vault}</b></span>
+        <div className="hud-glass flex flex-wrap items-center gap-3 rounded-2xl px-4 py-2 text-sm">
+          <span>Vault <b className={game.vault < RAID.vaultStart * 0.25 ? "text-blood" : "text-gold"}>{game.vault}</b></span>
+          <span className="text-parchment/70">{game.phase === "raid" ? `−${RAID.bleedPerHeroPerSec}/s` : "−0/s"}</span>
           <span>Gold <b className="text-gold">{game.gold}</b></span>
-          <span>Cinder <b className="text-ember">{game.cinder}</b></span>
-          <span className="text-parchment/60">Day {game.day}</span>
+          <span className="text-ember">Cinder {"●".repeat(game.cinder)}{"○".repeat(Math.max(0, RAID.cinder.cap - game.cinder))}</span>
+          <span>Wave {game.day}</span>
+          <span>×{report?.trapsTriggered.length ?? 0}</span>
         </div>
       </div>
       {game.phase === "report" && report && (
@@ -242,11 +291,20 @@ function DungeonScreen() {
           <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-parchment/45">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
         </div>
       </div>
-      <div className="pointer-events-none absolute right-3 top-28 hidden w-64 lg:block">
-        <div className="hud-glass max-h-72 overflow-hidden rounded-2xl p-3 text-xs">
-          <div className="font-display text-sm text-gold">Chronicle</div>
-          {game.selection && <p className="mt-1 text-memory">{game.selection.label}</p>}
-          {game.ledger.slice(0, 5).map((line) => <p key={line.id} className="mt-1 text-parchment/80">{line.text}</p>)}
+      <div className="pointer-events-auto absolute right-3 top-24 hidden w-72 lg:block">
+        <div className="hud-glass max-h-80 overflow-auto rounded-2xl p-3 text-xs">
+          <div className="font-display text-lg text-gold">Chronicle</div>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {["All", "Traps", "Vault", "Rumours", "Market", "Raid"].map((label) => (
+              <button key={label} className={`rounded-full px-2 py-1 ${feed === label ? "bg-gold text-ink" : "bg-white/5"}`} onClick={() => setFeed(label)}>{label}</button>
+            ))}
+          </div>
+          {game.ledger.filter((line) => feed === "All" || chronicleKind(line.text) === feed).slice(0, 8).map((line) => (
+            <article key={line.id} className="mt-2 border-t border-white/10 pt-2">
+              <p className="text-[10px] uppercase tracking-wider text-memory">{chronicleKind(line.text)} · day {line.day}</p>
+              <p className="text-parchment/85">{line.text}</p>
+            </article>
+          ))}
         </div>
       </div>
       <div className="absolute bottom-24 left-1/2 flex -translate-x-1/2 gap-2">
@@ -261,6 +319,10 @@ function DungeonScreen() {
             </button>
           );
         })}
+        <button className={`hud-glass w-24 rounded-2xl px-2 py-2 text-xs ${game.possessArmed ? "ring-2 ring-gold text-gold" : ""}`} disabled={game.day < RAID.possess.fromWave} onClick={() => armPossess()}>
+          Possess
+          <span className="mt-1 block text-[10px] text-gold">{RAID.possess.cost} gold</span>
+        </button>
       </div>
       <p className="pointer-events-none absolute bottom-1 right-3 text-[10px] text-parchment/35">{game.fps.toFixed(0)} fps · {game.rendererInfo || "renderer"}</p>
     </div>
@@ -468,6 +530,8 @@ function Settings() {
       <p className="mt-3 text-sm text-parchment/70">Low drops shadows. The fps counter in the dungeon is a measurement from this machine.</p>
       <button className="mt-6 rounded border border-blood px-3 py-1 text-blood" onClick={() => newGame()}>New game (clears this browser save)</button>
       <button className="mt-3 block rounded border border-gold/40 px-3 py-2 text-sm" onClick={() => setScreen("sandbox")}>Ownership details</button>
+      <button className="mt-3 block rounded border border-white/20 px-3 py-2 text-sm" onClick={() => setScreen("gallery")}>Model shelf</button>
+      <button className="mt-3 block rounded border border-white/20 px-3 py-2 text-sm" onClick={() => setScreen("registry")}>Hero directory</button>
       <p className="mt-2 text-xs text-parchment/50">Ownership details is a mock environment. It does not move real funds.</p>
     </section>
   );
