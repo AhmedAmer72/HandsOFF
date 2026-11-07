@@ -20,7 +20,7 @@ const NEIGHBORS = [
 
 function relevant(facts: Fact[], trap: PlacedTrap) {
   const epoch = trap.epoch ?? 1;
-  return facts.filter((fact) => !fact.burned && fact.kind === trap.trapId && fact.ix === trap.ix && fact.iz === trap.iz && (fact.epoch ?? 1) === epoch);
+  return facts.filter((fact) => !fact.burned && fact.kind === trap.trapId && fact.ix === trap.ix && fact.iz === trap.iz && (fact.epoch ?? 1) === epoch && (!fact.dungeonId || fact.dungeonId === "ashgate"));
 }
 
 export function routeCost(cell: Cell, traps: PlacedTrap[], facts: Fact[], profile: HeroProfile) {
@@ -30,6 +30,8 @@ export function routeCost(cell: Cell, traps: PlacedTrap[], facts: Fact[], profil
   const known = relevant(facts, trap);
   const level = known.map((fact) => fact.memory ?? "warned");
   if (trap.trapId === "bait" && known.length === 0) return Math.max(0.2, 1 - profile.greed / 10);
+  const baited = traps.some((entry) => entry.trapId === "bait");
+  if (rule.damage > 0 && level.some((entry) => entry === "dodged") && !level.some((entry) => entry === "warned") && baited && profile.greed >= 6) return 1.4;
   if (rule.damage > 0 && level.some((entry) => entry === "warned" || entry === "dodged")) return 12 + profile.caution * profile.riskAversion;
   if (rule.damage > 0 && level.some((entry) => entry === "observed")) return 1.5;
   if (level.some((entry) => entry === "countered")) return 1;

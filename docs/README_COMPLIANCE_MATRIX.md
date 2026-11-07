@@ -1,5 +1,11 @@
 # README v10.2 compliance matrix
 
+## Hero behavior pass (7 November 2026, about 4:30 PM Africa/Cairo)
+
+Kara, Brann, and Ivo now read the v10.2 agent table: risk 0.3 / 0.8 / 0.5, rumour appetite 0.7 / 0.2 / 0.9, mock purse 0.05. The hall still spends play Gold. A browser raid on one spike at 4, 6 showed Kara walk `4,11 · 4,10 · 4,9 · 4,8 · 4,7 · 4,6`, die, and keep `observed · eyes` after the page landed. Ivo bought that rumour, then walked `4,11 · 4,10 · 4,9 · 4,8 · 4,7 · 5,7 · 5,6 · 5,5 · 4,5 · 4,4 · 4,3 · 4,2 · 4,1 · 4,0` and survived with traps sprung 0. Brann’s card stayed “No trap memory yet.” `npx vitest run` is the automated check for the same split, plus dodged, countered, bait, and a stale epoch.
+
+3.5 is DONE for the five memory levels in tests, and the film covers unseen, observed, and warned. 3.6a stays DONE. 3.6b stays PARTIAL: the counter moves the recorded agent share once and the offer price does not change, but the live purse is play Gold. Gear does change a hit (armor −1, a phial outside the tutorial, boots ×1.3 on the vault bleed).
+
 ## Raid-loop pass (7 November 2026, about 3:05 PM Africa/Cairo)
 
 Browser, fresh game, spike placed at 4, 7 (on the walk). Kara died. Traps sprung 1. Spike kills 1. Bone went from 6 to 11 (thief salvage). The page was offered for 2 Cinder, then landed. Orrin can sell 1 fact. Tier 1. Next wave advanced the day. An earlier fresh game triggered the spike before the gate: the chronicle said it would not hit again, and the chain read ×1.
@@ -43,9 +49,9 @@ Workshop, from this pass’s navigation notes and the craft buttons in `src/ui/A
 | 3.4d | 3.4 | Unsold rumour expires after 20 raids | `expireRumours` uses `RUMOUR.expiryRaids` | `store.ts` | NOT TESTED | Not walked for 20 days in the browser | Advance 20 days |
 | 3.4e | 3.4 | Cinder starts 3, cap 5, +1 per kill, burn 2 | New game and the HUD pips match. One kill does not pay for a burn | `rules/economy.ts` | DONE | — | HUD showed ●●●○○ at 3 cinder |
 | 3.4f | 3.4 | Unverified diary never becomes a rumour | No verification gate. Every landed page can be listed | — | MISSING | Reject an unverified page | A failed verify leaves Orrin empty |
-| 3.5 | 3.5 | Five memory levels change the route | Unseen walks the spike. Observed does not detour. Warned detours. Stale epoch does not | `path.ts` | PARTIAL | Dodged and countered do not change combat | Browser second raid after a purchase |
+| 3.5 | 3.5 | Five memory levels change the route | Unseen walks the spike. Observed does not detour. Warned and dodged detour. A baited brute can step on a dodge. Countered costs the same as open floor. Another dungeon’s fact does not count | `path.ts`, `raid.ts`, `heroBehavior.test.ts` | DONE | The film showed unseen, observed, and warned. Dodged and countered were the unit tests | Browser second raid, plus `heroBehavior.test.ts` |
 | 3.6a | 3.6 | Three different heroes | Profiles differ. The gate board showed three different danger scores | `heroProfiles.ts`, `decisions.ts` | DONE | — | Gate screen this pass |
-| 3.6b | 3.6 | Contract balances, one counter, gear changes survival | Mock accounts exist. The raid still spends play Gold. No potion save, armor −1, or boots speed | `MockChain.ts`, `raid.ts` | PARTIAL | Gear has no combat effect | Same offer, three answers, with gear |
+| 3.6b | 3.6 | Contract balances, one counter, gear changes survival | Risk, appetite, and the 0.05 mock purse come from `AGENTS`. One counter adds 5 points to the agent share and leaves the price alone. Armor −1, a phial, and boots ×1.3 apply outside the first lesson | `heroProfiles.ts`, `decisions.ts`, `raid.ts` | PARTIAL | The hall spends play Gold. The 0.05 figure is not charged | Same offer in `heroBehavior.test.ts`; Kara’s counter line on the gate |
 | 3.7a | 3.7 | Mira buys salvage for Gold. Tallow’s NEAR gear stays NEAR | Supply pays play Gold. Stalls sell nails and phials for Gold | `store.ts`, `economyRules.ts` | PARTIAL | No NEAR-backed shelf in the gate UI | Supply iron and read the price inputs |
 | 3.7b | 3.7 | Shop OPEN → LOW_STOCK → UNDERCAPITALISED → CLOSED → recover | Badges use a 40/20 Gold stand-in, not 0.02 / 0.01 NEAR | `money.ts` `shopState` | PARTIAL | Live shops were all OPEN. No close/reopen was seen | Drive Mira’s gold under the close line |
 | 3.7c | 3.7 | Salvage and the six recipes | Death adds bone, ash, or iron. UI crafts a spike only | `store.ts`, `App.tsx` | PARTIAL | Pit, boulder, potion, armor, boots buttons are absent. No wave-clear iron | Craft each recipe |

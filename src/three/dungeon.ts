@@ -332,7 +332,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
           mesh.userData.level = true;
           mesh.userData.meta = entry;
           scene.add(mesh);
-          if (entry.kind === "floor" || entry.kind === "trap" || entry.kind === "prop" || entry.kind === "vault" || entry.kind === "light" || entry.label === "Entrance gate") {
+          if (entry.kind === "floor" || entry.kind === "trap" || entry.kind === "vault" || entry.id === "anvil" || entry.label === "Entrance gate") {
             selectables.push(mesh);
           }
           if (entry.label === "Entrance gate") mesh.userData.action = "gate";
@@ -532,16 +532,18 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObjects(selectables, true);
+    let passive: { node: THREE.Object3D; point: THREE.Vector3 } | null = null;
     for (const hit of hits) {
       let node: THREE.Object3D | null = hit.object;
       while (node) {
-        if (node.userData.rack || node.userData.placedId || node.userData.action || node.userData.pick || node.userData.meta) {
+        if (node.userData.action || node.userData.placedId || node.userData.pick || node.userData.rack) {
           return { node, point: hit.point };
         }
+        if (!passive && node.userData.meta) passive = { node, point: hit.point };
         node = node.parent;
       }
     }
-    return null;
+    return passive;
   }
 
   function caption(found: { node: THREE.Object3D } | null) {
@@ -648,6 +650,10 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       return;
     }
     const trapId = hooks.getTrap();
+    if (!trapId && !pendingRelay && ix === 4 && iz === 11) {
+      hooks.onGate();
+      return;
+    }
     if (trapId) dropTrap(trapId as TrapId, ix, iz);
   }
 
@@ -684,6 +690,26 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       return;
     }
     void previewTrap(event.clientX, event.clientY);
+    if (!hooks.getTrap()) {
+      const hit = hitFloor(event.clientX, event.clientY);
+      if (hit) {
+        const cell = snap(hit.point);
+        const ix = Math.round(cell.x / CELL);
+        const iz = Math.round(cell.z / CELL);
+        if (ix === 4 && iz === 11) {
+          say(hooks.getPhase() === "report" ? "Doorway tile 4, 11. Click for the next day." : "Doorway tile 4, 11. Click to open the raid.");
+          return;
+        }
+      }
+    }
+    if (hooks.getTrap()) {
+      const hit = hitFloor(event.clientX, event.clientY);
+      if (hit) {
+        const cell = snap(hit.point);
+        say(`Tile ${Math.round(cell.x / CELL)}, ${Math.round(cell.z / CELL)}. Click to place the trap.`);
+        return;
+      }
+    }
     say(caption(pickedNode(event.clientX, event.clientY)));
   }
 

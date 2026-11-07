@@ -34,6 +34,7 @@ export const GOODS: GoodsRule[] = [
   { id: "torch", name: "Wall Torch", basePrice: 6, targetStock: 4, maxStock: 8, merchant: "tallow" },
   { id: "lantern", name: "Lantern", basePrice: 15, targetStock: 2, maxStock: 3, merchant: "tallow" },
   { id: "staff", name: "Mage Staff", basePrice: 32, targetStock: 1, maxStock: 2, merchant: "tallow" },
+  { id: "armor", name: "Mail Coat", basePrice: 44, targetStock: 1, maxStock: 2, merchant: "tallow" },
 ];
 
 export function goodsRule(id: string) {

@@ -83,6 +83,11 @@ export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "deci
         push({ type: "death", text: `${profile.name} dies on the ${rule.name}.`, ix: cell.ix, iz: cell.iz, trapId: trap.trapId });
         break;
       }
+      const remembered = hero.facts.find((fact) => fact.kind === trap.trapId && fact.ix === trap.ix && fact.iz === trap.iz && (fact.epoch ?? 1) === (trap.epoch ?? 1));
+      if (remembered?.memory === "warned") {
+        remembered.memory = hero.equipment.includes("armor") ? "countered" : "dodged";
+        remembered.source = hero.equipment.includes("armor") ? "gear" : "previous raid";
+      }
     }
 
     const skeleton = RULES.skeletons.find((guard) => !fought.has(guard.id) && guard.ix === cell.ix && guard.iz === cell.iz);
@@ -180,6 +185,7 @@ function factFor(trap: PlacedTrap, day: number): Fact {
     burned: false,
     epoch: trap.epoch ?? 1,
     bornDay: day,
+    dungeonId: "ashgate",
     memory: "unseen",
     source: "page",
   };

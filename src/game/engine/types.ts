@@ -11,6 +11,8 @@ export interface Fact {
   burned: boolean;
   /** Layout epoch this clue belongs to. A re-lay makes an older clue stale. */
   epoch?: number;
+  /** Dungeon this clue belongs to. Memory is hero × trap × dungeon × epoch. */
+  dungeonId?: string;
   memory?: "unseen" | "observed" | "warned" | "dodged" | "countered";
   source?: string;
   bornDay?: number;
@@ -90,6 +92,8 @@ export interface DecisionTrace {
   danger: number;
   reason: string;
   purchase?: { merchantId: string; itemId: string; price: number; reason: string };
+  counterShift?: number;
+  route?: string;
 }
 
 export interface RaidReport {

@@ -324,7 +324,7 @@ export function startRaid() {
     raids: [report, ...save.raids].slice(0, 20),
     tutorialStep,
     lastDecision: decision.reason,
-    ledger: [{ id: `bleed-${report.id}`, day: save.day, text: `The vault bled ${bleed} Gold while ${decision.heroId} was inside.` }, { id: report.id, day: save.day, text: decision.reason }, ...save.ledger],
+    ledger: [{ id: `walk-${report.id}`, day: save.day, text: `${decision.heroId} walked ${simulated.report.events.filter((event) => event.type === "move").map((event) => `${event.ix},${event.iz}`).join(" · ")}.` }, { id: `bleed-${report.id}`, day: save.day, text: `The vault bled ${bleed} Gold while ${decision.heroId} was inside.` }, { id: report.id, day: save.day, text: decision.reason }, ...save.ledger],
     screen: "dungeon",
     possessArmed: false,
   };

@@ -142,7 +142,7 @@ function DungeonScreen() {
       tryPlace: (trapId, ix, iz) => {
         const result = placeTrap(trapId, ix, iz);
         if (result.ok) clearTrap();
-        setToast(result.ok ? "The trap is set." : result.reason);
+        setToast(result.ok ? `Trap set at ${ix}, ${iz}.` : result.reason);
         return result.ok ? result.id ?? "" : "";
       },
       relayTo: (id, ix, iz) => {
@@ -261,6 +261,7 @@ function DungeonScreen() {
                   <span className="text-[10px] uppercase tracking-wider text-parchment/50">{profile.role}</span>
                 </div>
                 <p className="text-xs">HP {body.hp}/{body.maxHp} · Purse {body.gold}</p>
+                <p className="text-[10px] uppercase tracking-wider text-parchment/50">Risk {profile.risk} · appetite {profile.rumourAppetite}</p>
                 <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
                   <div className="h-full bg-blood" style={{ width: `${Math.max(0, (body.hp / body.maxHp) * 100)}%` }} />
                 </div>
@@ -286,6 +287,7 @@ function DungeonScreen() {
           <div className="font-display text-lg text-gold">Raid results</div>
           <p>{report.survived ? `${hero.name} survived.` : `${hero.name} died.`}</p>
           <p>Traps sprung: {report.trapsTriggered.length}. Chain ×{game.chain ?? 0}.</p>
+          <p>Walked {report.events.filter((event) => event.type === "move").map((event) => `${event.ix},${event.iz}`).join(" · ")}.</p>
           <p>Pages {game.pageResult === "burned" ? "burned" : game.pageResult === "escaped" ? "landed" : "still in the air"}: {report.facts.length}.</p>
           <p>Salvage in hand: iron {game.inventory.iron ?? 0}, ash {game.inventory.ash ?? 0}, bone {game.inventory.bone ?? 0}.</p>
           <p>Spike kills {game.trapKills?.spike ?? 0}. Tier {dungeonTier(game.raidsCleared ?? 0)}.</p>

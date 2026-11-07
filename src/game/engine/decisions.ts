@@ -7,23 +7,43 @@ export function knownFacts(hero: HeroState): Fact[] {
   return hero.facts.filter((fact) => !fact.burned);
 }
 
+function freshnessOf(save: SaveData, rumour: Fact) {
+  const epochs = Math.max(0, save.day - (rumour.bornDay ?? save.day));
+  return Math.max(0.2, 0.85 ** epochs);
+}
+
 export function evaluateHero(save: SaveData, hero: HeroState): DecisionTrace {
   const profile = HERO_PROFILES[hero.id];
   const facts = knownFacts(hero);
-  const danger = 12 + facts.filter((fact) => fact.kind !== "outcome").length * 4 * profile.riskAversion;
+  const warned = facts.filter((fact) => (fact.memory ?? "warned") === "warned" || fact.memory === "dodged").length;
+  const observed = facts.filter((fact) => fact.memory === "observed").length;
+  const danger = 12 + warned * 6 * profile.riskAversion + observed * 2 * profile.riskAversion;
   const reward = ECONOMY.vaultReward + Math.max(0, 20 - save.reputation);
-  const score = reward - danger;
   const purchase = planPurchase(save, hero);
+  const listed = purchase?.merchantId === "orrin" ? save.merchants.orrin.rumours.find((fact) => fact.id === purchase.itemId) : undefined;
+  const rumourBoost = listed ? profile.rumourAppetite * 24 * freshnessOf(save, listed) : 0;
+  const score = reward + rumourBoost - danger;
   const accept = hero.gold >= 0 && score >= profile.acceptThreshold;
+  const counterShift = accept && profile.risk <= 0.5 && warned + observed > 0 ? 0.05 : 0;
+  const nerve = profile.fleeAt > 0.4 ? "retreats early" : profile.fleeAt < 0.2 ? "stays in a fight" : "leaves a fight only when hurt";
+  const buyingRumour = purchase?.merchantId === "orrin";
+  const route = warned > 0 || buyingRumour
+    ? `${profile.name} will walk around ${buyingRumour ? "the tile named in the rumour they are buying" : "tiles they were warned about"}.`
+    : observed > 0
+      ? `${profile.name} saw a trap and will inspect it, not detour.`
+      : `${profile.name} has no trap memory and takes the short walk.`;
+  const purse = `Purse ${hero.gold} gold, risk tolerance ${profile.risk}, rumour appetite ${profile.rumourAppetite}. ${profile.name} ${nerve}.`;
+  const buy = purchase ? ` ${purchase.reason}` : " No purchase this wave.";
   const reason = accept
-    ? `${profile.name} accepted the raid because the expected reward is ${reward} gold and the danger score is ${danger.toFixed(1)} under their risk tolerance (${profile.riskAversion}).`
-    : `${profile.name} refused the raid because danger ${danger.toFixed(1)} makes the score ${score.toFixed(1)}, below their threshold of ${profile.acceptThreshold}.`;
-  return { heroId: hero.id, accept, score, reward, danger, reason, purchase };
+    ? `${profile.name} accepted the raid because the expected reward is ${reward} gold and the danger score is ${danger.toFixed(1)}. ${purse} ${route}${counterShift ? " Counter once: agent share 35%. The offer price stays the same." : ""}${buy}`
+    : `${profile.name} refused the raid because danger ${danger.toFixed(1)} makes the score ${score.toFixed(1)}, below their threshold of ${profile.acceptThreshold}. ${purse}${buy}`;
+  return { heroId: hero.id, accept, score, reward, danger, reason, purchase, counterShift, route };
 }
 
 export function chooseRaider(save: SaveData): DecisionTrace {
   const traces = HERO_ORDER.map((id) => evaluateHero(save, save.heroes[id]));
-  return traces.find((trace) => trace.accept) ?? traces[0];
+  const willing = traces.filter((trace) => trace.accept);
+  return [...willing].sort((a, b) => b.score - a.score)[0] ?? traces[0];
 }
 
 function planPurchase(save: SaveData, hero: HeroState): DecisionTrace["purchase"] {
@@ -32,13 +52,17 @@ function planPurchase(save: SaveData, hero: HeroState): DecisionTrace["purchase"
     const orrin = save.merchants.orrin;
     const rumour = orrin.rumours.find((fact) => !fact.burned && !hero.facts.some((known) => known.id === fact.id && known.memory !== "observed"));
     if (rumour) {
-      const price = Math.min(profile.spendCap, ECONOMY.rumourBasePrice + rumour.quality * 4);
-      if (hero.gold >= price && orrin.gold >= 0) {
+      const quote = ECONOMY.rumourBasePrice + rumour.quality * 4;
+      const epochs = Math.max(0, save.day - (rumour.bornDay ?? save.day));
+      const freshness = Math.max(0.2, 0.85 ** epochs);
+      const willing = Math.round(quote * (0.55 + profile.rumourAppetite) * (0.5 + freshness));
+      const price = Math.min(profile.spendCap, quote);
+      if (willing >= price && hero.gold >= price && orrin.gold >= 0) {
         return {
           merchantId: "orrin",
           itemId: rumour.id,
           price,
-          reason: `${profile.name} buys the rumour "${rumour.text}" for ${price} gold because they spend on information.`,
+          reason: `${profile.name} buys the rumour "${rumour.text}" for ${price} gold. Freshness ${freshness.toFixed(2)}. Appetite ${profile.rumourAppetite}. Purse before ${hero.gold}, after ${hero.gold - price}.`,
         };
       }
     }
@@ -73,7 +97,7 @@ export function applyPurchase(save: SaveData, heroId: HeroState["id"], purchase:
       const nextHero: HeroState = {
         ...hero,
         gold: hero.gold - purchase.price,
-        facts: [...hero.facts, { ...rumour, burned: false, memory: "warned", source: "bought rumour" }],
+        facts: [...hero.facts, { ...rumour, burned: false, memory: "warned", source: "bought rumour", dungeonId: rumour.dungeonId ?? "ashgate" }],
         history: [{ id: `buy-${save.day}-${rumour.id}`, day: save.day, text: purchase.reason }, ...hero.history],
       };
       return {
