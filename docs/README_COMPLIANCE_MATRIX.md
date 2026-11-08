@@ -1,5 +1,7 @@
 # README v10.2 compliance matrix
 
+The 8 November 2026, 5:28 AM Africa/Cairo pass for the shared world map, the physical market, and the physical workshop is in `docs/V10_2_RESTORE_AND_WORLD_MAP.md`. That note wins for §5.6 and for the market and workshop screens. The tables below stay as the earlier audit.
+
 ## Acceptance pass (8 November 2026, about 3:50 AM Africa/Cairo)
 
 `npm test` passed: 9 files, 66 tests. `npm run build` completed. The one-sitting browser path from a fresh guest through trap, death, rumour, second raid, supply, listing, and replay was not finished; the browser driver stopped before that run. Statuses below stay PARTIAL or MISSING where that sitting did not produce evidence. Earlier sittings on this branch did open the screens named in the later notes. Rows in the tables that still say a screen does not exist are out of date; this note wins.

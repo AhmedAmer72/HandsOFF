@@ -18,7 +18,11 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 export async function writeSave(save: SaveData) {
-  localStorage.setItem(LOCAL_KEY, JSON.stringify(save));
+  try {
+    localStorage.setItem(LOCAL_KEY, JSON.stringify(save));
+  } catch {
+    // IndexedDB is the second copy when the browser allows it.
+  }
   try {
     const db = await openDb();
     await new Promise<void>((resolve, reject) => {
@@ -58,8 +62,12 @@ export async function readSave(): Promise<SaveData | null> {
 }
 
 export async function clearSave() {
-  localStorage.removeItem(LOCAL_KEY);
-  localStorage.removeItem("underrealm-save-v2");
+  try {
+    localStorage.removeItem(LOCAL_KEY);
+    localStorage.removeItem("underrealm-save-v2");
+  } catch {
+    // Nothing local to clear.
+  }
   try {
     const db = await openDb();
     await new Promise<void>((resolve, reject) => {

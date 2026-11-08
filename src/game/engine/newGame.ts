@@ -62,6 +62,11 @@ export function createSave(screen = "menu"): SaveData {
     phase: "prep",
     pending: null,
     screen,
+    ownerId: "keeper-local",
+    displayName: "Ashgate Keeper",
+    dungeonName: "Ashgate",
+    dungeonDescription: "The hall under the ash gate.",
+    dungeonPublished: false,
   };
 }
 

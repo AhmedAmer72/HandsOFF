@@ -153,4 +153,10 @@ export interface SaveData {
   phase: "prep" | "choice" | "raid" | "diary" | "report";
   pending: RaidReport | null;
   screen: string;
+  /** Local keeper id for this device. Not a wallet account. */
+  ownerId?: string;
+  displayName?: string;
+  dungeonName?: string;
+  dungeonDescription?: string;
+  dungeonPublished?: boolean;
 }

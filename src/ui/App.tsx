@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ITEMS, SITES } from "../game/content";
 import { goodsRule } from "../game/config/economyRules";
-import { GOODS as RULE_GOODS, RAID, RECIPES } from "../../rules/economy";
+import { GOODS as RULE_GOODS, RAID } from "../../rules/economy";
 import { HERO_PROFILES } from "../game/config/heroProfiles";
-import { RULES } from "../game/config/gameRules";
 import { TRAP_DEFINITIONS, TRAP_IDS } from "../game/config/trapDefinitions";
 import { quotePrice } from "../game/engine/pricing";
 import { chooseRaider, evaluateHero } from "../game/engine/decisions";
@@ -15,13 +13,8 @@ import {
   buyBackRumour,
   buyFromMerchant,
   buyUpgrade,
-  cancelListing,
   craftTrap,
-  forgeKit,
   supplyIron,
-  supplyMaterial,
-  listItem,
-  buyListing,
   markDiary,
   newGame,
   nextDay,
@@ -48,6 +41,8 @@ import { mountGallery } from "../three/gallery";
 import { MainMenu } from "./screens/MainMenu";
 import { MockSandbox } from "./screens/MockSandbox";
 import { DeedScreen, GuildScreen, HomeScreen, ReportScreen, TakeHomeScreen, WeekScreen } from "./screens/PlayScreens";
+import { MarketHall, WorkshopHall } from "./stalls/StallHalls";
+import { SpectatorScreen, WorldMap } from "./world/WorldScreens";
 import { renderTrapIcons } from "./trapIcons";
 import { Shell } from "./shell";
 import { CHRONICLE, chronicleKind } from "./kit";
@@ -73,8 +68,9 @@ export function App() {
         {game.screen === "dungeon" && <DungeonScreen />}
         {game.screen === "map" && <WorldMap />}
         {game.screen === "gate" && <GateMarket />}
-        {game.screen === "market" && <Marketplace />}
-        {game.screen === "workshop" && <Workshop />}
+        {game.screen === "market" && <MarketHall />}
+        {game.screen === "workshop" && <WorkshopHall />}
+        {game.screen === "spectator" && <SpectatorScreen />}
         {game.screen === "registry" && <Registry />}
         {game.screen === "chronicle" && <Chronicle />}
         {game.screen === "report" && <ReportScreen />}
@@ -339,45 +335,6 @@ function DungeonScreen() {
   );
 }
 
-function WorldMap() {
-  const game = useGame();
-  const [site, setSite] = useState(SITES[0]);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const view = mountGallery(canvas);
-    void view.show(site.model);
-    return () => view.dispose();
-  }, [site]);
-  return (
-    <section className="grid h-full min-h-0 gap-4 p-4 lg:grid-cols-[1fr_320px]">
-      <div>
-        <h2 className="font-display text-3xl text-gold">World map</h2>
-        <p className="mb-4 text-sm text-parchment/70">Day {game.day}. Reputation {game.reputation}. The hexes are drawn here. Markers use the downloaded models.</p>
-        <div className="relative h-[420px]">
-          {SITES.map((entry) => {
-            const x = 180 + entry.q * 92 + entry.r * 46;
-            const y = 160 + entry.r * 80;
-            return (
-              <button key={entry.id} className="absolute h-20 w-20 text-xs" style={{ left: x, top: y, clipPath: "polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%)", background: entry.kind === "dungeon" ? "#6a3a28" : "#3d3428" }} onClick={() => { setSite(entry); note(`Marked ${entry.name}.`); }}>
-                <span className="block px-2 pt-6 text-parchment">{entry.name}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <div className="rounded border border-gold/30 bg-panel p-3">
-        <div className="font-display text-xl text-gold">{site.name}</div>
-        <p className="text-sm text-parchment/75">{site.detail}</p>
-        <canvas ref={canvasRef} className="view mt-3 h-64 w-full rounded bg-black" />
-        {site.kind === "dungeon" && <button className="mt-3 rounded bg-ember px-3 py-1 text-ink" onClick={() => setScreen("dungeon")}>Enter</button>}
-        {site.kind === "merchant" && <button className="mt-3 rounded bg-gold px-3 py-1 text-ink" onClick={() => setScreen("gate")}>Open gate market</button>}
-      </div>
-    </section>
-  );
-}
-
 function GateMarket() {
   const game = useGame();
   const merchants = [game.merchants.mira, game.merchants.orrin, game.merchants.tallow];
@@ -425,78 +382,6 @@ function GateMarket() {
         <p className="text-sm">{game.priceNote || "Prices follow stock against each merchant's target."}</p>
         {game.ledger.slice(0, 6).map((line) => <p key={line.id} className="text-sm">{line.text}</p>)}
       </article>
-    </section>
-  );
-}
-
-function Marketplace() {
-  const game = useGame();
-  const [price, setPrice] = useState(10);
-  const [nearPrice, setNearPrice] = useState(0.01);
-  const open = game.listings.filter((listing) => (listing.status ?? "LISTED") === "LISTED");
-  return (
-    <section className="grid gap-4 p-4 lg:grid-cols-2">
-      <div>
-        <h2 className="font-display text-3xl text-gold">Player market</h2>
-        <p className="text-sm text-parchment/70">A listing sits in escrow. A sale pays the seller 90, the guild 5, and ops 5. Cancel and expiry return the item with no fee. Play-only goods cannot be listed for mock NEAR.</p>
-        <p className="mt-2 text-sm">Your mock NEAR {game.near ?? 0}. Guild gold {(game.guildGold ?? 0).toFixed(2)}. Ops gold {(game.opsGold ?? 0).toFixed(2)}.</p>
-        {game.priceNote && <p className="mt-2 text-sm text-gold">{game.priceNote}</p>}
-        <ul className="mt-4 space-y-2">
-          {open.map((listing) => (
-            <li key={listing.id} className="flex items-center justify-between rounded border border-white/10 px-3 py-2 text-sm">
-              <span>{goodsRule(listing.itemId)?.name ?? listing.itemId} · {listing.price} {listing.currency ?? "PLAY_GOLD"} · {listing.cls ?? "PLAY_ONLY"} · escrow</span>
-              <span className="flex gap-2">
-                {listing.seller !== "player" && <button className="rounded border border-gold/40 px-2 py-1" onClick={() => buyListing(listing.id)}>Buy</button>}
-                {listing.seller === "player" && <button className="rounded border border-white/20 px-2 py-1" onClick={() => cancelListing(listing.id)}>Cancel</button>}
-              </span>
-            </li>
-          ))}
-          {open.length === 0 && <li className="text-sm text-parchment/60">No listings.</li>}
-        </ul>
-      </div>
-      <div>
-        <h3 className="font-display text-gold">Your packs</h3>
-        {Object.entries(game.inventory).filter(([, qty]) => qty > 0).map(([id, qty]) => (
-          <div key={id} className="mt-2 flex items-center justify-between gap-2 text-sm">
-            <span>{goodsRule(id)?.name ?? ITEMS.find((item) => item.id === id)?.name ?? id} × {qty} · {game.classes?.[id] ?? "PLAY_ONLY"}</span>
-            <span className="flex gap-1">
-              <button className="rounded border border-white/20 px-2 py-1" onClick={() => listItem(id, price, "PLAY_GOLD")}>List {price}g</button>
-              <button className="rounded border border-white/20 px-2 py-1" onClick={() => listItem(id, nearPrice, "NEAR")}>List NEAR</button>
-            </span>
-          </div>
-        ))}
-        <label className="mt-4 block text-sm">Gold ask
-          <input className="ml-2 w-20 bg-black/40 px-2" type="number" value={price} min={1} onChange={(event) => setPrice(Number(event.target.value))} />
-        </label>
-        <label className="mt-2 block text-sm">Mock NEAR ask
-          <input className="ml-2 w-24 bg-black/40 px-2" type="number" value={nearPrice} min={0.0001} step={0.001} onChange={(event) => setNearPrice(Number(event.target.value))} />
-        </label>
-      </div>
-    </section>
-  );
-}
-
-function Workshop() {
-  const game = useGame();
-  return (
-    <section className="mx-auto max-w-3xl p-6">
-      <h2 className="font-display text-3xl text-gold">Workshop</h2>
-      <p className="text-sm text-parchment/70">Four iron nails become a spike kit. The next spike trap then costs no Gold.</p>
-      <p className="mt-3 text-sm">Nails in hand: {game.inventory.nail ?? 0}. Kits: {game.inventory.kit ?? 0}. Cinder: {game.cinder}.</p>
-      <p className="mt-3 text-sm">Iron {game.inventory.iron ?? 0} · ash {game.inventory.ash ?? 0} · bone {game.inventory.bone ?? 0}</p>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {(Object.keys(RECIPES) as (keyof typeof RECIPES)[]).map((id) => {
-          const kind = id.endsWith("potion") ? "potion" : id.endsWith("armor") ? "armor" : id.endsWith("boots") ? "boots" : id.endsWith("pit") ? "pit" : id.endsWith("boulder") ? "boulder" : "spike";
-          return <button key={id} className="rounded bg-ember px-3 py-1 text-ink" onClick={() => craftTrap(kind)}>{id}</button>;
-        })}
-      </div>
-      <button className="mt-4 rounded border border-gold/40 px-3 py-1" onClick={() => supplyIron(5)}>Supply 5 iron</button>
-      <button className="mt-4 ml-3 rounded border border-gold/40 px-3 py-1" onClick={() => supplyMaterial("ash", 5)}>Supply 5 ash</button>
-      <button className="mt-4 ml-3 rounded border border-gold/40 px-3 py-1" onClick={() => supplyMaterial("bone", 5)}>Supply 5 bone</button>
-      <button className="mt-4 ml-3 rounded bg-ember px-3 py-1 text-ink" onClick={() => forgeKit()}>Forge spike kit</button>
-      <button className="mt-4 ml-3 rounded border border-gold/40 px-3 py-1" onClick={() => buyUpgrade("vault-brace")}>Vault brace · {RULES.vaultBraceCost}g</button>
-      <p className="mt-3 text-sm">Installed: {game.upgrades.join(", ") || "none"}.</p>
-      {game.priceNote && <p className="mt-3 text-sm text-gold">{game.priceNote}</p>}
     </section>
   );
 }
