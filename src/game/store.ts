@@ -1,19 +1,18 @@
 import { useSyncExternalStore } from "react";
-import type { Quality, ScreenId, WorldMode } from "./content";
+import type { HeroId, Quality, ScreenId, WorldMode } from "./content";
 import { CELL } from "./content";
-import { RAID, RECIPES, RUMOUR, SALVAGE, GOODS as RULE_GOODS, type Currency } from "../../rules/economy";
+import { PERMIT, RAID, RECIPES, RUMOUR, SALVAGE, GOODS as RULE_GOODS, type Currency } from "../../rules/economy";
 import { buybackPrice, liveQuote, rumourPrice } from "./rules/money";
 import { buySale, cancelSale, craftOutputClass, expireSales, itemClass, listForSale, merchantBuyListing, merchantNear, merchantStatus, recipeInputs, recoverMerchant } from "./engine/market";
 import { isWalkable, RULES } from "./config/gameRules";
 import { TRAP_DEFINITIONS, type TrapId } from "./config/trapDefinitions";
 import { HERO_PROFILES } from "./config/heroProfiles";
-import { applyPurchase, chooseRaider, playerBuy } from "./engine/decisions";
+import { applyPurchase, chooseRaider, evaluateHero, playerBuy } from "./engine/decisions";
 import { createSave, restock } from "./engine/newGame";
 import { outcomeHash, simulateRaid } from "./engine/raid";
 import type { PlacedTrap, RaidReport, SaveData } from "./engine/types";
 import { clearSave, readSave, writeSave } from "./persist";
-import { beginActivity, endActivity, getActivity, loadRegistry, readRegistry, unpublishHall, upsertHall, writeRegistry } from "./world/registry";
-
+import { beginActivity, consumeRecord, counterRecord, endActivity, expireRecord, fundRecord, getActivity, loadRegistry, offerExpired, offersOf, pushHalls, readRegistry, refuseRecord, settleRecord, unpublishHall, upsertHall, writeRegistry } from "./world/registry";
 export interface VisualStep {
   type: string;
   x: number;
@@ -298,10 +297,97 @@ export function dungeonTier(raidsCleared: number) {
   return 1;
 }
 
+const refundedOffers = new Set<string>();
+
+export function reviewOffers(now = Date.now()) {
+  let file = readRegistry();
+  let refund = 0;
+  for (const offer of offersOf(file)) {
+    const raids = offer.dungeonId === hallIdOf(state) ? (state.raidsCleared ?? 0) : (offer.slotsAtFund ?? 0);
+    if (!offerExpired(offer, now, raids)) continue;
+    const result = expireRecord(file, offer.id);
+    file = result.file;
+    if (result.ok && result.funderId === (state.ownerId || "keeper-local") && !refundedOffers.has(offer.id)) {
+      refund += result.refund;
+      refundedOffers.add(offer.id);
+    }
+  }
+  if (refund === 0 && file === readRegistry()) return { ok: true, reason: "No offer expired." };
+  writeRegistry(file);
+  if (refund > 0) state = { ...state, near: (state.near ?? 0) + refund };
+  void pushHalls({ action: "review", now, raidsCleared: state.raidsCleared ?? 0 });
+  emit();
+  return { ok: true, reason: refund > 0 ? "An expired offer returned the mock purse. Nothing was sent on a chain." : "An offer expired." };
+}
+
+export async function fundRaidOffer(dungeonId = hallIdOf(state)) {
+  reviewOffers();
+  if ((state.near ?? 0) + 1e-9 < PERMIT.price) return { ok: false, reason: "The mock purse does not hold 0.01. Nothing was taken." };
+  const slots = dungeonId === hallIdOf(state) ? (state.raidsCleared ?? 0) : null;
+  const funded = fundRecord(readRegistry(), { dungeonId, funderId: state.ownerId || "keeper-local", slotsAtFund: slots });
+  if (!funded.ok || !funded.offer) return { ok: false, reason: funded.reason };
+  state = { ...state, near: (state.near ?? 0) - PERMIT.price, priceNote: funded.reason };
+  writeRegistry(funded.file);
+  await pushHalls({ action: "fund", dungeonId, funderId: funded.offer.funderId, slotsAtFund: slots, now: funded.offer.fundedAt });
+  const kept = offersOf(readRegistry()).some((offer) => offer.id === funded.offer?.id);
+  if (!kept) {
+    state = { ...state, near: (state.near ?? 0) + PERMIT.price };
+    emit();
+    return { ok: false, reason: "An offer is already open for this hall. Nothing more was taken." };
+  }
+  emit();
+  return { ok: true, reason: funded.reason };
+}
+
+export async function counterRaidOffer(heroId: HeroId) {
+  const offer = offersOf(readRegistry()).find((entry) => entry.dungeonId === hallIdOf(state) && entry.status === "OPEN");
+  if (!offer) return { ok: false, reason: "There is no open offer on your hall." };
+  const trace = evaluateHero(state, state.heroes[heroId]);
+  if (!trace.accept || !trace.counterShift) return { ok: false, reason: `${trace.heroId} does not counter this offer.` };
+  const result = counterRecord(readRegistry(), offer.id, heroId, trace.counterShift);
+  if (!result.ok) return { ok: false, reason: result.reason };
+  writeRegistry(result.file);
+  await pushHalls({ action: "counter", offerId: offer.id, heroId, shift: trace.counterShift });
+  emit();
+  return { ok: true, reason: result.reason };
+}
+
+export async function refuseRaidOffer() {
+  const offer = offersOf(readRegistry()).find((entry) => entry.dungeonId === hallIdOf(state) && entry.status === "COUNTER_PENDING");
+  if (!offer) return { ok: false, reason: "Only the owner of this hall can refuse a counter, and there is none waiting." };
+  const result = refuseRecord(readRegistry(), offer.id);
+  if (!result.ok) return { ok: false, reason: result.reason };
+  writeRegistry(result.file);
+  await pushHalls({ action: "refuse", offerId: offer.id });
+  emit();
+  return { ok: true, reason: result.reason };
+}
+
+export async function acceptRaidOffer() {
+  const offer = offersOf(readRegistry()).find((entry) => entry.dungeonId === hallIdOf(state) && (entry.status === "OPEN" || entry.status === "COUNTER_PENDING"));
+  if (!offer) return { ok: false, reason: "Only the owner can accept an offer on this hall." };
+  const result = settleRecord(readRegistry(), offer.id);
+  if (!result.ok || !result.offer) return { ok: false, reason: result.reason };
+  state = { ...state, near: (state.near ?? 0) + PERMIT.price * result.offer.split.owner };
+  writeRegistry(result.file);
+  await pushHalls({ action: "settle", offerId: offer.id });
+  emit();
+  return { ok: true, reason: `${result.reason} Owner share stays in the mock purse. This is not a chain payment.` };
+}
+
 export function startRaid() {
   if (state.spectating) return { ok: false, reason: "Spectators cannot open the gate." };
-  if (state.dungeonClosed) return;
-  if (state.phase !== "prep" && state.phase !== "report") return;
+  if (state.dungeonClosed) return { ok: false, reason: "The hall is closed." };
+  if (state.phase !== "prep" && state.phase !== "report") return { ok: false, reason: "The hall is not ready for a raid." };
+  reviewOffers();
+  const permit = offersOf(readRegistry()).find((offer) => offer.dungeonId === hallIdOf(state) && offer.status === "SETTLED" && !offer.consumed);
+  if (!permit) return { ok: false, reason: "No settled offer. Fund one on the contract board. Nothing started." };
+  const decisionPreview = chooseRaider(state);
+  if (!decisionPreview.accept) return { ok: false, reason: "No hero accepted the offer. The raid did not start." };
+  const consumed = consumeRecord(readRegistry(), permit.id);
+  if (!consumed.ok) return { ok: false, reason: consumed.reason };
+  writeRegistry(consumed.file);
+  void pushHalls({ action: "consume", offerId: permit.id });
   let save: SaveData = state;
   const decision = chooseRaider(save);
   if (decision.purchase) save = applyPurchase(save, decision.heroId, decision.purchase);
@@ -317,7 +403,13 @@ export function startRaid() {
     spentTrapIds: save.spentTrapIds ?? [],
   });
   const report: RaidReport = { ...simulated.report, decision };
-  const heroes = { ...save.heroes, [decision.heroId]: simulated.hero };
+  const heroes = {
+    ...save.heroes,
+    [decision.heroId]: {
+      ...simulated.hero,
+      near: (simulated.hero.near ?? 0) + PERMIT.price * permit.split.agents,
+    },
+  };
   const boots = save.heroes[decision.heroId].equipment.includes("boots") ? 1.3 : 1;
   const speed = HERO_PROFILES[decision.heroId].moveSpeed * boots;
   const steps = simulated.report.events.filter((event) => event.type === "move" || event.type === "enter").length;
@@ -370,7 +462,8 @@ export function startRaid() {
       iz: event.iz,
     }));
     writeRegistry(upsertHall(readRegistry(), projectHall(state)));
-    writeRegistry(beginActivity(readRegistry(), {
+    shareHall();
+    const activity = beginActivity(readRegistry(), {
       dungeonId: hallIdOf(state),
       active: true,
       heroId: report.heroId,
@@ -378,10 +471,14 @@ export function startRaid() {
       outcomeHash: outcomeHash(report.events),
       finished: false,
       updatedAt: new Date().toISOString(),
-    }));
+    });
+    writeRegistry(activity);
+    const shared = activity.activity.find((entry) => entry.dungeonId === hallIdOf(state));
+    if (shared) void pushHalls({ action: "activity", activity: shared });
     state = { ...state, catalogNonce: state.catalogNonce + 1 };
   }
   emit();
+  return { ok: true, reason: decision.reason };
 }
 
 export function markDiary() {
@@ -461,6 +558,8 @@ export function nextDay() {
   if (published) {
     writeRegistry(upsertHall(readRegistry(), projectHall(state)));
     writeRegistry(endActivity(readRegistry(), dungeonId, summary));
+    shareHall();
+    void pushHalls({ action: "end", dungeonId, summary });
     state = { ...state, catalogNonce: state.catalogNonce + 1 };
   }
   emit();
@@ -696,13 +795,21 @@ export function publishHall(name: string, description: string, displayName: stri
     displayName: displayName.trim() || state.displayName || "Ashgate Keeper",
   };
   writeRegistry(upsertHall(readRegistry(), projectHall(state)));
+  shareHall();
   state = { ...state, catalogNonce: state.catalogNonce + 1, priceNote: `${trimmed} is on the world map.` };
   emit();
   return { ok: true, reason: state.priceNote };
 }
 
+function shareHall() {
+  const card = readRegistry().dungeons.find((hall) => hall.dungeonId === hallIdOf(state));
+  if (card) void pushHalls({ action: "upsert", hall: card });
+}
+
 export function unpublishCurrent() {
-  writeRegistry(unpublishHall(readRegistry(), hallIdOf(state)));
+  const id = hallIdOf(state);
+  writeRegistry(unpublishHall(readRegistry(), id));
+  void pushHalls({ action: "unpublish", dungeonId: id });
   state = { ...state, dungeonPublished: false, catalogNonce: state.catalogNonce + 1, priceNote: "The hall is a draft again. Other keepers cannot see it." };
   emit();
   return { ok: true, reason: state.priceNote };

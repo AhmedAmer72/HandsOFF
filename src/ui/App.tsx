@@ -4,12 +4,17 @@ import { GOODS as RULE_GOODS, RAID } from "../../rules/economy";
 import { HERO_PROFILES } from "../game/config/heroProfiles";
 import { TRAP_DEFINITIONS, TRAP_IDS } from "../game/config/trapDefinitions";
 import { quotePrice } from "../game/engine/pricing";
-import { chooseRaider, evaluateHero } from "../game/engine/decisions";
+import { evaluateHero } from "../game/engine/decisions";
 import { merchantStatus } from "../game/engine/market";
 import { sfx } from "../game/audio";
 import {
+  acceptRaidOffer,
   armPossess,
   bindDungeon,
+  counterRaidOffer,
+  fundRaidOffer,
+  hallIdOf,
+  refuseRaidOffer,
   buyBackRumour,
   buyFromMerchant,
   buyUpgrade,
@@ -35,6 +40,7 @@ import {
   toSteps,
   useGame,
 } from "../game/store";
+import { offersOf, readRegistry } from "../game/world/registry";
 import { outcomeHash } from "../game/engine/raid";
 import { mountDungeon } from "../three/dungeon";
 import { mountGallery } from "../three/gallery";
@@ -139,7 +145,7 @@ function DungeonScreen() {
       onGate: () => {
         if (hooks.current.phase === "report") nextDay();
         else if (hooks.current.phase === "prep") {
-          startRaid();
+          setScreen("gate");
           sfx.ui();
         }
       },
@@ -341,19 +347,36 @@ function DungeonScreen() {
 
 function GateMarket() {
   const game = useGame();
+  const [slip, setSlip] = useState("");
   const merchants = [game.merchants.mira, game.merchants.orrin, game.merchants.tallow];
   const board = (["kara", "brann", "ivo"] as const).map((id) => evaluateHero(game, game.heroes[id]));
-  const raider = chooseRaider(game);
+  const offer = offersOf(readRegistry()).find((entry) => entry.dungeonId === hallIdOf(game) && !entry.consumed && entry.status !== "EXPIRED_REFUNDED");
+  const raider = board.filter((trace) => trace.accept).sort((a, b) => b.score - a.score)[0];
   return (
-    <section className="grid gap-4 p-4 lg:grid-cols-3">
+    <section className="grid gap-4 p-4 lg:grid-cols-3" data-testid="contract-board">
       <div className="lg:col-span-3"><button className="min-h-11 rounded-2xl border border-gold/40 px-3 text-sm" onClick={() => setScreen("dungeon")}>Return to your dungeon</button></div>
       <article className="rounded border border-gold/25 bg-panel p-4 lg:col-span-3">
         <h3 className="font-display text-2xl text-gold">Raid board</h3>
-        <p className="text-sm text-parchment/70">Each hero accepts or refuses on their own numbers. A counter would move a split only. Posting an offer does not spend Gold.</p>
-        <ul className="mt-2 space-y-1 text-sm">
-          {board.map((trace) => <li key={trace.heroId}>{trace.accept ? "Accepted" : "Refused"} · {trace.reason}</li>)}
+        <p className="text-sm text-parchment/70">A patron or the owner can fund 0.01 from the mock purse. Heroes decide on their own. A counter moves the split only. The price never changes. This is not a chain payment.</p>
+        <p className="mt-2 text-sm">Mock purse {(game.near ?? 0).toFixed(4)}. {offer ? `Offer ${offer.status}. Split ${Math.round(offer.split.owner * 100)}/${Math.round(offer.split.agents * 100)}/${Math.round(offer.split.guild * 100)}/${Math.round(offer.split.ops * 100)}.` : "No open offer."}</p>
+        <ul className="mt-2 space-y-2 text-sm">
+          {board.map((trace) => (
+            <li key={trace.heroId}>
+              <p>{trace.accept ? "Accepted" : "Refused"} · {trace.reason}</p>
+              {(trace.counterShift ?? 0) > 0 && offer?.status === "OPEN" && (
+                <button className="mt-1 min-h-11 rounded-2xl border border-gold/40 px-3" onClick={() => void counterRaidOffer(trace.heroId).then((result) => setSlip(result.reason))}>Record {trace.heroId}'s counter</button>
+              )}
+            </li>
+          ))}
         </ul>
-        <p className="mt-2 text-sm">Next through the gate: {raider.heroId}.</p>
+        <p className="mt-2 text-sm">{raider ? `${raider.heroId} is willing.` : "No hero is willing. A raid cannot start."}</p>
+        {slip && <p className="mt-2 text-sm text-gold">{slip}</p>}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button className="min-h-11 rounded-2xl bg-gold px-3 text-ink" onClick={() => void fundRaidOffer().then((result) => setSlip(result.reason))}>Fund offer</button>
+          {offer?.status === "COUNTER_PENDING" && <button className="min-h-11 rounded-2xl border border-gold/40 px-3" onClick={() => void refuseRaidOffer().then((result) => setSlip(result.reason))}>Refuse counter</button>}
+          {offer && offer.status !== "SETTLED" && <button className="min-h-11 rounded-2xl border border-gold/40 px-3" onClick={() => void acceptRaidOffer().then((result) => setSlip(result.reason))}>Accept offer</button>}
+          <button className="min-h-11 rounded-2xl border border-gold/40 px-3" disabled={!offer || offer.status !== "SETTLED" || !raider} onClick={() => { const result = startRaid(); setSlip(result?.reason ?? "The raid started."); if (result?.ok) setScreen("dungeon"); }}>Send the willing hero</button>
+        </div>
       </article>
       {merchants.map((merchant) => {
         const status = merchantStatus(merchant);

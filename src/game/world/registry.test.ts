@@ -6,6 +6,8 @@ import {
   leaveWatch,
   newGame,
   placeTrap,
+  acceptRaidOffer,
+  fundRaidOffer,
   publishHall,
   resolvePage,
   startRaid,
@@ -57,12 +59,14 @@ describe("public dungeon registry", () => {
     expect(card.name).toBe("Ashgate");
   });
 
-  it("lets a second keeper discover a published hall, then hides it when unpublished", () => {
+  it("lets a second keeper discover a published hall, then hides it when unpublished", async () => {
     expect(publishHall("Ashgate", "The ash gate.", "Keeper A").ok).toBe(true);
     const id = hallIdOf(getState());
     expect(listPublic(readRegistry()).halls.map((hall) => hall.dungeonId)).toContain(id);
     expect(JSON.stringify(listPublic(readRegistry()).halls[0])).not.toContain("\"traps\"");
-    startRaid();
+    expect((await fundRaidOffer()).ok).toBe(true);
+    expect((await acceptRaidOffer()).ok).toBe(true);
+    expect(startRaid()?.ok).toBe(true);
     expect(getActivity(readRegistry(), id)?.active).toBe(true);
     expect(getActivity(readRegistry(), id)?.events.length).toBeGreaterThan(0);
     switchKeeper("keeper-b", "Keeper B");

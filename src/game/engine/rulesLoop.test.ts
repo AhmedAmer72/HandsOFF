@@ -13,30 +13,36 @@ Object.defineProperty(globalThis, "localStorage", {
   },
 });
 
-const { craftTrap, getState, markDiary, newGame, nextDay, placeTrap, resolvePage, startRaid } = await import("../store");
+const { acceptRaidOffer, craftTrap, fundRaidOffer, getState, markDiary, newGame, nextDay, placeTrap, resolvePage, startRaid } = await import("../store");
+
+async function raid() {
+  expect((await fundRaidOffer()).ok).toBe(true);
+  expect((await acceptRaidOffer()).ok).toBe(true);
+  expect(startRaid()?.ok).toBe(true);
+}
 
 describe("live raid rules", () => {
   beforeEach(() => {
     newGame();
   });
 
-  it("charges 30 gold for the hall spike and bleeds the vault", () => {
+  it("charges 30 gold for the hall spike and bleeds the vault", async () => {
     expect(getState().cinder).toBe(3);
     expect(getState().vault).toBe(1200);
     const placed = placeTrap("spike", 4, 6);
     expect(placed.ok).toBe(true);
     expect(getState().gold).toBe(110);
-    startRaid();
-    const raid = getState();
-    expect(raid.pending?.survived).toBe(false);
-    expect(raid.cinder).toBe(4);
-    expect(raid.vault).toBeLessThan(1200);
-    expect(raid.heroes.kara.facts.some((fact) => fact.memory === "observed")).toBe(true);
+    await raid();
+    const after = getState();
+    expect(after.pending?.survived).toBe(false);
+    expect(after.cinder).toBe(4);
+    expect(after.vault).toBeLessThan(1200);
+    expect(after.heroes.kara.facts.some((fact) => fact.memory === "observed")).toBe(true);
   });
 
-  it("burns the page for 2 cinder and does not list a rumour", () => {
+  it("burns the page for 2 cinder and does not list a rumour", async () => {
     placeTrap("spike", 4, 6);
-    startRaid();
+    await raid();
     markDiary();
     const burned = resolvePage("burn");
     expect(burned.ok).toBe(true);
@@ -45,15 +51,15 @@ describe("live raid rules", () => {
     expect(getState().heroes.kara.facts.some((fact) => fact.memory === "observed")).toBe(true);
   });
 
-  it("lets a landed page teach only the hero who buys it", () => {
+  it("lets a landed page teach only the hero who buys it", async () => {
     placeTrap("spike", 4, 6);
-    startRaid();
+    await raid();
     markDiary();
     resolvePage("escape");
     expect(getState().merchants.orrin.rumours).toHaveLength(1);
     expect(getState().heroes.brann.facts.some((fact) => fact.memory === "warned")).toBe(false);
     nextDay();
-    startRaid();
+    await raid();
     const second = getState();
     expect(second.merchants.orrin.rumours).toHaveLength(0);
     expect(second.pending?.heroId).toBe("ivo");

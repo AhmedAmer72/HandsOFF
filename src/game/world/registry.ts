@@ -1,3 +1,6 @@
+import { PERMIT } from "../../../rules/economy";
+import { permitSplit } from "../rules/money";
+
 /** Shared public dungeon registry. Drafts and trap layouts never enter this file. */
 
 export interface MerchantPublicState {
@@ -42,9 +45,25 @@ export interface PublicActivity {
   updatedAt: string;
 }
 
+export interface BoardOffer {
+  id: string;
+  dungeonId: string;
+  funderId: string;
+  price: number;
+  split: { owner: number; agents: number; guild: number; ops: number };
+  status: "OPEN" | "COUNTER_PENDING" | "SETTLED" | "EXPIRED_REFUNDED";
+  countered: boolean;
+  counterHeroId?: string;
+  escrow: number;
+  fundedAt: number;
+  slotsAtFund: number | null;
+  consumed: boolean;
+}
+
 export interface RegistryFile {
   dungeons: PublicDungeon[];
   activity: PublicActivity[];
+  offers: BoardOffer[];
 }
 
 export interface HallQuery {
@@ -53,6 +72,7 @@ export interface HallQuery {
   tier?: number | "any";
   state?: "OPEN" | "CLOSED" | "any";
   activity?: "active" | "quiet" | "any";
+  sort?: "recent" | "raids" | "tier-desc" | "tier-asc" | "name";
 }
 
 /** Pointy-top KayKit hex. Flat-to-flat is 2, point-to-point is about 2.31. */
@@ -79,7 +99,20 @@ const LANDMARKS = [
 export const WORLD_PADS = LANDMARKS.map((place) => ({ id: place.id, ...hexCenter(place.col, place.row) }));
 
 export function emptyRegistry(): RegistryFile {
-  return { dungeons: [], activity: [] };
+  return { dungeons: [], activity: [], offers: [] };
+}
+
+export function offersOf(file: RegistryFile) {
+  return file.offers ?? [];
+}
+
+/** Spectator copies keep the step and the words. Tile numbers stay off the board. */
+export function publicEvents(events: PublicRaidEvent[]): PublicRaidEvent[] {
+  return events.map((event) => ({
+    tick: event.tick,
+    type: event.type,
+    text: event.text.replace(/\d+\s*,\s*\d+/g, "a tile"),
+  }));
 }
 
 export function padIndex(dungeonId: string, taken: Set<number>) {
@@ -137,6 +170,7 @@ export function upsertHall(file: RegistryFile, hall: Omit<PublicDungeon, "pad"> 
   return {
     dungeons: [...file.dungeons.filter((entry) => entry.dungeonId !== hall.dungeonId), next],
     activity: file.activity,
+    offers: offersOf(file),
   };
 }
 
@@ -144,6 +178,7 @@ export function unpublishHall(file: RegistryFile, dungeonId: string): RegistryFi
   return {
     dungeons: file.dungeons.filter((entry) => entry.dungeonId !== dungeonId),
     activity: file.activity.filter((entry) => entry.dungeonId !== dungeonId),
+    offers: offersOf(file).filter((offer) => offer.dungeonId !== dungeonId),
   };
 }
 
@@ -159,16 +194,18 @@ export function listPublic(file: RegistryFile, query: HallQuery = {}, offset = 0
     .filter((hall) => query.activity !== "active" || hall.activeRaidCount > 0)
     .filter((hall) => query.activity !== "quiet" || hall.activeRaidCount === 0)
     .map((hall) => toPublicCard(hall))
-    .sort((a, b) => a.name.localeCompare(b.name) || a.dungeonId.localeCompare(b.dungeonId));
+    .sort((a, b) => compareHalls(a, b, query.sort ?? "name"));
   return { halls: halls.slice(offset, offset + limit), total: halls.length };
 }
 
 export function beginActivity(file: RegistryFile, activity: PublicActivity): RegistryFile {
+  const safe = { ...activity, events: publicEvents(activity.events) };
   return {
-    dungeons: file.dungeons.map((hall) => hall.dungeonId === activity.dungeonId
-      ? { ...hall, activeRaidCount: activity.active ? 1 : 0, lastActivityAt: activity.updatedAt }
+    dungeons: file.dungeons.map((hall) => hall.dungeonId === safe.dungeonId
+      ? { ...hall, activeRaidCount: safe.active ? 1 : 0, lastActivityAt: safe.updatedAt }
       : hall),
-    activity: [...file.activity.filter((entry) => entry.dungeonId !== activity.dungeonId), activity],
+    activity: [...file.activity.filter((entry) => entry.dungeonId !== safe.dungeonId), safe],
+    offers: offersOf(file),
   };
 }
 
@@ -180,7 +217,114 @@ export function endActivity(file: RegistryFile, dungeonId: string, summary: stri
     activity: file.activity.map((entry) => entry.dungeonId === dungeonId
       ? { ...entry, active: false, finished: true, updatedAt: now }
       : entry),
+    offers: offersOf(file),
   };
+}
+
+function compareHalls(a: PublicDungeon, b: PublicDungeon, sort: NonNullable<HallQuery["sort"]>) {
+  if (sort === "recent") return b.lastActivityAt.localeCompare(a.lastActivityAt) || a.name.localeCompare(b.name);
+  if (sort === "raids") return b.raidCount - a.raidCount || a.name.localeCompare(b.name);
+  if (sort === "tier-desc") return b.tier - a.tier || a.name.localeCompare(b.name);
+  if (sort === "tier-asc") return a.tier - b.tier || a.name.localeCompare(b.name);
+  return a.name.localeCompare(b.name) || a.dungeonId.localeCompare(b.dungeonId);
+}
+
+function withOffers(file: RegistryFile, offers: BoardOffer[]): RegistryFile {
+  return { ...file, offers };
+}
+
+export function fundRecord(file: RegistryFile, input: { dungeonId: string; funderId: string; slotsAtFund: number | null; now?: number }) {
+  const live = offersOf(file).find((offer) => offer.dungeonId === input.dungeonId && !offer.consumed && offer.status !== "EXPIRED_REFUNDED");
+  if (live) return { file, offer: live, ok: false, reason: "An offer is already open for this hall. Nothing more was taken." };
+  const now = input.now ?? Date.now();
+  const offer: BoardOffer = {
+    id: `offer-${input.dungeonId}-${now}`,
+    dungeonId: input.dungeonId,
+    funderId: input.funderId,
+    price: PERMIT.price,
+    split: { ...PERMIT.split },
+    status: "OPEN",
+    countered: false,
+    escrow: PERMIT.price,
+    fundedAt: now,
+    slotsAtFund: input.slotsAtFund,
+    consumed: false,
+  };
+  return {
+    file: withOffers(file, [...offersOf(file), offer]),
+    offer,
+    ok: true,
+    reason: "Offer funded from the mock purse. The price stays 0.01. This is not a chain payment.",
+  };
+}
+
+export function counterRecord(file: RegistryFile, offerId: string, heroId: string, shift: number) {
+  const offer = offersOf(file).find((entry) => entry.id === offerId);
+  if (!offer || offer.status !== "OPEN") return { file, ok: false, reason: "That offer is not open." };
+  if (offer.countered) return { file, ok: false, reason: "A counter already happened." };
+  const next = permitSplit(shift);
+  if (!next.legal) return { file, ok: false, reason: "The split is outside the allowed range. The price was not changed." };
+  const updated: BoardOffer = { ...offer, split: next.split, countered: true, status: "COUNTER_PENDING", counterHeroId: heroId };
+  return {
+    file: withOffers(file, offersOf(file).map((entry) => entry.id === offerId ? updated : entry)),
+    ok: true,
+    reason: "The price stays 0.01. The split moved toward the heroes.",
+  };
+}
+
+export function refuseRecord(file: RegistryFile, offerId: string) {
+  const offer = offersOf(file).find((entry) => entry.id === offerId);
+  if (!offer || offer.status !== "COUNTER_PENDING") return { file, ok: false, reason: "There is no counter to refuse." };
+  const updated: BoardOffer = { ...offer, split: { ...PERMIT.split }, status: "OPEN" };
+  return {
+    file: withOffers(file, offersOf(file).map((entry) => entry.id === offerId ? updated : entry)),
+    ok: true,
+    reason: "The counter is refused. The original split stands. The price was not changed.",
+  };
+}
+
+export function settleRecord(file: RegistryFile, offerId: string) {
+  const offer = offersOf(file).find((entry) => entry.id === offerId);
+  if (!offer || (offer.status !== "OPEN" && offer.status !== "COUNTER_PENDING")) return { file, ok: false, reason: "That offer cannot be accepted." };
+  const updated: BoardOffer = { ...offer, status: "SETTLED", escrow: 0 };
+  return {
+    file: withOffers(file, offersOf(file).map((entry) => entry.id === offerId ? updated : entry)),
+    offer: updated,
+    ok: true,
+    reason: "The offer is settled. The permit can be used once.",
+  };
+}
+
+export function expireRecord(file: RegistryFile, offerId: string) {
+  const offer = offersOf(file).find((entry) => entry.id === offerId);
+  if (!offer || offer.status === "SETTLED" || offer.status === "EXPIRED_REFUNDED") return { file, ok: false, refund: 0, reason: "Nothing to refund." };
+  const refund = offer.escrow;
+  const updated: BoardOffer = { ...offer, status: "EXPIRED_REFUNDED", escrow: 0 };
+  return {
+    file: withOffers(file, offersOf(file).map((entry) => entry.id === offerId ? updated : entry)),
+    ok: true,
+    refund,
+    funderId: offer.funderId,
+    reason: "The offer expired. The full mock purse amount is refunded. Nothing was sent on a chain.",
+  };
+}
+
+export function consumeRecord(file: RegistryFile, offerId: string) {
+  const offer = offersOf(file).find((entry) => entry.id === offerId);
+  if (!offer || offer.status !== "SETTLED" || offer.consumed) return { file, ok: false, reason: "That permit cannot be used." };
+  const updated: BoardOffer = { ...offer, consumed: true };
+  return {
+    file: withOffers(file, offersOf(file).map((entry) => entry.id === offerId ? updated : entry)),
+    ok: true,
+    reason: "The permit is consumed.",
+  };
+}
+
+export function offerExpired(offer: BoardOffer, now: number, raidsCleared: number) {
+  if (offer.status === "SETTLED" || offer.status === "EXPIRED_REFUNDED" || offer.consumed) return false;
+  const minutes = (now - offer.fundedAt) / 60000;
+  const slots = offer.slotsAtFund == null ? 0 : raidsCleared - offer.slotsAtFund;
+  return minutes >= PERMIT.offerTtlMinutes || slots >= PERMIT.offerTtlRaidSlots;
 }
 
 export function getActivity(file: RegistryFile, dungeonId: string) {
@@ -208,7 +352,7 @@ export function loadRegistry() {
     if (!raw) return current;
     const parsed = JSON.parse(raw) as RegistryFile;
     if (!parsed || !Array.isArray(parsed.dungeons) || !Array.isArray(parsed.activity)) return current;
-    current = parsed;
+    current = { dungeons: parsed.dungeons, activity: parsed.activity.map((entry) => ({ ...entry, events: publicEvents(entry.events ?? []) })), offers: offersOf(parsed) };
   } catch {
     // Keep the last good copy.
   }
@@ -226,4 +370,38 @@ export function writeRegistry(file: RegistryFile) {
 
 export function resetRegistry(file = emptyRegistry()) {
   persist(file);
+}
+
+export function adoptRegistry(file: RegistryFile) {
+  if (!file || !Array.isArray(file.dungeons) || !Array.isArray(file.activity)) return current;
+  persist({
+    dungeons: file.dungeons,
+    activity: file.activity.map((entry) => ({ ...entry, events: publicEvents(entry.events ?? []) })),
+    offers: offersOf(file),
+  });
+  return current;
+}
+
+export async function pullHalls() {
+  try {
+    const response = await fetch("/api/halls");
+    if (!response.ok) return current;
+    return adoptRegistry(await response.json() as RegistryFile);
+  } catch {
+    return current;
+  }
+}
+
+export async function pushHalls(action: unknown) {
+  try {
+    const response = await fetch("/api/halls", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(action),
+    });
+    if (!response.ok) return current;
+    return adoptRegistry(await response.json() as RegistryFile);
+  } catch {
+    return current;
+  }
 }
