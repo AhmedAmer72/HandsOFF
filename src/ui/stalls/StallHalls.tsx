@@ -16,7 +16,7 @@ import {
   supplyMaterial,
   useGame,
 } from "../../game/store";
-import { MARKET_SPOTS, WORKSHOP_SPOTS, marketProps, mountPlace, workshopProps } from "../../three/places";
+import { MARKET_SPOTS, WORKSHOP_SPOTS, mountPlace } from "../../three/places";
 import { Button, Panel, Title } from "../kit";
 
 function itemLabel(id: string) {
@@ -48,7 +48,6 @@ function StallHall({ place, title }: { place: "market" | "workshop"; title: stri
     const view = mountPlace(canvas, {
       id: place,
       spots: place === "market" ? MARKET_SPOTS : WORKSHOP_SPOTS,
-      props: place === "market" ? marketProps() : workshopProps(),
       getLocked: () => openRef.current != null,
       getQuality: () => game.quality,
       onNear: setNear,

@@ -59,7 +59,7 @@ Keeper B, on the same device, reads that store. The test `lets a second keeper d
 
 ## Market and workshop
 
-Both are walkable rooms. WASD moves the keeper. The pointer turns them. E opens the stall you are standing at, and only then. Close returns you to the same spot. The pose is kept on the room while the panel is open.
+Both rooms use the raid hall's KayKit stone, walls, torches, and orthographic camera. WASD pans that camera, Q and E yaw it, and the wheel zooms, with the same speeds as the raid. Click the stall the view is on. The trading and crafting panel closes without moving the camera.
 
 Mira still buys iron, ash, and bone and sells her stock. Orrin still offers buy-back of unsold pages. Tallow still sells his stock. The listing board is the existing escrow market, not a new merchant. The forge, anvil, and bench call `craftTrap` with the six recipes. The nail kit and vault brace were already on the workshop page. They stayed on the forge. They are not new recipes.
 

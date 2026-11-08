@@ -1,8 +1,7 @@
 import * as THREE from "three";
-import { PALETTE } from "../game/visual/palette";
-import { dungeon, heroModel, item } from "../game/content";
-import { spawn } from "./loader";
+import { ANIMATION_FILES, CELL, CLIP_ALIASES, dungeon, heroModel, item, type Piece } from "../game/content";
 import type { Quality } from "../game/content";
+import { loadGltf, spawn, stripRootMotion } from "./loader";
 
 export interface PlaceSpot {
   id: string;
@@ -13,18 +12,150 @@ export interface PlaceSpot {
   color: string;
 }
 
-export interface PlacePose {
+interface PlaceMemory {
   x: number;
   z: number;
   yaw: number;
+  view: number;
 }
 
-const poses = new Map<string, PlacePose>();
+const memory = new Map<string, PlaceMemory>();
+
+function tile(ix: number, iz: number) {
+  return { x: ix * CELL, z: iz * CELL };
+}
+
+function shell(width: number, depth: number): Piece[] {
+  const out: Piece[] = [];
+  for (let ix = 0; ix < width; ix += 1) {
+    for (let iz = 0; iz < depth; iz += 1) {
+      const rocky = (ix + iz) % 5 === 0;
+      const dirt = (ix * 3 + iz) % 9 === 0;
+      const file = dirt ? "floor_dirt_large" : rocky ? "floor_tile_large_rocks" : "floor_tile_large";
+      out.push({
+        id: `floor-${ix}-${iz}`,
+        url: dungeon(file),
+        file: `${file}.gltf`,
+        pack: "dungeon-remastered",
+        x: ix * CELL,
+        y: 0,
+        z: iz * CELL,
+        rot: 0,
+        kind: "floor",
+        label: "Stone floor",
+      });
+    }
+  }
+  const edge = (ix: number, iz: number, side: "n" | "s" | "w" | "e", file = "wall") => {
+    const x = ix * CELL + (side === "w" ? -2 : side === "e" ? 2 : 0);
+    const z = iz * CELL + (side === "n" ? -2 : side === "s" ? 2 : 0);
+    const rot = side === "w" ? Math.PI / 2 : side === "e" ? -Math.PI / 2 : side === "s" ? Math.PI : 0;
+    out.push({
+      id: `wall-${side}-${ix}-${iz}`,
+      url: dungeon(file),
+      file: `${file}.gltf`,
+      pack: "dungeon-remastered",
+      x,
+      y: 0,
+      z,
+      rot,
+      kind: "wall",
+      label: file === "wall_doorway" ? "Door" : "Wall",
+      cutaway: side === "s" || side === "e",
+    });
+  };
+  for (let ix = 0; ix < width; ix += 1) {
+    edge(ix, 0, "n", "wall");
+    edge(ix, depth - 1, "s", ix === 2 ? "wall_doorway" : "wall");
+  }
+  for (let iz = 0; iz < depth; iz += 1) {
+    edge(0, iz, "w", iz % 3 === 1 ? "wall_pillar" : "wall");
+    edge(width - 1, iz, "e", iz % 3 === 2 ? "wall_cracked" : "wall");
+  }
+  return out;
+}
+
+function prop(id: string, file: string, ix: number, iz: number, kind: Piece["kind"] = "prop", y = 0): Piece {
+  const at = tile(ix, iz);
+  return {
+    id,
+    url: file.endsWith(".glb") ? file : dungeon(file),
+    file: file.endsWith(".glb") ? file : `${file}.gltf`,
+    pack: "dungeon-remastered",
+    x: at.x,
+    y,
+    z: at.z,
+    rot: 0,
+    kind,
+    label: id,
+  };
+}
+
+export function marketLayout(): { pieces: Piece[]; spots: PlaceSpot[]; focus: { x: number; z: number } } {
+  const mira = tile(1, 2);
+  const orrin = tile(3, 2);
+  const tallow = tile(5, 1);
+  const board = tile(3, 3);
+  const exit = tile(2, 4);
+  const pieces = [
+    ...shell(6, 5),
+    prop("mira-table", "table_medium", 1, 2),
+    prop("mira-barrel", "barrel_large", 0, 1),
+    prop("mira-crate", "crates_stacked", 1, 1),
+    prop("orrin-table", "table_small", 3, 2),
+    prop("tallow-table", "table_medium_decorated_A", 5, 1),
+    prop("tallow-bottle", "bottle_A_green", 5, 1),
+    prop("board-table", "table_long", 3, 3),
+    prop("banner", "banner_red", 3, 0),
+    prop("torch-a", "torch_lit", 0, 3, "light", 1.6),
+    prop("torch-b", "torch_lit", 5, 3, "light", 1.6),
+    prop("coins", "coin_stack_medium", 4, 2),
+  ];
+  pieces.find((entry) => entry.id === "tallow-bottle")!.url = dungeon("bottle_A_green");
+  const spots: PlaceSpot[] = [
+    { id: "mira", label: "Mira", prompt: "Click Mira", x: mira.x, z: mira.z, color: "#b5532e" },
+    { id: "orrin", label: "Orrin", prompt: "Click Orrin", x: orrin.x, z: orrin.z, color: "#c9a15b" },
+    { id: "tallow", label: "Tallow", prompt: "Click Tallow", x: tallow.x, z: tallow.z, color: "#f2c14e" },
+    { id: "board", label: "Listing board", prompt: "Click the listing board", x: board.x, z: board.z, color: "#3fa7a0" },
+    { id: "exit", label: "Door", prompt: "Click the door to leave", x: exit.x, z: exit.z, color: "#e9d8b4" },
+  ];
+  return { pieces, spots, focus: { x: mira.x, z: mira.z } };
+}
+
+export function workshopLayout(): { pieces: Piece[]; spots: PlaceSpot[]; focus: { x: number; z: number } } {
+  const anvil = tile(1, 2);
+  const bench = tile(5, 2);
+  const forge = tile(3, 1);
+  const exit = tile(2, 4);
+  const pieces = [
+    ...shell(6, 5),
+    prop("anvil", "anvil", 1, 2),
+    prop("hammer", "barrel_small", 1, 1),
+    prop("bench", "table_long", 5, 2),
+    prop("rack", "sword_shield", 5, 1),
+    prop("shelves", "shelves", 0, 1),
+    prop("forge-barrel", "barrel_large", 3, 2),
+    prop("torch-a", "torch_lit", 2, 1, "light", 1.55),
+    prop("torch-b", "torch_lit", 4, 1, "light", 1.55),
+    prop("banner", "banner_brown", 3, 0),
+  ];
+  pieces.find((entry) => entry.id === "anvil")!.url = item("anvil");
+  pieces.find((entry) => entry.id === "anvil")!.file = "anvil.gltf";
+  const spots: PlaceSpot[] = [
+    { id: "anvil", label: "Anvil", prompt: "Click the anvil", x: anvil.x, z: anvil.z, color: "#8d6a45" },
+    { id: "bench", label: "Armor bench", prompt: "Click the armor bench", x: bench.x, z: bench.z, color: "#f2c14e" },
+    { id: "forge", label: "Forge", prompt: "Click the forge", x: forge.x, z: forge.z, color: "#ff7a32" },
+    { id: "exit", label: "Door", prompt: "Click the door to leave", x: exit.x, z: exit.z, color: "#e9d8b4" },
+  ];
+  return { pieces, spots, focus: forge };
+}
+
+export const MARKET_SPOTS = marketLayout().spots;
+export const WORKSHOP_SPOTS = workshopLayout().spots;
 
 export function mountPlace(canvas: HTMLCanvasElement, options: {
   id: "market" | "workshop";
   spots: PlaceSpot[];
-  props: Array<{ url: string; x: number; z: number; rot?: number; scale?: number }>;
   getLocked: () => boolean;
   getQuality: () => Quality;
   onNear: (id: string | null) => void;
@@ -37,227 +168,263 @@ export function mountPlace(canvas: HTMLCanvasElement, options: {
     options.onNear(null);
     return { ready: Promise.resolve(), dispose() {} };
   }
-  renderer.setClearColor(options.id === "workshop" ? "#1a120e" : PALETTE.fog);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.12;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.setClearColor("#14100E");
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(options.id === "workshop" ? "#1a120e" : PALETTE.fog, 12, 28);
-  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 80);
-  const saved = poses.get(options.id) ?? (options.id === "market"
-    ? { x: 5.2, z: 6.5, yaw: Math.PI }
-    : { x: 10, z: 9.2, yaw: Math.PI });
-  const player = { ...saved };
+  scene.fog = new THREE.Fog("#1B1A22", 28, 72);
+  scene.add(new THREE.HemisphereLight("#ffe0bf", "#2a1c16", 0.72));
+  const sun = new THREE.DirectionalLight("#d7e4ff", 0.55);
+  sun.position.set(12, 18, 8);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 60;
+  sun.shadow.camera.left = -20;
+  sun.shadow.camera.right = 20;
+  sun.shadow.camera.top = 20;
+  sun.shadow.camera.bottom = -20;
+  scene.add(sun);
+
+  const layout = options.id === "market" ? marketLayout() : workshopLayout();
+  const saved = memory.get(options.id);
+  const focus = new THREE.Vector3(saved?.x ?? layout.focus.x, 0, saved?.z ?? layout.focus.z);
+  let yaw = saved?.yaw ?? 0;
+  let view = saved?.view ?? 9;
+  const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 120);
   const keys = new Set<string>();
+  const lights: THREE.PointLight[] = [];
+  const walls: { mesh: THREE.Object3D; z: number; cutaway: boolean }[] = [];
+  const clickable: THREE.Object3D[] = [];
+  const mixers: THREE.AnimationMixer[] = [];
   let nearId: string | null = null;
   let frame = 0;
+  let last = performance.now();
+  const pointer = new THREE.Vector2();
+  const raycaster = new THREE.Raycaster();
+  let downX = 0;
+  let downY = 0;
 
-  scene.add(new THREE.HemisphereLight("#f0d7b0", "#2a1c14", 0.45));
-  const sun = new THREE.DirectionalLight("#ffd7a1", 0.9);
-  sun.position.set(-4, 10, 6);
-  scene.add(sun);
-  const fill = new THREE.PointLight(options.id === "workshop" ? "#ff7a32" : "#ffb15a", options.id === "workshop" ? 2.2 : 1.2, 14);
-  fill.position.set(10, 2.2, 8);
-  scene.add(fill);
-
-  const floorMat = new THREE.MeshStandardMaterial({ color: options.id === "workshop" ? "#3b2a22" : "#4a3b30", roughness: 0.86 });
-  const floor = new THREE.Mesh(new THREE.BoxGeometry(22, 0.2, 16), floorMat);
-  floor.position.set(10, -0.1, 8);
-  scene.add(floor);
-  const wallMat = new THREE.MeshStandardMaterial({ color: PALETTE.darkStone, roughness: 0.9 });
-  for (const wall of [
-    [10, 0.8, -0.2, 22, 1.6, 0.4],
-    [-0.2, 0.8, 8, 0.4, 1.6, 16],
-    [20.2, 0.8, 8, 0.4, 1.6, 16],
-  ]) {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(wall[3], wall[4], wall[5]), wallMat);
-    mesh.position.set(wall[0], wall[1], wall[2]);
-    scene.add(mesh);
-  }
-  const blocks = [
-    { minX: -1, maxX: 21, minZ: -1, maxZ: 0.4 },
-    { minX: -1, maxX: 0.4, minZ: -1, maxZ: 17 },
-    { minX: 19.6, maxX: 21, minZ: -1, maxZ: 17 },
-  ];
-
-  const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.28, 0.7, 3, 8),
-    new THREE.MeshStandardMaterial({ color: "#8d6a45", roughness: 0.7 }),
-  );
-  body.position.set(player.x, 0.7, player.z);
-  scene.add(body);
-  const spots = new THREE.Group();
-  scene.add(spots);
-  for (const spot of options.spots) {
-    const stand = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.45, 0.45, 0.08, 8),
-      new THREE.MeshStandardMaterial({ color: spot.color, emissive: spot.color, emissiveIntensity: 0.15 }),
-    );
-    stand.position.set(spot.x, 0.04, spot.z);
-    stand.userData.spot = spot.id;
-    spots.add(stand);
+  function applyQuality() {
+    const quality = options.getQuality();
+    const ratio = quality === "low" ? 1 : quality === "medium" ? 1.25 : Math.min(window.devicePixelRatio || 1, 1.75);
+    renderer.setPixelRatio(ratio);
+    renderer.shadowMap.enabled = quality !== "low";
+    sun.shadow.mapSize.set(quality === "high" ? 2048 : 1024, quality === "high" ? 2048 : 1024);
+    sun.intensity = quality === "low" ? 0.4 : 0.55;
   }
 
-  const ready = (async () => {
-    const figure = await spawn(heroModel("Rogue"), "cast").catch(() => null);
-    if (figure) {
-      figure.position.y = 0;
-      figure.scale.setScalar(0.9);
-      body.add(figure);
-      body.material = new THREE.MeshStandardMaterial({ visible: false });
-    }
-    await Promise.all(options.props.map(async (prop) => {
-      const mesh = await spawn(prop.url, "cast");
-      mesh.position.set(prop.x, 0, prop.z);
-      mesh.rotation.y = prop.rot ?? 0;
-      mesh.scale.setScalar(prop.scale ?? 1);
-      scene.add(mesh);
-    }));
-  })().catch(() => undefined);
-
-  function quality() {
-    const level = options.getQuality();
-    renderer.setPixelRatio(level === "low" ? 1 : Math.min(window.devicePixelRatio || 1, 1.5));
-    renderer.shadowMap.enabled = level !== "low";
-  }
   function resize() {
     const width = canvas.clientWidth || 1;
     const height = canvas.clientHeight || 1;
-    camera.aspect = width / height;
+    const aspect = width / height;
+    camera.left = -view * aspect;
+    camera.right = view * aspect;
+    camera.top = view;
+    camera.bottom = -view;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height, false);
   }
-  function blocked(x: number, z: number) {
-    if (x < 0.6 || x > 19.4 || z < 0.6 || z > 14.6) return true;
-    return blocks.some((box) => x > box.minX && x < box.maxX && z > box.minZ && z < box.maxZ);
+
+  function aim() {
+    const az = Math.PI / 4 + yaw;
+    const el = 35 * Math.PI / 180;
+    const dist = 32;
+    camera.position.set(
+      focus.x + Math.cos(az) * Math.cos(el) * dist,
+      2 + Math.sin(el) * dist,
+      focus.z + Math.sin(az) * Math.cos(el) * dist,
+    );
+    camera.lookAt(focus);
   }
-  function nearest() {
-    let best: PlaceSpot | null = null;
-    let distance = 1.8;
+
+  function tag(mesh: THREE.Object3D, spot: string) {
+    mesh.userData.spot = spot;
+    mesh.traverse((child) => {
+      child.userData.spot = spot;
+    });
+    clickable.push(mesh);
+  }
+
+  const ready = (async () => {
+    const groups = new Map<string, Piece[]>();
+    for (const entry of layout.pieces) {
+      const list = groups.get(entry.url) ?? [];
+      list.push(entry);
+      groups.set(entry.url, list);
+    }
+    await Promise.all([...groups.entries()].map(async ([url, entries]) => {
+      for (const entry of entries) {
+        const mesh = await spawn(url, entry.kind === "floor" || entry.kind === "wall" ? "receive" : "cast");
+        mesh.position.set(entry.x, entry.y, entry.z);
+        mesh.rotation.y = entry.rot;
+        scene.add(mesh);
+        if (entry.kind === "wall") walls.push({ mesh, z: entry.z, cutaway: Boolean(entry.cutaway) });
+        if (entry.kind === "light") {
+          const light = new THREE.PointLight("#FF9A3C", options.getQuality() === "low" ? 3 : 7, 9, 1.4);
+          light.position.set(entry.x, entry.y + 0.35, entry.z);
+          scene.add(light);
+          lights.push(light);
+        }
+        if (entry.id === "board-table") tag(mesh, "board");
+        if (entry.id === "anvil") tag(mesh, "anvil");
+        if (entry.id === "bench") tag(mesh, "bench");
+        if (entry.id === "forge-barrel") tag(mesh, "forge");
+        if (entry.label === "Door") tag(mesh, "exit");
+      }
+    }));
+    const people = options.id === "market"
+      ? [
+          { id: "mira", model: heroModel("Knight"), weapon: item("hammer"), ...tile(1, 2) },
+          { id: "orrin", model: heroModel("Mage"), weapon: item("journal_open"), ...tile(3, 2) },
+          { id: "tallow", model: heroModel("Ranger"), weapon: dungeon("bottle_A_green"), ...tile(5, 1) },
+        ]
+      : [{ id: "forge", model: heroModel("Knight"), weapon: item("hammer"), ...tile(3, 1) }];
     for (const spot of options.spots) {
-      const gap = Math.hypot(spot.x - player.x, spot.z - player.z);
+      const volume = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.3, 1.3, 2.2, 10),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+      );
+      volume.position.set(spot.x, 1.1, spot.z);
+      scene.add(volume);
+      tag(volume, spot.id);
+    }
+    const clips = (await loadGltf(ANIMATION_FILES[0])).animations.map((clip) => stripRootMotion(clip));
+    const idle = clips.find((clip) => CLIP_ALIASES.idle.includes(clip.name));
+    for (const person of people) {
+      const model = await spawn(person.model);
+      model.position.set(person.x, 0, person.z);
+      scene.add(model);
+      tag(model, person.id);
+      if (person.weapon) {
+        const held = await spawn(person.weapon, "none");
+        held.position.set(0.2, 0.9, 0.2);
+        model.add(held);
+      }
+      if (idle) {
+        const mixer = new THREE.AnimationMixer(model);
+        mixer.clipAction(idle).play();
+        mixers.push(mixer);
+      }
+    }
+    applyQuality();
+  })().catch(() => undefined);
+
+  function nearest() {
+    let best: string | null = null;
+    let distance = 4.2;
+    for (const spot of options.spots) {
+      const gap = Math.hypot(spot.x - focus.x, spot.z - focus.z);
       if (gap < distance) {
         distance = gap;
-        best = spot;
+        best = spot.id;
       }
     }
     return best;
   }
 
+  function pick(event: PointerEvent) {
+    const rect = canvas.getBoundingClientRect();
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    const hits = raycaster.intersectObjects(clickable, true);
+    for (const hit of hits) {
+      let node: THREE.Object3D | null = hit.object;
+      while (node) {
+        if (typeof node.userData.spot === "string") return node.userData.spot as string;
+        node = node.parent;
+      }
+    }
+    return null;
+  }
+
   function onKeyDown(event: KeyboardEvent) {
     const target = event.target as HTMLElement | null;
     if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) return;
+    if (options.getLocked()) return;
     keys.add(event.key.toLowerCase());
-    if (event.key.toLowerCase() === "e" && !options.getLocked() && nearId) {
-      event.preventDefault();
-      options.onUse(nearId);
+    if (event.key === "q") yaw = THREE.MathUtils.clamp(yaw - 0.08, -0.7, 0.7);
+    if (event.key === "e") yaw = THREE.MathUtils.clamp(yaw + 0.08, -0.7, 0.7);
+    if (event.key.toLowerCase() === "r") {
+      yaw = 0;
+      view = 9;
+      resize();
     }
   }
   function onKeyUp(event: KeyboardEvent) {
     keys.delete(event.key.toLowerCase());
   }
-  function onPointer(event: PointerEvent) {
-    if (options.getLocked() || event.buttons !== 1) return;
-    player.yaw -= event.movementX * 0.005;
+  function onPointerDown(event: PointerEvent) {
+    downX = event.clientX;
+    downY = event.clientY;
+  }
+  function onPointerUp(event: PointerEvent) {
+    if (Math.hypot(event.clientX - downX, event.clientY - downY) > 6) return;
+    const spot = pick(event) ?? nearest();
+    if (spot) options.onUse(spot);
+  }
+  function onWheel(event: WheelEvent) {
+    if (options.getLocked()) return;
+    event.preventDefault();
+    view = THREE.MathUtils.clamp(view + event.deltaY * 0.01, 4.5, 18);
+    resize();
   }
 
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
-  canvas.addEventListener("pointermove", onPointer);
-  quality();
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("wheel", onWheel, { passive: false });
+  applyQuality();
   resize();
+  aim();
   const observer = new ResizeObserver(() => resize());
   observer.observe(canvas);
-  const clock = new THREE.Clock();
 
-  function tick() {
+  function tick(now: number) {
     frame = requestAnimationFrame(tick);
-    const dt = Math.min(clock.getDelta(), 0.05);
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
     if (!options.getLocked()) {
-      const forward = (keys.has("w") ? 1 : 0) - (keys.has("s") ? 1 : 0);
-      const strafe = (keys.has("d") ? 1 : 0) - (keys.has("a") ? 1 : 0);
-      const speed = 4.5;
-      const sin = Math.sin(player.yaw);
-      const cos = Math.cos(player.yaw);
-      const dx = (sin * forward + cos * strafe) * speed * dt;
-      const dz = (cos * forward - sin * strafe) * speed * dt;
-      if (!blocked(player.x + dx, player.z)) player.x += dx;
-      if (!blocked(player.x, player.z + dz)) player.z += dz;
-      if (keys.has("q")) player.yaw += dt;
-      if (keys.has("arrowleft")) player.yaw += dt;
-      if (keys.has("arrowright")) player.yaw -= dt;
+      if (keys.has("w")) focus.z -= 6 * dt;
+      if (keys.has("s")) focus.z += 6 * dt;
+      if (keys.has("a")) focus.x -= 6 * dt;
+      if (keys.has("d")) focus.x += 6 * dt;
+      focus.x = THREE.MathUtils.clamp(focus.x, 0, 5 * CELL);
+      focus.z = THREE.MathUtils.clamp(focus.z, 0, 4 * CELL);
     }
-    body.position.set(player.x, 0.7, player.z);
-    canvas.dataset.x = player.x.toFixed(2);
-    canvas.dataset.z = player.z.toFixed(2);
-    body.rotation.y = player.yaw;
-    const spot = nearest();
-    const id = spot?.id ?? null;
+    const flicker = 1.15 + Math.sin(now * 0.008) * 0.28;
+    for (const light of lights) light.intensity = flicker;
+    aim();
+    const camSide = camera.position.z > focus.z;
+    for (const wall of walls) wall.mesh.visible = !(wall.cutaway && camSide && wall.z > focus.z - 1);
+    for (const mixer of mixers) mixer.update(dt);
+    const id = nearest();
     if (id !== nearId) {
       nearId = id;
       options.onNear(id);
     }
-    const look = 6;
-    camera.position.set(player.x - Math.sin(player.yaw) * look, 4.2, player.z - Math.cos(player.yaw) * look);
-    camera.lookAt(player.x, 1.1, player.z);
-    if (options.id === "workshop") fill.intensity = 2 + Math.sin(clock.elapsedTime * 8) * 0.35;
+    canvas.dataset.x = focus.x.toFixed(2);
+    canvas.dataset.z = focus.z.toFixed(2);
     renderer.render(scene, camera);
   }
-  tick();
+  frame = requestAnimationFrame(tick);
 
   return {
     ready,
     dispose() {
-      poses.set(options.id, { x: player.x, z: player.z, yaw: player.yaw });
+      memory.set(options.id, { x: focus.x, z: focus.z, yaw, view });
       cancelAnimationFrame(frame);
       observer.disconnect();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
-      canvas.removeEventListener("pointermove", onPointer);
-      keys.clear();
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("wheel", onWheel);
       renderer.dispose();
     },
   };
-}
-
-export const MARKET_SPOTS: PlaceSpot[] = [
-  { id: "mira", label: "Mira", prompt: "Press E to speak with Mira", x: 4, z: 6, color: "#b5532e" },
-  { id: "orrin", label: "Orrin", prompt: "Press E to speak with Orrin", x: 10, z: 6, color: "#c9a15b" },
-  { id: "tallow", label: "Tallow", prompt: "Press E to speak with Tallow", x: 16, z: 6, color: "#f2c14e" },
-  { id: "board", label: "Listing board", prompt: "Press E to open the listing board", x: 16, z: 11, color: "#3fa7a0" },
-  { id: "exit", label: "Road", prompt: "Press E to leave the market", x: 10, z: 14.2, color: "#e9d8b4" },
-];
-
-export const WORKSHOP_SPOTS: PlaceSpot[] = [
-  { id: "anvil", label: "Anvil", prompt: "Press E to use the anvil", x: 5, z: 6, color: "#8d6a45" },
-  { id: "bench", label: "Armor bench", prompt: "Press E to use the armor bench", x: 15, z: 6, color: "#f2c14e" },
-  { id: "forge", label: "Forge", prompt: "Press E to use the forge", x: 10, z: 8, color: "#ff7a32" },
-  { id: "exit", label: "Road", prompt: "Press E to leave the workshop", x: 10, z: 14.2, color: "#e9d8b4" },
-];
-
-export function marketProps() {
-  return [
-    { url: item("anvil"), x: 4.8, z: 5.2, scale: 0.8 },
-    { url: dungeon("table_medium"), x: 4, z: 6.8 },
-    { url: dungeon("table_medium"), x: 10, z: 6.8 },
-    { url: dungeon("table_medium"), x: 16, z: 6.8 },
-    { url: dungeon("barrel_large"), x: 2, z: 3 },
-    { url: dungeon("crates_stacked"), x: 18, z: 3 },
-    { url: dungeon("bottle_A_green"), x: 16.4, z: 6.4, scale: 1.4 },
-    { url: dungeon("banner_brown"), x: 10, z: 1.2 },
-    { url: item("journal_open"), x: 10, z: 10, scale: 1.2 },
-    { url: heroModel("Barbarian"), x: 4, z: 5.2, scale: 0.85 },
-    { url: heroModel("Mage"), x: 10, z: 5.2, scale: 0.85 },
-    { url: heroModel("Ranger"), x: 16, z: 5.2, scale: 0.85 },
-  ];
-}
-
-export function workshopProps() {
-  return [
-    { url: item("anvil"), x: 5, z: 5.4 },
-    { url: item("hammer"), x: 5.6, z: 5.6, scale: 1.3 },
-    { url: dungeon("table_long"), x: 15, z: 6.4 },
-    { url: dungeon("shelves"), x: 2.2, z: 4 },
-    { url: dungeon("sword_shield"), x: 18, z: 4 },
-    { url: dungeon("barrel_small"), x: 8, z: 8 },
-    { url: heroModel("Knight"), x: 10, z: 6.6, scale: 0.85, rot: Math.PI },
-  ];
 }
