@@ -5,7 +5,7 @@ import { createSave } from "./newGame";
 import { applyPurchase, chooseRaider, evaluateHero } from "./decisions";
 import { findPath } from "./path";
 import { quotePrice } from "./pricing";
-import { sameRaid, simulateRaid } from "./raid";
+import { outcomeHash, sameRaid, simulateRaid } from "./raid";
 import type { Fact, HeroState } from "./types";
 
 const spike = { id: "s1", trapId: "spike" as const, ix: 4, iz: 6 };
@@ -50,6 +50,9 @@ describe("raid", () => {
     const a = simulateRaid(input).report.events;
     const b = simulateRaid(input).report.events;
     expect(sameRaid(a, b)).toBe(true);
+    expect(outcomeHash(a)).toBe(outcomeHash(b));
+    const other = simulateRaid({ ...input, traps: [] }).report.events;
+    expect(outcomeHash(other)).not.toBe(outcomeHash(a));
   });
 
   it("lets Kara live when she already knows the spike and can walk around it", () => {

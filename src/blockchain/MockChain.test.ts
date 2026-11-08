@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertLocalOnly } from "./guard";
+import { assertLocalOnly, BLOCKCHAIN_MODE } from "./guard";
 import { MockChain, nearFromPlayPath } from "./MockChain";
 
 function chain() {
@@ -10,7 +10,9 @@ function chain() {
 
 describe("mock chain", () => {
   it("rejects a live network host", () => {
+    expect(BLOCKCHAIN_MODE).toBe("mock");
     expect(() => assertLocalOnly("https://rpc.mainnet.near.org")).toThrow(/MOCK MODE/);
+    expect(() => assertLocalOnly("https://rpc.testnet.near.org")).toThrow(/MOCK MODE/);
   });
 
   it("rejects selling play-only salvage for NEAR and mints no NEAR", () => {

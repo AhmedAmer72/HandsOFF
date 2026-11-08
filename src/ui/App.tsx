@@ -42,6 +42,7 @@ import {
   toSteps,
   useGame,
 } from "../game/store";
+import { outcomeHash } from "../game/engine/raid";
 import { mountDungeon } from "../three/dungeon";
 import { mountGallery } from "../three/gallery";
 import { MainMenu } from "./screens/MainMenu";
@@ -559,7 +560,7 @@ function Chronicle() {
     <section className="mx-auto flex max-w-3xl flex-col gap-4 p-4">
       <h2 className="font-display text-3xl text-gold">Replay</h2>
       <p className="text-sm text-parchment/75">Replayed from recorded inputs. Diary text and hero decisions are the ones already stored.</p>
-      {raid && <p className="text-sm">Day {raid.day} · {raid.heroId}. {raid.decision.reason}</p>}
+      {raid && <p className="text-sm">Day {raid.day} · {raid.heroId}. Outcome {outcomeHash(rows)}. {raid.decision.reason}</p>}
       <div className="flex flex-wrap gap-2">
         <button className="min-h-11 rounded-2xl bg-gold px-4 text-ink" onClick={() => setPlaying((value) => !value)}>{playing ? "Pause" : "Play"}</button>
         {([1, 2, 4] as const).map((value) => (

@@ -1,5 +1,11 @@
 # README v10.2 compliance matrix
 
+## Acceptance pass (8 November 2026, about 3:50 AM Africa/Cairo)
+
+`npm test` passed: 9 files, 66 tests. `npm run build` completed. The one-sitting browser path from a fresh guest through trap, death, rumour, second raid, supply, listing, and replay was not finished; the browser driver stopped before that run. Statuses below stay PARTIAL or MISSING where that sitting did not produce evidence. Earlier sittings on this branch did open the screens named in the later notes. Rows in the tables that still say a screen does not exist are out of date; this note wins.
+
+Replay: the same raid inputs produce the same event list and the same `outcomeHash`. A different layout produces a different hash. `BLOCKCHAIN_MODE` is `mock`.
+
 ## Rendering pass (7 November 2026, about 7:00 PM Africa/Cairo)
 
 The hall was measured on SwiftShader, not a hardware GPU. A half-second window moved between 28 and 58 fps. The 95th percentile frame stayed near 56–58 ms. The scene drew 141 calls, 72,249 triangles, and 88 textures, with 8 skinned characters. Low and High shared those draw counts, so the shadow map was not the limiter on this renderer. Details are in `docs/PERFORMANCE_REPORT.md`. This is not a 60 fps result.
@@ -104,19 +110,19 @@ Workshop, from this pass’s navigation notes and the craft buttons in `src/ui/A
 | ID | Section | Requirement | What opened in the browser | Status | Missing |
 |---|---|---|---|---|---|
 | 5.0 | 5.0 | Two seconds, then a guest raid. No sign-in wall | Menu fortress, then Enter dungeon. Progress stays in local storage | PARTIAL | Not an automatic raid. No one-time hint set |
-| 5.1 | 5.1 | Home with tier, treasury, and vault as separate chips | Menu shows treasury, day, heroes, cinder, reputation from the save | PARTIAL | No “A Week of Raids”. No closed-dungeon restock state |
+| 5.1 | 5.1 | Home with tier, treasury, and vault as separate chips | Home shows Ashgate, vault, treasury, tier, and open/closed. Screenshot `home-portrait.webp` | PARTIAL | The first screen is still the cinematic menu, not an automatic guest raid |
 | 5.2 | 5.2 | Offer board and three stalls | Gate, this pass. Accept lines and OPEN stalls. Orrin empty | PARTIAL | No TTL, no counter, no NEAR chip |
 | 5.3 | 5.3 | Full raid HUD and world labels | Top bar, cards, pictures, possess, chronicle | PARTIAL | No bounty, no 2/4 wave, no world-space bars, no possession stick |
-| 5.4 | 5.4 | Raid board with burned vs landed, salvage, mastery | A short survived/died card and “click the gate” | MISSING | The result rows |
+| 5.4 | 5.4 | Raid board with burned vs landed, salvage, mastery | In-raid results card and a Report screen read the last raid | PARTIAL | Mastery and a bounty claimant were not re-checked in the acceptance sitting |
 | 5.5 | 5.5 | Workshop recipes and listing reasons | Spike craft and supply. Market shows packs and cancel | PARTIAL | Pit/boulder craft buttons. No “cheaper listing won” line in the market UI |
 | 5.6 | 5.6 | Five dungeon dioramas and a spectator | Five CSS hexes and one prop preview | PARTIAL | No hex models. No follow-a-hero view |
 | 5.7 | 5.7 | Hero card plus a row-by-row verified panel | Hero directory lists gold, gear, and facts. No verified rows | PARTIAL | The eight proof rows |
-| 5.8 | 5.8 | Replay with play, pause, 1× 2× 4×, hash match | Replay lists the last raid’s ticks. No controls when empty | MISSING | Speeds and a hash |
-| 5.9 | 5.9 | 60-second simulated week | No screen | MISSING | The whole beat |
-| 5.10 | 5.10 | Deed dashboard | Only the owner name on Ownership details | MISSING | The page |
-| 5.11 | 5.11 | Guild board | No screen | MISSING | The page |
-| 5.12 | 5.12 | Take it home | No screen | MISSING | The page. Must stay mock |
-| 5.13 | 5.13 | Settings list | Graphics, new game, ownership, model shelf, hero directory | PARTIAL | Sound, music, haptics, language, reduce motion, credits |
+| 5.8 | 5.8 | Replay with play, pause, 1× 2× 4×, hash match | Replay has play, pause, and 1× 2× 4×. `outcomeHash` matches for the same events | PARTIAL | The acceptance sitting did not press Play in the browser |
+| 5.9 | 5.9 | 60-second simulated week | Week screen plots `stockPrice` and shop states. Labeled simulated | PARTIAL | Not a 60-second film |
+| 5.10 | 5.10 | Deed dashboard | Charter page reads the local deed owner and can pass it | PARTIAL | No mainnet deed |
+| 5.11 | 5.11 | Guild board | Guild page posted a simulated bounty that showed on the mock ledger | PARTIAL | Not a live DAO payout |
+| 5.12 | 5.12 | Take it home | Screen quotes a local fee and does not send funds | PARTIAL | Not a live quote |
+| 5.13 | 5.13 | Settings list | Sound, music, reduce motion, Low/Medium/High, new game, mock chain | PARTIAL | No haptics, language, or credits page |
 
 ## Art, feel, performance
 
@@ -125,9 +131,9 @@ Workshop, from this pass’s navigation notes and the craft buttons in `src/ui/A
 | 6.1 | 6.1 | Low-poly KayKit, orthographic room | The raid camera is orthographic. Models are the KayKit glTF set | DONE |
 | 6.2 | 6.2 | Dungeon, adventurers, skeletons. No boulder file | Spike, grate, barrel, and food plate are the trap meshes. Documented in `trapDefinitions.ts` | DONE |
 | 6.3 | 6.3 | Torch light, gold accent, red only when the vault is low | Palette matches. Vault text switches under 25% of 1200. No bloom | PARTIAL |
-| 6.5 | 6.5 | Draw calls ≤ 100, 60 fps only with a named device | HUD this pass: about 20 fps, SwiftShader. Draws and triangles were not re-sampled | NOT TESTED |
+| 6.5 | 6.5 | Draw calls ≤ 100, 60 fps only with a named device | SwiftShader: 28–58 fps windows, p95 56–58 ms, 141 draws, 72,249 triangles, 88 textures | PARTIAL | Over the 100-draw target. Not 60 fps |
 | 6.6 | 6.6 | Lilita One and Fredoka, 12–16 px cards | Those fonts are loaded. Cards are rounded glass. World-space labels are absent | PARTIAL |
-| 14 | 14 | Hit-stop, shake, trap wind-up in `rules/feel.ts` | The numbers are in the file. The renderer does not apply the shake and hit-stop table. Burn plays embers | PARTIAL |
+| 14 | 14 | Hit-stop, shake, trap wind-up in `rules/feel.ts` | The renderer reads those numbers on a raid step. Reduce Motion skips them. `feel.test.ts` locks the values | PARTIAL | A hit-stop was not filmed in the acceptance sitting |
 
 ## Tests that already pass
 
