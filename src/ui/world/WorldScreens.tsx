@@ -55,80 +55,83 @@ export function WorldMap() {
   const selected = board.halls.find((hall) => hall.dungeonId === selectedId) ?? null;
 
   return (
-    <section className="mx-auto flex max-w-6xl flex-col gap-4 p-4" data-testid="dungeon-directory">
-      <header>
-        <h2 className="font-display text-4xl text-gold">World Map</h2>
-        <p className="mt-2 max-w-[62ch] text-sm text-parchment/75">Discover dungeons across the Underrealm. Heroes raid them. You do not.</p>
-        <p className="mt-2 text-sm text-parchment/70" data-testid="hall-count">{board.total} published {board.total === 1 ? "hall" : "halls"}. {liveRaids} live {liveRaids === 1 ? "raid" : "raids"}. Shared by browsers on this server. Not a mainnet.</p>
+    <section className="mx-auto flex h-full w-full max-w-6xl flex-col gap-5 p-4 md:p-6" data-testid="dungeon-directory">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="font-display text-5xl leading-none text-parchment">World Map</h2>
+          <p className="mt-3 max-w-[62ch] font-body text-base text-parchment/80">Discover dungeons across the Underrealm. Heroes raid them. You do not.</p>
+          <p className="mt-2 font-body text-sm text-parchment/70" data-testid="hall-count">{board.total} published {board.total === 1 ? "hall" : "halls"}. {liveRaids} live {liveRaids === 1 ? "raid" : "raids"}. Shared by browsers on this server. Not a mainnet.</p>
+        </div>
+        <Button tone="ghost" onClick={() => setHallOpen((value) => !value)}>{hallOpen ? "Close your hall" : "Your hall"}</Button>
       </header>
-      <div className="flex flex-wrap items-end gap-2" data-testid="map-filters">
-        <Field label="Name"><input className="w-full min-w-36 rounded-xl bg-black/40 px-3 py-2" value={name} onChange={(event) => setName(event.target.value)} /></Field>
-        <Field label="Owner"><input className="w-full min-w-36 rounded-xl bg-black/40 px-3 py-2" value={owner} onChange={(event) => setOwner(event.target.value)} /></Field>
+      <div className="grid gap-3 rounded-hud border border-gold/25 bg-panel/80 p-3 shadow-hud sm:grid-cols-2 lg:grid-cols-6" data-testid="map-filters">
+        <Field label="Name"><input className="control" value={name} onChange={(event) => setName(event.target.value)} /></Field>
+        <Field label="Owner"><input className="control" value={owner} onChange={(event) => setOwner(event.target.value)} /></Field>
         <Field label="Tier">
-          <select className="min-h-11 rounded-xl bg-black/40 px-2" value={String(tier)} onChange={(event) => setTier(event.target.value === "any" ? "any" : Number(event.target.value))}>
+          <select className="control" value={String(tier)} onChange={(event) => setTier(event.target.value === "any" ? "any" : Number(event.target.value))}>
             <option value="any">Any</option>
             {[1, 2, 3, 4].map((level) => <option key={level} value={level}>{level}</option>)}
           </select>
         </Field>
         <Field label="Gate">
-          <select className="min-h-11 rounded-xl bg-black/40 px-2" value={stateFilter} onChange={(event) => setStateFilter(event.target.value as HallQuery["state"])}>
+          <select className="control" value={stateFilter} onChange={(event) => setStateFilter(event.target.value as HallQuery["state"])}>
             <option value="any">Any</option>
             <option value="OPEN">Open</option>
             <option value="CLOSED">Closed</option>
           </select>
         </Field>
         <Field label="Activity">
-          <select className="min-h-11 rounded-xl bg-black/40 px-2" value={activity} onChange={(event) => setActivity(event.target.value as HallQuery["activity"])}>
+          <select className="control" value={activity} onChange={(event) => setActivity(event.target.value as HallQuery["activity"])}>
             <option value="any">Any</option>
             <option value="active">Live raid</option>
             <option value="quiet">Quiet</option>
           </select>
         </Field>
         <Field label="Sort">
-          <select className="min-h-11 rounded-xl bg-black/40 px-2" value={sort} onChange={(event) => setSort(event.target.value as NonNullable<HallQuery["sort"]>)}>
+          <select className="control" value={sort} onChange={(event) => setSort(event.target.value as NonNullable<HallQuery["sort"]>)}>
             {SORTS.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
           </select>
         </Field>
       </div>
-      {board.total === 0 && <p className="rounded-2xl border border-gold/20 px-4 py-6 text-sm text-parchment/70">No published hall matches. A draft stays with its owner.</p>}
-      <div className="grid gap-3 lg:grid-cols-[1fr_20rem]">
-        <ul className="flex flex-col gap-2">
+      {board.total === 0 && <p className="rounded-hud border border-gold/25 bg-panel px-4 py-8 text-center font-body text-sm text-parchment/70">No published hall matches. A draft stays with its owner.</p>}
+      <div className="grid flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <ul className="flex flex-col gap-3">
           {board.halls.map((hall) => (
             <li key={hall.dungeonId}>
-              <button className={`min-h-11 w-full rounded-2xl border px-4 py-3 text-left ${selectedId === hall.dungeonId ? "border-gold bg-panel" : "border-gold/20 bg-ink/60"}`} data-testid="dungeon-row" onClick={() => setSelectedId(hall.dungeonId)}>
-                <span className="flex flex-wrap items-baseline justify-between gap-2">
-                  <span className="font-display text-2xl text-gold">{hall.name}</span>
-                  <Status tone={hall.state === "CLOSED" ? "danger" : "quiet"}>{hall.state === "CLOSED" ? "Closed" : "Open"}</Status>
+              <button className={`flex min-h-[5.5rem] w-full flex-wrap items-center gap-4 rounded-hud border px-4 py-3 text-left shadow-hud sm:flex-nowrap ${selectedId === hall.dungeonId ? "border-gold bg-panel2" : "border-gold/25 bg-panel hover:border-gold"}`} data-testid="dungeon-row" onClick={() => setSelectedId(hall.dungeonId)}>
+                <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-ink font-display text-2xl text-gold" aria-hidden="true">{hall.tier}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-display text-2xl text-parchment">{hall.name}</span>
+                  <span className="mt-1 block font-body text-sm text-parchment/75">Owner {hall.displayName} · Settled raids {hall.raidCount} · Hero traffic {hall.heroTraffic}</span>
                 </span>
-                <span className="mt-1 block text-sm text-parchment/75">Owner {hall.displayName} · Tier {hall.tier} · Settled raids {hall.raidCount} · Hero traffic {hall.heroTraffic}</span>
-                <Status tone={hall.activeRaidCount > 0 ? "live" : "quiet"}>{hall.activeRaidCount > 0 ? "Live raid" : "No live raid"}</Status>
+                <span className="flex shrink-0 flex-col items-end gap-2">
+                  <Status tone={hall.state === "CLOSED" ? "danger" : "quiet"}>{hall.state === "CLOSED" ? "Closed" : "Open"}</Status>
+                  <Status tone={hall.activeRaidCount > 0 ? "live" : "quiet"}>{hall.activeRaidCount > 0 ? "Live raid" : "No live raid"}</Status>
+                </span>
               </button>
             </li>
           ))}
         </ul>
         <div>
           {selected && <PublicCard hall={selected} own={selected.ownerId === (game.ownerId || "keeper-local")} onClose={() => setSelectedId(null)} onNote={setNote} />}
-          {!selected && <p className="text-sm text-parchment/60">Select a hall to read its public page.</p>}
+          {!selected && <Panel className="flex h-full min-h-40 items-center justify-center text-center font-body text-sm text-parchment/70">Select a hall to read its public page.</Panel>}
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button tone="ghost" onClick={() => setHallOpen((value) => !value)}>{hallOpen ? "Close your hall" : "Your hall"}</Button>
-        {note && <p className="text-sm text-gold">{note}</p>}
-      </div>
+      {note && <p className="font-body text-sm text-gold">{note}</p>}
       {hallOpen && (
         <Panel>
           <p className="font-display text-gold">{game.displayName}</p>
           <p className="text-xs text-parchment/70">{game.dungeonPublished ? "Your hall is public on this server." : "Your hall is still a draft."}</p>
-          <Field label="Public name"><input data-testid="publish-name" className="w-full rounded-xl bg-black/40 px-2 py-2" value={hallName} onChange={(event) => setHallName(event.target.value)} /></Field>
-          <Field label="Description"><input className="w-full rounded-xl bg-black/40 px-2 py-2" value={blurb} onChange={(event) => setBlurb(event.target.value)} /></Field>
-          <Field label="Your name"><input className="w-full rounded-xl bg-black/40 px-2 py-2" value={shownName} onChange={(event) => setShownName(event.target.value)} /></Field>
+          <Field label="Public name"><input data-testid="publish-name" className="control" value={hallName} onChange={(event) => setHallName(event.target.value)} /></Field>
+          <Field label="Description"><input className="control" value={blurb} onChange={(event) => setBlurb(event.target.value)} /></Field>
+          <Field label="Your name"><input className="control" value={shownName} onChange={(event) => setShownName(event.target.value)} /></Field>
           <div className="mt-2 flex flex-wrap gap-2">
             <Button onClick={() => { const result = publishHall(hallName, blurb, shownName); setNote(result.reason); void pullHalls(); }}>Publish</Button>
             {game.dungeonPublished && <Button tone="ghost" onClick={() => { setNote(unpublishCurrent().reason); void pullHalls(); }}>Unpublish</Button>}
           </div>
           <p className="mt-3 text-xs uppercase tracking-[0.16em] text-ember">Mock · this device only</p>
-          <Field label="Sit as another keeper"><input data-testid="keeper-id" className="w-full rounded-xl bg-black/40 px-2 py-2" value={keeperId} placeholder="keeper-b" onChange={(event) => setKeeperId(event.target.value)} /></Field>
-          <Field label="Their name"><input data-testid="keeper-name" className="w-full rounded-xl bg-black/40 px-2 py-2" value={keeperName} onChange={(event) => setKeeperName(event.target.value)} /></Field>
+          <Field label="Sit as another keeper"><input data-testid="keeper-id" className="control" value={keeperId} placeholder="keeper-b" onChange={(event) => setKeeperId(event.target.value)} /></Field>
+          <Field label="Their name"><input data-testid="keeper-name" className="control" value={keeperName} onChange={(event) => setKeeperName(event.target.value)} /></Field>
           <Button tone="ghost" className="mt-2" onClick={() => setNote(switchKeeper(keeperId, keeperName || keeperId).reason)}>Switch keeper</Button>
         </Panel>
       )}

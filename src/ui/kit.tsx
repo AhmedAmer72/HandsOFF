@@ -18,11 +18,11 @@ export function Num({ children, className = "" }: { children: ReactNode; classNa
 
 export function Button({ tone = "gold", className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: "gold" | "ghost" | "ember" }) {
   const toneClass = tone === "gold"
-    ? "bg-gold text-ink hover:bg-torch"
+    ? "bg-gold text-ink shadow-[inset_0_-2px_0_rgba(58,42,26,0.45)] hover:bg-torch"
     : tone === "ember"
-      ? "bg-ember text-ink hover:bg-torch"
-      : "border border-gold/40 bg-ink/40 text-parchment hover:border-gold hover:text-gold";
-  return <button className={`min-h-11 rounded-2xl px-4 py-2 text-sm disabled:hover:bg-inherit ${toneClass} ${className}`} {...props} />;
+      ? "bg-ember text-ink shadow-[inset_0_-2px_0_rgba(58,42,26,0.45)] hover:bg-torch"
+      : "border border-gold/45 bg-panel text-parchment shadow-hud hover:border-gold hover:text-gold";
+  return <button className={`min-h-11 rounded-hud px-4 py-2 font-display tracking-wide disabled:hover:bg-inherit ${toneClass} ${className}`} {...props} />;
 }
 
 export function Chip({ children, hot = false }: { children: ReactNode; hot?: boolean }) {

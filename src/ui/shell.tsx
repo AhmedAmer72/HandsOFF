@@ -37,7 +37,7 @@ export function Shell({ screen }: { screen: ScreenId }) {
   }
   return (
     <aside className="z-30 flex h-full w-[4.5rem] shrink-0 flex-col border-r border-gold/20 bg-ink/95 pb-[env(safe-area-inset-bottom)] md:w-56">
-      <p className="hidden px-4 pb-1 pt-4 font-display text-sm tracking-[0.16em] text-gold md:block">UNDERREALM</p>
+      <p className="hidden px-4 pb-1 pt-5 font-display text-lg tracking-[0.12em] text-gold md:block">UNDERREALM</p>
       <p className="hidden px-4 pb-3 text-[11px] leading-snug text-parchment/70 md:block">Guest — progress is saved on this device until you sign in.</p>
       <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2" aria-label="Game">
         {LINKS.map((link) => {
@@ -47,7 +47,7 @@ export function Shell({ screen }: { screen: ScreenId }) {
               key={link.id}
               title={link.label}
               aria-current={current ? "page" : undefined}
-              className={`flex min-h-11 items-center justify-center gap-3 rounded-2xl px-2 text-left text-sm md:justify-start md:px-3 ${current ? "bg-gold text-ink" : "text-parchment/80 hover:bg-white/5 hover:text-gold"}`}
+              className={`flex min-h-11 items-center justify-center gap-3 rounded-hud px-2 text-left font-display tracking-wide md:justify-start md:px-3 ${current ? "bg-gold text-ink shadow-[inset_0_-2px_0_rgba(58,42,26,0.45)]" : "text-parchment/80 hover:bg-panel hover:text-gold"}`}
               onClick={() => go(link.id)}
             >
               <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">{link.icon}</svg>

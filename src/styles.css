@@ -87,6 +87,22 @@ button:active:not(:disabled) {
   font-variant-numeric: tabular-nums;
 }
 
+.control {
+  width: 100%;
+  min-height: 2.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(242, 193, 78, 0.35);
+  background: #14100e;
+  color: #e9d8b4;
+  padding: 0.45rem 0.75rem;
+  font-family: Fredoka, "Baloo 2", sans-serif;
+}
+
+.control:focus {
+  outline: none;
+  border-color: #f2c14e;
+}
+
 .hud-glass {
   background: rgba(20, 16, 14, 0.88);
   border: 1px solid rgba(242, 193, 78, 0.28);
