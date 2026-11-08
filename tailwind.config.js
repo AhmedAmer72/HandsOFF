@@ -22,8 +22,12 @@ export default {
         camp: ["Black Ops One", "Lilita One", "cursive"],
         body: ["Fredoka", "Baloo 2", "sans-serif"],
       },
+      borderRadius: {
+        hud: "1rem",
+      },
       boxShadow: {
-        panel: "0 18px 50px rgba(0,0,0,0.45)",
+        panel: "0 18px 40px rgba(0,0,0,0.45)",
+        hud: "0 10px 28px rgba(0,0,0,0.4)",
       },
     },
   },

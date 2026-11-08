@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { HERO_PROFILES } from "../../game/config/heroProfiles";
 import { fundRaidOffer, hallIdOf, leaveWatch, publishHall, setScreen, switchKeeper, unpublishCurrent, useGame, watchRaid } from "../../game/store";
 import { getActivity, listPublic, loadRegistry, pullHalls, readRegistry, type HallQuery, type PublicDungeon } from "../../game/world/registry";
-import { Button, Chip, Field, Panel, Title } from "../kit";
+import { Button, Chip, Field, Panel, Status, Title } from "../kit";
 
 const SORTS: { id: NonNullable<HallQuery["sort"]>; label: string }[] = [
   { id: "recent", label: "Recently active" },
@@ -98,10 +98,10 @@ export function WorldMap() {
               <button className={`min-h-11 w-full rounded-2xl border px-4 py-3 text-left ${selectedId === hall.dungeonId ? "border-gold bg-panel" : "border-gold/20 bg-ink/60"}`} data-testid="dungeon-row" onClick={() => setSelectedId(hall.dungeonId)}>
                 <span className="flex flex-wrap items-baseline justify-between gap-2">
                   <span className="font-display text-2xl text-gold">{hall.name}</span>
-                  <span className={hall.state === "CLOSED" ? "text-blood" : "text-gold"}>{hall.state === "CLOSED" ? "Closed" : "Open"}</span>
+                  <Status tone={hall.state === "CLOSED" ? "danger" : "quiet"}>{hall.state === "CLOSED" ? "Closed" : "Open"}</Status>
                 </span>
                 <span className="mt-1 block text-sm text-parchment/75">Owner {hall.displayName} · Tier {hall.tier} · Settled raids {hall.raidCount} · Hero traffic {hall.heroTraffic}</span>
-                <span className="mt-1 block text-sm">{hall.activeRaidCount > 0 ? "Live raid" : "No live raid"}</span>
+                <Status tone={hall.activeRaidCount > 0 ? "live" : "quiet"}>{hall.activeRaidCount > 0 ? "Live raid" : "No live raid"}</Status>
               </button>
             </li>
           ))}

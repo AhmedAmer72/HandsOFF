@@ -36,7 +36,7 @@ export function Shell({ screen }: { screen: ScreenId }) {
     setScreen(id);
   }
   return (
-    <aside className="z-30 flex h-full w-[4.5rem] shrink-0 flex-col border-r border-gold/20 bg-ink/95 md:w-56">
+    <aside className="z-30 flex h-full w-[4.5rem] shrink-0 flex-col border-r border-gold/20 bg-ink/95 pb-[env(safe-area-inset-bottom)] md:w-56">
       <p className="hidden px-4 pb-1 pt-4 font-display text-sm tracking-[0.16em] text-gold md:block">UNDERREALM</p>
       <p className="hidden px-4 pb-3 text-[11px] leading-snug text-parchment/70 md:block">Guest — progress is saved on this device until you sign in.</p>
       <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2" aria-label="Game">

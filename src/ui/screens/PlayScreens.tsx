@@ -5,7 +5,7 @@ import { RAID } from "../../../rules/economy";
 import { HERO_PROFILES } from "../../game/config/heroProfiles";
 import { dungeonTier, nextDay, setScreen, useGame } from "../../game/store";
 import { shopState, stockPrice } from "../../game/rules/money";
-import { Button, Chip, Panel, Title } from "../kit";
+import { Button, Chip, Panel, Receipt, Title } from "../kit";
 
 function book() {
   return canonicalChain(() => {
@@ -46,14 +46,14 @@ export function ReportScreen() {
   return (
     <section className="mx-auto flex max-w-3xl flex-col gap-4 p-4">
       <Title>Raid report</Title>
-      <Panel>
-        <p className="font-display text-2xl text-gold">{hero.name} {report.survived ? "survived" : "fell"}.</p>
+      <Receipt>
+        <p className="font-display text-2xl">{hero.name} {report.survived ? "survived" : "fell"}.</p>
         <p className="mt-2 text-sm">Day {report.day}. Traps sprung {report.trapsTriggered.length}. Chain ×{game.chain ?? 0}.</p>
         <p className="text-sm">Pages burned {burned}. Pages landed {landed}. Memory rating {report.facts.length ? `${burned}/${report.facts.length}` : "no page"}.</p>
         <p className="text-sm">Salvage in hand: iron {game.inventory.iron ?? 0}, ash {game.inventory.ash ?? 0}, bone {game.inventory.bone ?? 0}.</p>
         <p className="text-sm">Spike kills {game.trapKills?.spike ?? 0}. Tier {dungeonTier(game.raidsCleared ?? 0)}.</p>
-        <p className="mt-2 text-sm text-parchment/70">{report.decision.reason}</p>
-      </Panel>
+        <p className="mt-2 text-sm opacity-80">{report.decision.reason}</p>
+      </Receipt>
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => { if (game.phase === "report") nextDay(); else setScreen("dungeon"); }}>Continue</Button>
         <Button tone="ghost" onClick={() => setScreen("dungeon")}>My Dungeon</Button>

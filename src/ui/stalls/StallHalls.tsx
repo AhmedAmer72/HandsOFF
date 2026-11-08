@@ -106,7 +106,7 @@ function MerchantSheet({ merchant, onNote }: { merchant: "mira" | "orrin" | "tal
           const currency = line.itemId in GOODS ? GOODS[line.itemId as keyof typeof GOODS].currency : "PLAY_GOLD";
           return (
             <li key={line.itemId} className="flex flex-wrap items-center justify-between gap-2">
-              <span>{itemLabel(line.itemId)} · {line.qty} · {quote.price < 1 ? quote.price.toFixed(4) : quote.price.toFixed(2)} {currency === "NEAR" ? "small purse" : "gold"}</span>
+              <span className="num">{itemLabel(line.itemId)} · {line.qty} · {quote.price < 1 ? quote.price.toFixed(4) : quote.price.toFixed(2)} {currency === "NEAR" ? "small purse" : "gold"}</span>
               <Button onClick={() => onNote(buyFromMerchant(merchant, line.itemId).reason ?? "")}>Buy</Button>
             </li>
           );
