@@ -66,14 +66,14 @@ export function hexCenter(col: number, row: number) {
 
 /** Landmark hexes on the island. These are places, not dungeon names. */
 const LANDMARKS = [
-  { id: "castle", col: 4, row: 3 },
-  { id: "tower", col: 6, row: 2 },
-  { id: "mine", col: 2, row: 4 },
-  { id: "tavern", col: 5, row: 4 },
-  { id: "church", col: 2, row: 2 },
-  { id: "mill", col: 6, row: 4 },
-  { id: "home", col: 3, row: 5 },
-  { id: "smith", col: 3, row: 2 },
+  { id: "west-wood", col: 2, row: 7 },
+  { id: "north-ridge", col: 9, row: 2 },
+  { id: "south-march", col: 5, row: 11 },
+  { id: "east-watch", col: 11, row: 5 },
+  { id: "old-mine", col: 3, row: 10 },
+  { id: "far-tower", col: 10, row: 10 },
+  { id: "lake-fort", col: 12, row: 4 },
+  { id: "low-camp", col: 1, row: 4 },
 ] as const;
 
 export const WORLD_PADS = LANDMARKS.map((place) => ({ id: place.id, ...hexCenter(place.col, place.row) }));

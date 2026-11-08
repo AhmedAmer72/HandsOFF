@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { playMenuIntro } from "../../animations/mainMenuTimeline";
-import { enterDungeon, useGame } from "../../game/store";
+import { setScreen, useGame } from "../../game/store";
 import { mountMainMenu, type MainMenuHandle } from "../../three/scenes/MainMenuScene";
 import { MainMenuBanner } from "../main-menu/MainMenuBanner";
 import { MainMenuFeatures } from "../main-menu/MainMenuFeatures";
@@ -71,7 +71,7 @@ export function MainMenu() {
           <button className="rounded-full bg-gold px-4 py-2 text-ink" onClick={() => { scene.current?.skipTrailer(); setTrailer(false); }}>Close</button>
           <button className="rounded-full border border-gold/50 px-4 py-2 text-gold" onClick={() => scene.current?.skipTrailer()}>Skip</button>
           <button className="rounded-full border border-gold/50 px-4 py-2 text-gold" onClick={() => scene.current?.playTrailer()}>Replay</button>
-          <button className="rounded-full border border-white/20 px-4 py-2" onClick={() => { sfx.ui(); setTrailer(false); scene.current?.skipTrailer(); enterDungeon(); }}>Enter dungeon</button>
+          <button className="rounded-full border border-white/20 px-4 py-2" onClick={() => { sfx.ui(); setTrailer(false); scene.current?.skipTrailer(); setScreen("map"); }}>Enter the world</button>
         </div>
       )}
     </div>

@@ -29,14 +29,7 @@ export function HomeScreen() {
         <Chip>Tier {tier}</Chip>
         <Chip>{game.dungeonClosed ? "Closed — restock to reopen" : "Open"}</Chip>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Button onClick={() => setScreen("dungeon")}>Raid</Button>
-        <Button tone="ghost" onClick={() => setScreen("gate")}>Gate market</Button>
-        <Button tone="ghost" onClick={() => setScreen("workshop")}>Workshop</Button>
-        <Button tone="ghost" onClick={() => setScreen("map")}>World map</Button>
-        <Button tone="ghost" onClick={() => setScreen("week")}>A week of raids</Button>
-        <Button tone="ghost" onClick={() => setScreen("settings")}>Settings</Button>
-      </div>
+      <Button onClick={() => setScreen("map")}>Back to the map</Button>
     </section>
   );
 }
@@ -63,8 +56,7 @@ export function ReportScreen() {
       </Panel>
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => { if (game.phase === "report") nextDay(); else setScreen("dungeon"); }}>Next wave</Button>
-        <Button tone="ghost" onClick={() => setScreen("gate")}>Gate market</Button>
-        <Button tone="ghost" onClick={() => setScreen("workshop")}>Workshop</Button>
+        <Button tone="ghost" onClick={() => setScreen("map")}>Map</Button>
         <Button tone="ghost" onClick={() => setScreen("chronicle")}>Watch replay</Button>
       </div>
     </section>

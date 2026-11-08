@@ -1,4 +1,4 @@
-import { enterDungeon } from "../../game/store";
+import { setScreen } from "../../game/store";
 import { sfx } from "../../game/audio";
 import { liftButton } from "../../animations/mainMenuTimeline";
 
@@ -13,9 +13,9 @@ export function MainMenuHero({ continueReady, onTrailer }: { continueReady: bool
           className="rounded-full bg-gold px-6 py-3 font-display text-ink"
           onMouseEnter={(event) => liftButton(event.currentTarget, true)}
           onMouseLeave={(event) => liftButton(event.currentTarget, false)}
-          onClick={() => { sfx.ui(); enterDungeon(); }}
+          onClick={() => { sfx.ui(); setScreen("map"); }}
         >
-          {continueReady ? "Enter dungeon" : "New game"}
+          {continueReady ? "Enter the world" : "New game"}
         </button>
         <button
           className="rounded-full border border-gold/50 px-6 py-3 text-gold"
@@ -27,7 +27,7 @@ export function MainMenuHero({ continueReady, onTrailer }: { continueReady: bool
         </button>
       </div>
       <p className="mt-3 text-xs text-parchment/60">
-        {continueReady ? "Enter dungeon keeps this save. New game in the corner clears it." : "No save yet. New game opens Ashgate."}
+        {continueReady ? "The island keeps this save. Walk to Ashgate, the market, or the workshop." : "No save yet. New game opens the island."}
       </p>
     </div>
   );

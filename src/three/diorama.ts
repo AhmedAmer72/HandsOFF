@@ -38,7 +38,9 @@ export function mountDiorama(canvas: HTMLCanvasElement, hooks: {
   const camera = new THREE.OrthographicCamera(-20, 20, 14, -14, 0.1, 160);
   const focus = new THREE.Vector3(ISLAND_FOCUS.x, 0, ISLAND_FOCUS.z);
   let yaw = 0.35;
-  let view = 14;
+  let view = 18;
+  const keys = new Set<string>();
+  const clickable: THREE.Object3D[] = [];
   const hemi = new THREE.HemisphereLight("#d9c7a2", "#241910", 0.55);
   const sun = new THREE.DirectionalLight("#ffe0b0", 1.1);
   sun.position.set(-8, 18, 10);
@@ -89,6 +91,7 @@ export function mountDiorama(canvas: HTMLCanvasElement, hooks: {
   function rebuild(list: MapMarker[]) {
     markers.clear();
     for (const marker of list) {
+      if (!marker.id.startsWith("hall:")) continue;
       const group = new THREE.Group();
       group.position.set(marker.x, 0, marker.z);
       group.userData.id = marker.id;
@@ -129,6 +132,21 @@ export function mountDiorama(canvas: HTMLCanvasElement, hooks: {
         const mesh = await spawn(url, "cast");
         mesh.position.set(entry.x, entry.y, entry.z);
         mesh.rotation.y = entry.rot;
+        if (entry.placeId) {
+          mesh.userData.id = entry.placeId;
+          mesh.traverse((child) => {
+            child.userData.id = entry.placeId;
+          });
+          clickable.push(mesh);
+          const volume = new THREE.Mesh(
+            new THREE.CylinderGeometry(1.15, 1.15, 2.4, 8),
+            new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+          );
+          volume.position.set(entry.x, 1.2, entry.z);
+          volume.userData.id = entry.placeId;
+          scene.add(volume);
+          clickable.push(volume);
+        }
         scene.add(mesh);
       }
     }));
@@ -139,7 +157,7 @@ export function mountDiorama(canvas: HTMLCanvasElement, hooks: {
     pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(pointer, camera);
-    const hits = raycaster.intersectObjects(markers.children, true);
+    const hits = raycaster.intersectObjects([...clickable, ...markers.children], true);
     const hit = hits.find((entry) => entry.object.parent);
     let node: THREE.Object3D | null = hit?.object ?? null;
     while (node && !node.userData.id) node = node.parent;
@@ -165,27 +183,60 @@ export function mountDiorama(canvas: HTMLCanvasElement, hooks: {
   }
   function onWheel(event: WheelEvent) {
     event.preventDefault();
-    view = THREE.MathUtils.clamp(view + event.deltaY * 0.01, 10, 28);
+    view = THREE.MathUtils.clamp(view + event.deltaY * 0.01, 8, 36);
     resize();
   }
 
+  function typing(event: KeyboardEvent) {
+    const target = event.target as HTMLElement | null;
+    return Boolean(target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT"));
+  }
+  function onKeyDown(event: KeyboardEvent) {
+    if (typing(event)) return;
+    keys.add(event.key.toLowerCase());
+    if (event.key === "q") yaw = THREE.MathUtils.clamp(yaw - 0.08, -0.7, 0.7);
+    if (event.key === "e") yaw = THREE.MathUtils.clamp(yaw + 0.08, -0.7, 0.7);
+    if (event.key.toLowerCase() === "r") {
+      yaw = 0.35;
+      view = 18;
+      focus.set(ISLAND_FOCUS.x, 0, ISLAND_FOCUS.z);
+      resize();
+    }
+  }
+  function onKeyUp(event: KeyboardEvent) {
+    keys.delete(event.key.toLowerCase());
+  }
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup", onKeyUp);
   canvas.addEventListener("pointerdown", onPointerDown);
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("wheel", onWheel, { passive: false });
   const clock = new THREE.Clock();
+  let lastElapsed = 0;
   applyQuality();
   resize();
 
   function tick() {
     frame = requestAnimationFrame(tick);
+    const elapsed = clock.getElapsedTime();
+    const dt = Math.min(0.05, Math.max(0, elapsed - lastElapsed));
+    lastElapsed = elapsed;
+    const typingNow = document.activeElement && ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName);
+    if (!typingNow) {
+      if (keys.has("w")) focus.z -= 8 * dt;
+      if (keys.has("s")) focus.z += 8 * dt;
+      if (keys.has("a")) focus.x -= 8 * dt;
+      if (keys.has("d")) focus.x += 8 * dt;
+      focus.x = THREE.MathUtils.clamp(focus.x, 0, 28);
+      focus.z = THREE.MathUtils.clamp(focus.z, -2, 22);
+    }
     const list = hooks.getMarkers();
     const next = list.map((marker) => `${marker.id}:${marker.state}:${marker.active}:${marker.traffic}:${marker.own}:${marker.x}:${marker.z}`).join("|");
     if (next !== signature) {
       signature = next;
       rebuild(list);
     }
-    const elapsed = clock.getElapsedTime();
     if (!hooks.getReduceMotion()) torch.intensity = 1.2 + Math.sin(elapsed * 3) * 0.15;
     aim();
     labelTick += 1;
@@ -217,6 +268,8 @@ export function mountDiorama(canvas: HTMLCanvasElement, hooks: {
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerup", onPointerUp);
       canvas.removeEventListener("wheel", onWheel);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
       renderer.dispose();
     },
   };

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { leaveWatch, publishHall, setScreen, switchKeeper, unpublishCurrent, useGame, watchRaid } from "../../game/store";
-import { getActivity, listPublic, loadRegistry, padPosition, readRegistry, type HallQuery, type PublicDungeon } from "../../game/world/registry";
+import { MAP_GATES } from "../../game/world/hexIsland";
+import { getActivity, hexCenter, listPublic, loadRegistry, padPosition, readRegistry, type HallQuery, type PublicDungeon } from "../../game/world/registry";
 import { mountDiorama, type MapMarker } from "../../three/diorama";
 import { Button, Chip, Field, Panel, Title } from "../kit";
 
@@ -19,6 +20,7 @@ export function WorldMap() {
   const [blurb, setBlurb] = useState(game.dungeonDescription ?? "");
   const [shownName, setShownName] = useState(game.displayName ?? "");
   const [note, setNote] = useState("");
+  const [hallOpen, setHallOpen] = useState(false);
   const [labels, setLabels] = useState<Array<{ id: string; name: string; x: number; y: number }>>([]);
   const markersRef = useRef<MapMarker[]>([]);
   const selectRef = useRef(setSelectedId);
@@ -30,20 +32,26 @@ export function WorldMap() {
     return listPublic(readRegistry(), query, 0, 24);
   }, [query, game.catalogNonce, game.dungeonPublished, game.dungeonClosed, game.raidsCleared]);
   const selected = board.halls.find((hall) => hall.dungeonId === selectedId) ?? null;
-  markersRef.current = board.halls.map((hall) => {
-    const pad = padPosition(hall.pad);
-    return {
-      id: hall.dungeonId,
-      name: hall.name,
-      x: pad.x,
-      z: pad.z,
-      state: hall.state,
-      active: hall.activeRaidCount > 0,
-      traffic: hall.heroTraffic,
-      own: hall.ownerId === (game.ownerId || "keeper-local"),
-      tier: hall.tier,
-    };
-  });
+  markersRef.current = [
+    ...MAP_GATES.map((gate) => {
+      const at = hexCenter(gate.col, gate.row);
+      return { id: gate.id, name: gate.name, x: at.x, z: at.z, state: "OPEN" as const, active: false, traffic: 0, own: false, tier: 1 };
+    }),
+    ...board.halls.map((hall) => {
+      const pad = padPosition(hall.pad);
+      return {
+        id: hall.dungeonId,
+        name: hall.name,
+        x: pad.x,
+        z: pad.z,
+        state: hall.state,
+        active: hall.activeRaidCount > 0,
+        traffic: hall.heroTraffic,
+        own: hall.ownerId === (game.ownerId || "keeper-local"),
+        tier: hall.tier,
+      };
+    }),
+  ];
 
   useEffect(() => {
     setHallName(game.dungeonName ?? "Ashgate");
@@ -59,7 +67,15 @@ export function WorldMap() {
       getMarkers: () => markersRef.current,
       getQuality: () => game.quality,
       getReduceMotion: () => Boolean(game.reduceMotion),
-      onSelect: (id) => selectRef.current(id),
+      onSelect: (id) => {
+        if (!id) return;
+        const gate = MAP_GATES.find((entry) => entry.id === id);
+        if (gate) {
+          setScreen(gate.screen);
+          return;
+        }
+        selectRef.current(id);
+      },
       onLabels: (next) => {
         setLabels((current) => {
           if (current.length === next.length && current.every((label, index) => label.id === next[index].id && Math.abs(label.x - next[index].x) < 2 && Math.abs(label.y - next[index].y) < 2)) return current;
@@ -74,7 +90,11 @@ export function WorldMap() {
     <section className="relative h-full min-h-[70vh]">
       <canvas ref={canvasRef} data-testid="world-map" className="view h-full min-h-[70vh] w-full" />
       {labels.map((label) => (
-        <button key={label.id} data-testid="dungeon-marker" className="absolute z-10 -translate-x-1/2 rounded-full bg-ink/80 px-2 py-1 text-xs text-gold" style={{ left: label.x, top: label.y }} onClick={() => setSelectedId(label.id)}>
+        <button key={label.id} data-testid={label.id.startsWith("gate:") ? "map-gate" : "dungeon-marker"} className="absolute z-10 -translate-x-1/2 rounded-full bg-ink/80 px-2 py-1 text-xs text-gold" style={{ left: label.x, top: label.y }} onClick={() => {
+          const gate = MAP_GATES.find((entry) => entry.id === label.id);
+          if (gate) setScreen(gate.screen);
+          else setSelectedId(label.id);
+        }}>
           {label.name}
         </button>
       ))}
@@ -104,7 +124,11 @@ export function WorldMap() {
           </Field>
           <p className="pb-2 text-xs text-parchment/70" data-testid="hall-count">{board.total} public {board.total === 1 ? "hall" : "halls"}</p>
         </div>
-        <div className="pointer-events-auto grid gap-3 lg:grid-cols-[280px_1fr]">
+        <div className="pointer-events-auto flex items-end justify-between gap-3">
+          <Button tone="ghost" onClick={() => setHallOpen((value) => !value)}>{hallOpen ? "Close hall slip" : "Your hall"}</Button>
+          {note && <p className="rounded-2xl bg-ink/80 px-3 py-2 text-sm text-gold">{note}</p>}
+        </div>
+        {hallOpen && <div className="pointer-events-auto mt-3 grid gap-3 lg:grid-cols-[280px_1fr]">
           <Panel>
             <p className="font-display text-gold">{game.displayName}</p>
             <p className="text-xs text-parchment/70">{game.dungeonPublished ? "Your hall is public." : "Your hall is still a draft."}</p>
@@ -120,8 +144,8 @@ export function WorldMap() {
             <Button tone="ghost" className="mt-2" onClick={() => setNote(switchKeeper(keeperId, keeperName || keeperId).reason)}>Switch keeper</Button>
             {note && <p className="mt-2 text-sm text-gold">{note}</p>}
           </Panel>
-          {selected && <PublicCard hall={selected} own={selected.ownerId === (game.ownerId || "keeper-local")} onClose={() => setSelectedId(null)} />}
-        </div>
+        </div>}
+        {selected && <div className="pointer-events-auto mt-3"><PublicCard hall={selected} own={selected.ownerId === (game.ownerId || "keeper-local")} onClose={() => setSelectedId(null)} /></div>}
       </div>
     </section>
   );
