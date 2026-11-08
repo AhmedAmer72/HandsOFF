@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { enterDungeon, useGame } from "../../game/store";
 import { sfx } from "../../game/audio";
-import { mountLandingProps } from "../../three/landingProps";
+import { ParallaxComponent } from "../../components/ui/parallax-scrolling";
 
 type WalletStatus = "closed" | "prompt" | "rejected" | "failed";
 
@@ -33,15 +33,7 @@ const ACTS = [
 
 export function MainMenu() {
   const game = useGame();
-  const heroCanvas = useRef<HTMLCanvasElement>(null);
   const [wallet, setWallet] = useState<WalletStatus>("closed");
-
-  useEffect(() => {
-    const canvas = heroCanvas.current;
-    if (!canvas) return;
-    const view = mountLandingProps(canvas);
-    return () => view.dispose();
-  }, []);
 
   function start() {
     sfx.ui();
@@ -55,9 +47,9 @@ export function MainMenu() {
 
   return (
     <div className="bg-[#100c0a] text-parchment" data-testid="landing">
-      <header className="sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-gold/15 bg-[#100c0a]/95 px-6 py-3 md:px-10">
-        <p className="font-display text-lg tracking-[0.14em] text-gold">UNDERREALM</p>
-        <nav className="hidden gap-6 text-sm text-parchment/70 md:flex">
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between gap-4 px-6 py-4 md:px-10">
+        <p className="landing-mark font-display text-lg tracking-[0.14em] text-gold">UNDERREALM</p>
+        <nav className="pointer-events-auto hidden gap-6 text-sm text-parchment md:flex">
           <a href="#hall">The hall</a>
           <a href="#ledger">Ledger</a>
           <a href="#page">The page</a>
@@ -65,20 +57,7 @@ export function MainMenu() {
         </nav>
       </header>
 
-      <section className="relative isolate flex min-h-[100svh] flex-col justify-end overflow-hidden px-6 pb-16 pt-28 md:px-10">
-        <canvas ref={heroCanvas} className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[58%] bg-gradient-to-t from-[#100c0a] via-[#100c0a]/80 to-transparent" />
-        <div className="hall-enter relative max-w-xl">
-          <h1 className="font-display text-4xl leading-[1.05] text-parchment md:text-6xl">You own the dungeon. The heroes are your customers.</h1>
-          <p className="mt-5 max-w-[62ch] text-base text-parchment/85 md:text-lg">Build the hall. Defend the vault. Decide what a fallen hero is allowed to leave behind. Your dungeon. Their money. Your rules.</p>
-          <p className="mt-4 text-sm text-gold">Kara, Brann, and Ivo raid. You defend.</p>
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <button className="min-h-11 rounded-full bg-gold px-8 font-display text-ink" data-testid="get-started" onClick={start}>Get Started</button>
-            <button className="min-h-11 rounded-full border border-gold/50 px-8 text-gold" data-testid="connect-wallet" onClick={connect}>Connect Wallet</button>
-          </div>
-          {game.continueReady && <p className="mt-4 text-sm text-parchment/70">A guest hall is already saved on this device. Get Started opens it.</p>}
-        </div>
-      </section>
+      <ParallaxComponent onStart={start} onConnect={connect} continueReady={game.continueReady} />
 
       {wallet !== "closed" && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="wallet-title">

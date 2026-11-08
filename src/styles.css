@@ -83,6 +83,110 @@ button:active:not(:disabled) {
   animation: hall-enter 720ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
 
+.parallax__header {
+  position: relative;
+  height: 100svh;
+  overflow: hidden;
+  background: #100c0a;
+}
+
+.parallax__visuals,
+.parallax__layers {
+  height: 100%;
+}
+
+.parallax__layers {
+  position: relative;
+}
+
+.parallax__layer-img {
+  position: absolute;
+  left: 0;
+  top: -8%;
+  width: 100%;
+  height: 120%;
+  object-fit: cover;
+  object-position: center center;
+}
+
+.parallax__layer-img--front {
+  top: -4%;
+  height: 112%;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 28%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 28%, #000 100%);
+}
+
+.parallax__layer-title {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 1.25rem 11vh;
+  pointer-events: none;
+}
+
+.parallax__actions {
+  pointer-events: auto;
+  display: flex;
+  max-width: 36rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+@media (max-width: 700px) {
+  .parallax__header,
+  .parallax__visuals,
+  .parallax__layers {
+    height: auto;
+  }
+
+  .parallax__layer-img {
+    position: relative;
+    top: 0;
+    height: auto;
+    object-fit: contain;
+    background: #070b14;
+  }
+
+  .parallax__layer-img--front {
+    display: none;
+  }
+
+  .parallax__layer-title {
+    position: relative;
+    inset: auto;
+    padding: 1rem 1rem 0;
+    background: #100c0a;
+  }
+
+  .parallax__fade,
+  .landing-mark {
+    display: none;
+  }
+
+  .parallax__actions {
+    width: 100%;
+  }
+
+  .parallax__actions button {
+    flex: 1 1 8rem;
+  }
+}
+
+.parallax__fade {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 4;
+  height: 22%;
+  background: linear-gradient(to top, #100c0a 0%, transparent 100%);
+  pointer-events: none;
+}
+
 .num {
   font-variant-numeric: tabular-nums;
 }
