@@ -1,6 +1,6 @@
 import { ECONOMY, GOODS } from "../config/economyRules";
 import { shopState } from "../rules/money";
-import { RAID } from "../../../rules/economy";
+import { AGENTS, GOODS as RULE_GOODS, RAID } from "../../../rules/economy";
 import { HERO_ORDER, HERO_PROFILES } from "../config/heroProfiles";
 import type { HeroId } from "../content";
 import type { HeroState, MerchantState, SaveData } from "./types";
@@ -10,6 +10,8 @@ function heroState(id: HeroId): HeroState {
   return {
     id,
     gold: profile.startingGold,
+    near: profile.nearStart,
+    spentTodayNear: 0,
     hp: profile.maxHp,
     maxHp: profile.maxHp,
     inventory: {},
@@ -21,22 +23,30 @@ function heroState(id: HeroId): HeroState {
 }
 
 function stockFor(merchant: MerchantState["id"]) {
-  return GOODS.filter((good) => good.merchant === merchant).map((good) => ({ itemId: good.id, qty: good.targetStock }));
+  const stall = GOODS.filter((good) => good.merchant === merchant).map((good) => ({ itemId: good.id, qty: good.targetStock }));
+  const canonical = Object.entries(RULE_GOODS)
+    .filter(([id]) => (merchant === "mira" ? id.startsWith("play:resource:") : merchant === "tallow" ? id.startsWith("nb:gear:") : false))
+    .map(([id, good]) => ({ itemId: id, qty: good.target }));
+  return [...stall, ...canonical];
 }
 
 export function createSave(screen = "menu"): SaveData {
   const heroes = {} as SaveData["heroes"];
   for (const id of HERO_ORDER) heroes[id] = heroState(id);
   const merchants: SaveData["merchants"] = {
-    mira: { id: "mira", name: "Mira", role: "Forgemaster", gold: 90, stock: stockFor("mira"), rumours: [], sales: 0 },
-    orrin: { id: "orrin", name: "Orrin", role: "Rumour broker", gold: 70, stock: [], rumours: [], sales: 0 },
-    tallow: { id: "tallow", name: "Tallow", role: "Quartermaster", gold: 80, stock: stockFor("tallow"), rumours: [], sales: 0 },
+    mira: { id: "mira", name: "Mira", role: "Forgemaster", gold: 90, near: AGENTS.merchant.startNEAR, stock: stockFor("mira"), rumours: [], sales: 0, history: [], spentTodayNear: 0, spentTodayGold: 0, quoteBook: {} },
+    orrin: { id: "orrin", name: "Orrin", role: "Rumour broker", gold: 70, near: AGENTS.merchant.startNEAR, stock: [], rumours: [], sales: 0, history: [], spentTodayNear: 0, spentTodayGold: 0, quoteBook: {} },
+    tallow: { id: "tallow", name: "Tallow", role: "Quartermaster", gold: 80, near: AGENTS.merchant.startNEAR, stock: stockFor("tallow"), rumours: [], sales: 0, history: [], spentTodayNear: 0, spentTodayGold: 0, quoteBook: {} },
   };
   return {
     version: 3,
     day: 1,
     seed: 1105,
     gold: ECONOMY.startingPlayerGold,
+    near: 0.05,
+    guildGold: 0,
+    opsGold: 0,
+    classes: { iron: "PLAY_ONLY", ash: "PLAY_ONLY", bone: "PLAY_ONLY", nail: "PLAY_ONLY" },
     cinder: RAID.cinder.start,
     reputation: 0,
     vault: RAID.vaultStart,
@@ -61,7 +71,7 @@ export function restock(save: SaveData): SaveData {
     const merchant = merchants[id];
     const target = GOODS.filter((good) => good.merchant === id).reduce((sum, good) => sum + good.targetStock, 0);
     const held = merchant.stock.reduce((sum, line) => sum + line.qty, 0);
-    const stateName = shopState(merchant.gold, held, target, id !== "orrin");
+    const stateName = shopState(merchant.near ?? AGENTS.merchant.startNEAR, held, target, id !== "orrin");
     if (stateName === "CLOSED" || stateName === "UNDERCAPITALISED") {
       merchants[id] = merchant;
       return;

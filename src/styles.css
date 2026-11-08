@@ -12,7 +12,7 @@ body,
 }
 
 body {
-  font-family: "Source Sans 3", "Segoe UI", sans-serif;
+  font-family: "Fredoka", "Baloo 2", sans-serif;
 }
 
 canvas.view {
@@ -24,6 +24,17 @@ canvas.view {
 button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid #f2c14e;
+  outline-offset: 2px;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .hud-glass {

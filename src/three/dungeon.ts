@@ -9,6 +9,8 @@ import type { PlacedTrap } from "../game/engine/types";
 import type { VisualStep } from "../game/store";
 import { sfx } from "../game/audio";
 import { loadGltf, spawn, stripRootMotion } from "./loader";
+import { FEEL } from "../../rules/feel";
+import { percentile, shakeOffset, visualScale } from "../game/visual/feel";
 
 export interface DungeonHooks {
   getHero: () => HeroId;
@@ -23,7 +25,7 @@ export interface DungeonHooks {
   tryPlace: (trapId: TrapId, ix: number, iz: number) => string;
   relayTo: (id: string, ix: number, iz: number) => boolean;
   getTraps: () => PlacedTrap[];
-  onStats: (stats: { fps: number; min: number; avg: number; triangles: number; calls: number; renderer: string }) => void;
+  onStats: (stats: { fps: number; min: number; avg: number; triangles: number; calls: number; renderer: string; p95?: number; textures?: number }) => void;
   onDiary: (phase: "decision") => void;
   diaryChoice: () => "idle" | "decision" | "burned" | "escaped";
   onPrompt: (text: string) => void;
@@ -32,12 +34,17 @@ export interface DungeonHooks {
   onPossess: () => void;
   onMerchant: (id: string) => void;
   onCraft: () => void;
+  onTrigger: (id: string) => void;
   onBrace: () => void;
   armTrap: (trapId: TrapId) => void;
   clearArm: () => void;
   getPhase: () => string;
   getDay: () => number;
   getShelf: () => { mira: number; tallow: number; orrin: number };
+  getCue?: () => { id: string; action: string; nonce: number } | null;
+  getReduceMotion?: () => boolean;
+  getChain?: () => number;
+  getVault?: () => number;
 }
 
 interface Actor {
@@ -70,7 +77,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   renderer.setClearColor("#14100E");
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog("#14100E", 22, 78);
+  scene.fog = new THREE.Fog("#1B1A22", 28, 72);
   scene.add(new THREE.HemisphereLight("#ffe0bf", "#2a1c16", 0.72));
   const sun = new THREE.DirectionalLight("#d7e4ff", 0.55);
   sun.position.set(12, 18, 8);
@@ -87,7 +94,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 120);
   const focus = new THREE.Vector3(8, 0, 8);
   let yaw = 0;
-  let view = 11;
+  let view = 12.5;
   const pointer = new THREE.Vector2();
   const raycaster = new THREE.Raycaster();
   const selectables: THREE.Object3D[] = [];
@@ -97,6 +104,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   let clips: THREE.AnimationClip[] = [];
   let hero: Actor | null = null;
   let pendingRelay: string | null = null;
+  let trapDrag: { id: string; x: number; y: number } | null = null;
   let lastPrompt = "";
   let journal: THREE.Object3D | null = null;
   let running = true;
@@ -151,6 +159,25 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   ash.visible = false;
   scene.add(ash);
   const shelves: { id: string; meshes: THREE.Object3D[] }[] = [];
+  const shelfSeen: Record<string, number> = {};
+  let lastCue = 0;
+  let hitStopUntil = 0;
+  let shakeStarted = 0;
+  let shakeAmp = 0;
+  let slowUntil = 0;
+  const frameTimes: number[] = [];
+  const livingLights: THREE.PointLight[] = [];
+  const livingBanners: THREE.Object3D[] = [];
+  const livingCoins: THREE.Object3D[] = [];
+  const livingWalls: { mesh: THREE.Object3D; z: number }[] = [];
+  const floatPool: { sprite: THREE.Sprite; life: number }[] = [];
+  const coinBurst = new THREE.Points(
+    new THREE.BufferGeometry(),
+    new THREE.PointsMaterial({ color: "#F2C14E", size: 0.22, transparent: true, depthWrite: false }),
+  );
+  coinBurst.visible = false;
+  coinBurst.geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(24 * 3), 3));
+  scene.add(coinBurst);
   const emberPositions = new Float32Array(36 * 3);
   const embers = new THREE.Points(
     new THREE.BufferGeometry(),
@@ -229,6 +256,10 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       2 + Math.sin(el) * dist,
       focus.z + Math.sin(az) * Math.cos(el) * dist,
     );
+    const elapsed = Math.max(0, (performance.now() - shakeStarted) / 1000);
+    const shake = shakeOffset(elapsed, shakeAmp, hooks.getReduceMotion?.() ?? false);
+    camera.position.x += shake.x;
+    camera.position.y += shake.y;
     camera.lookAt(focus);
     camera.updateMatrixWorld();
   }
@@ -244,13 +275,13 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     action.reset();
     action.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, once ? 1 : Infinity);
     action.clampWhenFinished = once;
+    action.enabled = true;
     action.setEffectiveWeight(1);
+    const fade = once ? 0.12 : 0.2;
     if (actor.current && actor.current !== action) {
-      actor.current.fadeOut(0.18);
-      action.fadeIn(0.18).play();
-    } else {
-      action.fadeIn(0.05).play();
+      actor.current.crossFadeTo(action, fade, false);
     }
+    action.fadeIn(fade).play();
     actor.current = action;
     actor.action = logical;
     if (once) actor.busyUntil = performance.now() + clip.duration * 1000 * 0.85;
@@ -330,7 +361,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
           mesh.userData.level = true;
           mesh.userData.meta = entry;
           scene.add(mesh);
-          if (entry.kind === "floor" || entry.kind === "trap" || entry.kind === "prop" || entry.kind === "vault" || entry.kind === "light" || entry.label === "Entrance gate") {
+          if (entry.kind === "floor" || entry.kind === "trap" || entry.kind === "vault" || entry.id === "anvil" || entry.label === "Entrance gate") {
             selectables.push(mesh);
           }
           if (entry.label === "Entrance gate") mesh.userData.action = "gate";
@@ -423,7 +454,15 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     selectables.push(gate);
     await stockShelf("mira", item("nail"), 0.6, 6 * CELL + 0.9);
     await stockShelf("tallow", dungeon("bottle_A_green"), CELL + 0.6, 5 * CELL + 0.9);
-    focus.set(4 * CELL, 0, 6 * CELL);
+    await stockShelf("orrin", item("map"), 0.8, 4 * CELL + 0.4);
+    focus.set(4 * CELL, 0, 7 * CELL);
+    scene.traverse((obj) => {
+      if (obj instanceof THREE.PointLight) livingLights.push(obj);
+      const meta = obj.userData.meta as Piece | undefined;
+      if (meta?.cutaway) livingWalls.push({ mesh: obj, z: meta.z });
+      if (meta?.label?.toLowerCase().includes("banner") || obj === gate) livingBanners.push(obj);
+      if (meta?.label === "Vault coins") livingCoins.push(obj);
+    });
     const posts = [
       { ...RULES.skeletons[0], model: monsterModel("Skeleton_Minion"), file: "Skeleton_Minion.glb", weapon: undefined as string | undefined },
       { ...RULES.skeletons[1], model: monsterModel("Skeleton_Warrior"), file: "Skeleton_Warrior.glb", weapon: undefined as string | undefined },
@@ -530,16 +569,18 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObjects(selectables, true);
+    let passive: { node: THREE.Object3D; point: THREE.Vector3 } | null = null;
     for (const hit of hits) {
       let node: THREE.Object3D | null = hit.object;
       while (node) {
-        if (node.userData.rack || node.userData.placedId || node.userData.action || node.userData.pick || node.userData.meta) {
+        if (node.userData.action || node.userData.placedId || node.userData.pick || node.userData.rack) {
           return { node, point: hit.point };
         }
+        if (!passive && node.userData.meta) passive = { node, point: hit.point };
         node = node.parent;
       }
     }
-    return null;
+    return passive;
   }
 
   function caption(found: { node: THREE.Object3D } | null) {
@@ -594,10 +635,9 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       hooks.onBurn();
       return;
     }
-    if (data?.placedId && hooks.getPhase() === "prep") {
-      pendingRelay = String(data.placedId);
+    if (data?.placedId && (hooks.getPhase() === "prep" || hooks.getPhase() === "raid")) {
+      trapDrag = { id: String(data.placedId), x: event.clientX, y: event.clientY };
       hooks.clearArm();
-      say("Click a neighboring tile to re-lay this trap.");
       return;
     }
     if (data?.action === "gate") {
@@ -647,7 +687,34 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       return;
     }
     const trapId = hooks.getTrap();
+    if (!trapId && !pendingRelay && ix === 4 && iz === 11) {
+      hooks.onGate();
+      return;
+    }
     if (trapId) dropTrap(trapId as TrapId, ix, iz);
+  }
+
+  function onPointerUp(event: PointerEvent) {
+    if (!trapDrag) return;
+    const drag = trapDrag;
+    trapDrag = null;
+    const moved = Math.hypot(event.clientX - drag.x, event.clientY - drag.y);
+    const floorHit = hitFloor(event.clientX, event.clientY);
+    if (moved > 18 && floorHit) {
+      const ix = Math.round(floorHit.point.x / CELL);
+      const iz = Math.round(floorHit.point.z / CELL);
+      if (hooks.relayTo(drag.id, ix, iz)) {
+        const entry = placed.find((trap) => trap.id === drag.id);
+        if (entry) {
+          entry.mesh.position.set(ix * CELL, 0.05, iz * CELL);
+          entry.x = ix * CELL;
+          entry.z = iz * CELL;
+        }
+        sfx.place();
+      }
+      return;
+    }
+    hooks.onTrigger(drag.id);
   }
 
   function onPointerMove(event: PointerEvent) {
@@ -660,6 +727,26 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       return;
     }
     void previewTrap(event.clientX, event.clientY);
+    if (!hooks.getTrap()) {
+      const hit = hitFloor(event.clientX, event.clientY);
+      if (hit) {
+        const cell = snap(hit.point);
+        const ix = Math.round(cell.x / CELL);
+        const iz = Math.round(cell.z / CELL);
+        if (ix === 4 && iz === 11) {
+          say(hooks.getPhase() === "report" ? "Doorway tile 4, 11. Click for the next day." : "Doorway tile 4, 11. Click to open the raid.");
+          return;
+        }
+      }
+    }
+    if (hooks.getTrap()) {
+      const hit = hitFloor(event.clientX, event.clientY);
+      if (hit) {
+        const cell = snap(hit.point);
+        say(`Tile ${Math.round(cell.x / CELL)}, ${Math.round(cell.z / CELL)}. Click to place the trap.`);
+        return;
+      }
+    }
     say(caption(pickedNode(event.clientX, event.clientY)));
   }
 
@@ -710,6 +797,10 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   function burnJournal() {
     if (!journal || burnStarted) return;
     burnStarted = true;
+    if (hooks.getReduceMotion?.()) {
+      journal.visible = false;
+      return;
+    }
     sfx.burn();
     ash.visible = true;
     ash.position.copy(journal.position);
@@ -799,8 +890,23 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       if (actor.hp <= 0 && actor.action !== "death") play(actor, "death", true);
     }
     const shelf = hooks.getShelf();
+    const cue = hooks.getCue?.() ?? null;
+    if (cue && cue.nonce !== lastCue) {
+      lastCue = cue.nonce;
+      const actor = actors.find((entry) => entry.id === cue.id);
+      if (actor) play(actor, cue.action, true);
+    }
     for (const row of shelves) {
-      const count = row.id === "mira" ? shelf.mira : shelf.tallow;
+      const count = row.id === "mira" ? shelf.mira : row.id === "orrin" ? shelf.orrin : shelf.tallow;
+      const was = shelfSeen[row.id] ?? count;
+      if (count > was) {
+        const actor = actors.find((entry) => entry.id === row.id);
+        if (actor) play(actor, "restock", true);
+      } else if (count < was) {
+        const actor = actors.find((entry) => entry.id === row.id);
+        if (actor) play(actor, row.id === "mira" ? "work" : "talk", true);
+      }
+      shelfSeen[row.id] = count;
       row.meshes.forEach((mesh, index) => {
         mesh.visible = index < count;
       });
@@ -817,14 +923,30 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     if (keys.has("s")) focus.z += 6 * dt;
     if (keys.has("a")) focus.x -= 6 * dt;
     if (keys.has("d")) focus.x += 6 * dt;
-    scene.traverse((obj) => {
-      if (obj.userData.flicker && obj instanceof THREE.PointLight) obj.intensity = 1.2 + Math.sin(now * 0.012) * 0.45;
-      const meta = obj.userData.meta as Piece | undefined;
-      if (meta?.cutaway) {
-        const camSide = camera.position.z > focus.z;
-        obj.visible = !(camSide && meta.z > focus.z - 1);
-      }
-    });
+    const calm = hooks.getReduceMotion?.() ?? false;
+    const stopped = now < hitStopUntil;
+    const slow = now < slowUntil;
+    const scale = visualScale(slow, calm);
+    if (!calm) {
+      const flicker = 1.15 + Math.sin(now * 0.008) * 0.28 + Math.sin(now * 0.021) * 0.08;
+      for (const light of livingLights) light.intensity = flicker;
+      const sway = Math.sin(now * 0.0015) * 0.04;
+      for (const banner of livingBanners) banner.rotation.z = sway;
+      const bob = Math.sin(now * 0.002) * 0.06;
+      for (const coin of livingCoins) coin.position.y = bob;
+    }
+    const vault = hooks.getVault?.() ?? 1200;
+    const fog = scene.fog as THREE.Fog;
+    fog.near = vault < 1200 * 0.25 ? 16 : 28;
+    const camSide = camera.position.z > focus.z;
+    for (const wall of livingWalls) wall.mesh.visible = !(camSide && wall.z > focus.z - 1);
+    for (const mark of floatPool) {
+      if (mark.life <= 0) continue;
+      mark.life -= dt;
+      mark.sprite.position.y += dt * 0.8;
+      mark.sprite.visible = mark.life > 0;
+    }
+    const motionDt = stopped ? 0 : dt * scale;
     const pending = [];
     for (const mover of movers) {
       const dx = mover.x - mover.actor.root.position.x;
@@ -836,7 +958,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
         mover.resolve();
         continue;
       }
-      const step = Math.min(distance, mover.actor.speed * dt);
+      const step = Math.min(distance, mover.actor.speed * motionDt);
       mover.actor.root.position.x += (dx / distance) * step;
       mover.actor.root.position.z += (dz / distance) * step;
       mover.actor.root.rotation.y = Math.atan2(dx, dz);
@@ -849,11 +971,13 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       focus.x += (hero.root.position.x - focus.x) * (1 - Math.exp(-4 * dt));
       focus.z += (hero.root.position.z - focus.z) * (1 - Math.exp(-4 * dt));
     }
-    stepActors(dt);
+    stepActors(motionDt);
     aimCamera();
     renderer.render(scene, camera);
     frames += 1;
     fpsAccum += dt;
+    frameTimes.push(dt * 1000);
+    if (frameTimes.length > 120) frameTimes.shift();
     if (now - lastStat > 500) {
       const fps = fpsAccum > 0 ? frames / fpsAccum : 0;
       minFps = Math.min(minFps, fps);
@@ -866,6 +990,8 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
         triangles: renderer.info.render.triangles,
         calls: renderer.info.render.calls,
         renderer: rendererInfo,
+        p95: percentile(frameTimes, 0.95),
+        textures: renderer.info.memory.textures,
       });
       frames = 0;
       fpsAccum = 0;
@@ -877,7 +1003,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const listeners: [string, EventListenerOrEventListenerObject, boolean?][] = [
     ["pointerdown", onPointerDown as EventListener],
     ["pointermove", onPointerMove as EventListener],
-    ["pointerup", () => { delete canvas.dataset.pan; }],
+    ["pointerup", ((event: PointerEvent) => { delete canvas.dataset.pan; onPointerUp(event); }) as EventListener],
     ["contextmenu", (event) => event.preventDefault()],
     ["wheel", onWheel as EventListener, true],
   ];
@@ -895,6 +1021,43 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     async playRoute(steps: VisualStep[]) {
       scripted = true;
       aggro = false;
+      const punch = (kind: "hit" | "kill" | "trap" | "boulder") => {
+        if (hooks.getReduceMotion?.()) return;
+        const ms = kind === "kill" ? FEEL.hitStopMs.kill : kind === "boulder" ? FEEL.hitStopMs.chain : FEEL.hitStopMs.hit;
+        hitStopUntil = performance.now() + ms;
+        shakeAmp = kind === "boulder" ? FEEL.shake.boulder : kind === "trap" ? FEEL.shake.trap : FEEL.shake.kill;
+        shakeStarted = performance.now();
+      };
+      const floatDamage = (text: string, x: number, z: number) => {
+        if (hooks.getReduceMotion?.() || !text) return;
+        let slot = floatPool.find((entry) => entry.life <= 0);
+        if (!slot) {
+          if (floatPool.length >= 8) return;
+          const board = document.createElement("canvas");
+          board.width = 128;
+          board.height = 64;
+          const texture = new THREE.CanvasTexture(board);
+          const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
+          sprite.scale.set(1.6, 0.8, 1);
+          sprite.userData.board = board;
+          sprite.userData.texture = texture;
+          scene.add(sprite);
+          slot = { sprite, life: 0 };
+          floatPool.push(slot);
+        }
+        const board = slot.sprite.userData.board as HTMLCanvasElement;
+        const ctx = board.getContext("2d");
+        if (ctx) {
+          ctx.clearRect(0, 0, 128, 64);
+          ctx.fillStyle = "#F2C14E";
+          ctx.font = "700 40px Fredoka, sans-serif";
+          ctx.fillText(text, 6, 46);
+          (slot.sprite.userData.texture as THREE.CanvasTexture).needsUpdate = true;
+        }
+        slot.sprite.position.set(x, 1.8, z);
+        slot.sprite.visible = true;
+        slot.life = 0.85;
+      };
       const glide = (actor: Actor, x: number, z: number) => new Promise<void>((resolve) => {
         movers.push({ actor, x, z, resolve });
       });
@@ -925,17 +1088,34 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
           });
           await pause(0.85);
         } else if (step.type === "trap" || step.type === "combat") {
+          if (!(hooks.getReduceMotion?.())) await pause(0.12);
           if (step.type === "trap") popTrap(step);
           play(hero, step.type === "combat" ? "attack" : "hit", true);
+          punch(step.trapId === "boulder" ? "boulder" : step.type === "trap" ? "trap" : "hit");
+          if (step.damage) floatDamage(String(step.damage), step.x, step.z);
+          if (step.type === "trap" && hero) {
+            hero.root.position.x -= Math.sin(hero.root.rotation.y) * 0.25;
+            hero.root.position.z -= Math.cos(hero.root.rotation.y) * 0.25;
+          }
           if (step.type === "combat") sfx.attack();
           else sfx.hit();
           await pause(0.32);
         } else if (step.type === "death") {
           play(hero, "death", true);
+          punch("kill");
+          slowUntil = performance.now() + FEEL.pageSlowMo.seconds * 1000;
           triggerDiary();
           await pause(1.2);
         } else if (step.type === "survive" || step.type === "vault" || step.type === "flee") {
           play(hero, "interact", true);
+          if (step.type === "vault") {
+            const positions = coinBurst.geometry.getAttribute("position") as THREE.BufferAttribute;
+            for (let index = 0; index < 24; index += 1) positions.setXYZ(index, step.x + (Math.random() - 0.5), 0.3, step.z + (Math.random() - 0.5));
+            positions.needsUpdate = true;
+            coinBurst.position.y = 0;
+            coinBurst.visible = !(hooks.getReduceMotion?.());
+            if (coinBurst.visible) gsap.to(coinBurst.position, { y: 1.1, duration: 0.7, onComplete: () => { coinBurst.visible = false; } });
+          }
           await pause(0.3);
         }
       }

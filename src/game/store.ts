@@ -1,10 +1,9 @@
 import { useSyncExternalStore } from "react";
 import type { Quality, ScreenId, WorldMode } from "./content";
 import { CELL } from "./content";
-import { ECONOMY, GOODS as STALL_GOODS, goodsRule } from "./config/economyRules";
-import { MARKET, RAID, RECIPES, RUMOUR, SALVAGE } from "../../rules/economy";
-import { playBuybackGold, shopState, stockPrice } from "./rules/money";
-import { quotePrice } from "./engine/pricing";
+import { RAID, RECIPES, RUMOUR, SALVAGE, GOODS as RULE_GOODS, type Currency } from "../../rules/economy";
+import { buybackPrice, liveQuote, rumourPrice } from "./rules/money";
+import { buySale, cancelSale, craftOutputClass, expireSales, itemClass, listForSale, merchantBuyListing, merchantNear, merchantStatus, recipeInputs, recoverMerchant } from "./engine/market";
 import { isWalkable, RULES } from "./config/gameRules";
 import { TRAP_DEFINITIONS, type TrapId } from "./config/trapDefinitions";
 import { HERO_PROFILES } from "./config/heroProfiles";
@@ -20,6 +19,7 @@ export interface VisualStep {
   z: number;
   text: string;
   trapId?: string;
+  damage?: number;
 }
 
 interface Session extends SaveData {
@@ -39,6 +39,10 @@ interface Session extends SaveData {
   pageResult: "idle" | "decision" | "burned" | "escaped";
   possessArmed: boolean;
   continueReady: boolean;
+  reduceMotion?: boolean;
+  frameP95?: number;
+  textureCount?: number;
+  merchantCue?: { id: string; action: string; nonce: number };
 }
 
 let state: Session = { ...createSave("menu"), quality: "high", worldMode: "prototype", screen: "menu", selectedTrap: null, selection: null, fps: 0, minFps: 0, avgFps: 0, drawCalls: 0, triangles: 0, rendererInfo: "", lastDecision: "", priceNote: "", pageResult: "idle", possessArmed: false, continueReady: false };
@@ -63,6 +67,17 @@ function emit() {
     raids: state.raids,
     tutorialStep: state.tutorialStep,
     upgrades: state.upgrades,
+    trapKills: state.trapKills ?? {},
+    raidsCleared: state.raidsCleared ?? 0,
+    dungeonClosed: state.dungeonClosed ?? false,
+    freeReopenUsed: state.freeReopenUsed ?? false,
+    spentTrapIds: state.spentTrapIds ?? [],
+    chain: state.chain ?? 0,
+    near: state.near,
+    guildGold: state.guildGold,
+    opsGold: state.opsGold,
+    travelerGold: state.travelerGold,
+    classes: state.classes,
     phase: state.phase,
     pending: state.pending,
     screen: state.screen,
@@ -134,8 +149,13 @@ export function selectInfo(selection: Session["selection"]) {
   emit();
 }
 
-export function setStats(stats: { fps: number; min: number; avg: number; triangles: number; calls: number; renderer: string }) {
-  state = { ...state, fps: stats.fps, minFps: stats.min, avgFps: stats.avg, triangles: stats.triangles, drawCalls: stats.calls, rendererInfo: stats.renderer };
+export function setStats(stats: { fps: number; min: number; avg: number; triangles: number; calls: number; renderer: string; p95?: number; textures?: number }) {
+  state = { ...state, fps: stats.fps, minFps: stats.min, avgFps: stats.avg, triangles: stats.triangles, drawCalls: stats.calls, rendererInfo: stats.renderer, frameP95: stats.p95 ?? state.frameP95, textureCount: stats.textures ?? state.textureCount };
+  listeners.forEach((listener) => listener());
+}
+
+export function setReduceMotion(value: boolean) {
+  state = { ...state, reduceMotion: value };
   listeners.forEach((listener) => listener());
 }
 
@@ -237,7 +257,31 @@ export function armPossess() {
   return { ok: true, reason: "The guard will be off the tile." };
 }
 
+export function triggerTrap(id: string) {
+  const trap = state.traps.find((entry) => entry.id === id);
+  if (!trap) return { ok: false, reason: "That trap is not placed." };
+  if (state.phase !== "prep" && state.phase !== "raid") return { ok: false, reason: "Trigger a trap before the page flies." };
+  const spent = state.spentTrapIds ?? [];
+  if (spent.includes(id)) return { ok: false, reason: "That trap is cooling down." };
+  state = {
+    ...state,
+    spentTrapIds: [...spent, id],
+    chain: (state.chain ?? 0) + 1,
+    ledger: [{ id: `trig-${id}-${state.day}`, day: state.day, text: `Triggered ${trap.trapId} at ${trap.ix}, ${trap.iz}. It will not hit again this wave.` }, ...state.ledger],
+  };
+  emit();
+  return { ok: true, reason: "The trap is spent." };
+}
+
+export function dungeonTier(raidsCleared: number) {
+  if (raidsCleared >= 60) return 4;
+  if (raidsCleared >= 30) return 3;
+  if (raidsCleared >= 10) return 2;
+  return 1;
+}
+
 export function startRaid() {
+  if (state.dungeonClosed) return;
   if (state.phase !== "prep" && state.phase !== "report") return;
   let save: SaveData = state;
   const decision = chooseRaider(save);
@@ -251,10 +295,12 @@ export function startRaid() {
     tutorial: save.tutorialStep < 2,
     upgrades: save.upgrades,
     possessGuard,
+    spentTrapIds: save.spentTrapIds ?? [],
   });
   const report: RaidReport = { ...simulated.report, decision };
   const heroes = { ...save.heroes, [decision.heroId]: simulated.hero };
-  const speed = HERO_PROFILES[decision.heroId].moveSpeed;
+  const boots = save.heroes[decision.heroId].equipment.includes("boots") ? 1.3 : 1;
+  const speed = HERO_PROFILES[decision.heroId].moveSpeed * boots;
   const steps = simulated.report.events.filter((event) => event.type === "move" || event.type === "enter").length;
   const bleed = Math.floor(steps * (4 / speed) * RAID.bleedPerHeroPerSec);
   const kills = simulated.report.events.filter((event) => event.type === "death").length;
@@ -262,6 +308,16 @@ export function startRaid() {
   const salvageQty = decision.heroId === "brann" ? SALVAGE.brute.iron : decision.heroId === "ivo" ? SALVAGE.mage.ash : SALVAGE.thief.bone;
   const inventory = { ...save.inventory };
   if (!simulated.report.survived) inventory[salvageKind] = (inventory[salvageKind] ?? 0) + salvageQty;
+  if (simulated.report.survived && simulated.report.events.some((event) => event.type === "vault")) {
+    inventory.iron = (inventory.iron ?? 0) + SALVAGE.waveClear.iron;
+  }
+  const trapKills = { ...(save.trapKills ?? {}) };
+  const deathTrap = simulated.report.events.find((event) => event.type === "death");
+  if (deathTrap?.trapId) {
+    trapKills[deathTrap.trapId] = (trapKills[deathTrap.trapId] ?? 0) + 1;
+    if (trapKills[deathTrap.trapId] === 10) inventory[`blueprint:${deathTrap.trapId}`] = (inventory[`blueprint:${deathTrap.trapId}`] ?? 0) + 1;
+  }
+  const vaultLeft = Math.max(0, save.vault - bleed);
   const gold = Math.max(0, save.gold - (simulated.report.survived ? simulated.report.goldLost : 0));
   const reputation = save.reputation + (simulated.report.survived ? RULES.reputationPerSurvival : RULES.reputationPerDeath);
   const tutorialStep = save.tutorialStep < 2 ? 2 : save.tutorialStep >= 4 ? Math.max(save.tutorialStep, 5) : save.tutorialStep;
@@ -271,7 +327,10 @@ export function startRaid() {
     heroes,
     inventory,
     gold,
-    vault: Math.max(0, save.vault - bleed),
+    vault: vaultLeft,
+    trapKills,
+    raidsCleared: (save.raidsCleared ?? 0) + 1,
+    dungeonClosed: vaultLeft === 0,
     cinder: Math.min(RAID.cinder.cap, save.cinder + kills * RAID.cinder.perKill),
     reputation,
     phase: simulated.report.survived ? "report" : "raid",
@@ -279,7 +338,7 @@ export function startRaid() {
     raids: [report, ...save.raids].slice(0, 20),
     tutorialStep,
     lastDecision: decision.reason,
-    ledger: [{ id: `bleed-${report.id}`, day: save.day, text: `The vault bled ${bleed} Gold while ${decision.heroId} was inside.` }, { id: report.id, day: save.day, text: decision.reason }, ...save.ledger],
+    ledger: [{ id: `walk-${report.id}`, day: save.day, text: `${decision.heroId} walked ${simulated.report.events.filter((event) => event.type === "move").map((event) => `${event.ix},${event.iz}`).join(" · ")}.` }, { id: `bleed-${report.id}`, day: save.day, text: `The vault bled ${bleed} Gold while ${decision.heroId} was inside.` }, { id: report.id, day: save.day, text: decision.reason }, ...save.ledger],
     screen: "dungeon",
     possessArmed: false,
   };
@@ -324,46 +383,7 @@ export function resolvePage(choice: "burn" | "escape") {
 }
 
 function settleListings(save: SaveData): SaveData {
-  let gold = save.gold;
-  const inventory = { ...save.inventory };
-  let listings = [...save.listings];
-  const merchants = {
-    mira: { ...save.merchants.mira, stock: save.merchants.mira.stock.map((line) => ({ ...line })) },
-    orrin: { ...save.merchants.orrin, stock: save.merchants.orrin.stock.map((line) => ({ ...line })) },
-    tallow: { ...save.merchants.tallow, stock: save.merchants.tallow.stock.map((line) => ({ ...line })) },
-  };
-  const notes: SaveData["ledger"] = [];
-  const expired = listings.filter((listing) => (listing.listedDay ?? save.day) < save.day);
-  for (const listing of expired) {
-    inventory[listing.itemId] = (inventory[listing.itemId] ?? 0) + listing.qty;
-    notes.push({ id: `expire-${listing.id}`, day: save.day, text: `${listing.itemId} came back from the stall. A day passed and no fee was taken.` });
-  }
-  listings = listings.filter((listing) => (listing.listedDay ?? save.day) >= save.day);
-  const ranked = [...listings].sort((a, b) => a.price - b.price || a.id.localeCompare(b.id));
-  const won = new Set<string>();
-  for (const listing of ranked) {
-    if (listing.cls && listing.cls !== "PLAY_ONLY") continue;
-    if (won.has(listing.itemId)) {
-      notes.push({ id: `lose-${listing.id}`, day: save.day, text: `A cheaper seller won the bid for ${listing.itemId}.` });
-      continue;
-    }
-    const rule = goodsRule(listing.itemId);
-    if (!rule) continue;
-    const merchant = merchants[rule.merchant];
-    const line = merchant.stock.find((entry) => entry.itemId === listing.itemId);
-    const stock = line?.qty ?? 0;
-    const quote = quotePrice(listing.itemId, Math.max(stock, 1));
-    if (listing.price > quote.price || merchant.gold < listing.price || stock >= rule.maxStock) continue;
-    const payout = Math.round(listing.price * (1 - MARKET.fee));
-    merchant.gold -= listing.price;
-    gold += payout;
-    if (line) line.qty += 1;
-    else merchant.stock.push({ itemId: listing.itemId, qty: 1 });
-    listings = listings.filter((entry) => entry.id !== listing.id);
-    won.add(listing.itemId);
-    notes.push({ id: `npc-${listing.id}`, day: save.day, text: `${merchant.name} bought ${rule.name} for ${listing.price} Gold. You received ${payout} after the stall fee. Their quote was ${quote.price}.` });
-  }
-  return { ...save, gold, inventory, listings, merchants, ledger: [...notes, ...save.ledger] };
+  return merchantBuyListing(expireSales(save));
 }
 
 export function buyUpgrade(id: "vault-brace") {
@@ -384,16 +404,21 @@ export function nextDay() {
   const aged = expireRumours(state);
   const traded = settleListings(aged);
   const stepped = traded.tutorialStep >= 6 ? 7 : traded.tutorialStep === 3 ? 4 : traded.tutorialStep === 5 ? 6 : traded.tutorialStep;
-  const saved = restock({ ...traded, tutorialStep: stepped });
-  state = { ...state, ...saved, screen: state.screen, tutorialStep: stepped, phase: "prep", pageResult: "idle" };
+  let next = { ...state, ...traded, tutorialStep: stepped };
+  if (next.dungeonClosed && !next.freeReopenUsed) {
+    next = { ...next, dungeonClosed: false, freeReopenUsed: true, vault: Math.max(next.vault, 200), ledger: [{ id: `reopen-${next.day}`, day: next.day, text: "The first reopen this season is free. The vault holds 200 Gold." }, ...next.ledger] };
+  } else if (next.dungeonClosed) {
+    if (next.gold < 40) return;
+    next = { ...next, gold: next.gold - 40, dungeonClosed: false, vault: 200, ledger: [{ id: `reopen-pay-${next.day}`, day: next.day, text: "Restocked the vault for 40 Gold." }, ...next.ledger] };
+  }
+  const saved = restock(next);
+  state = { ...state, ...saved, screen: state.screen, tutorialStep: stepped, phase: "prep", pageResult: "idle", spentTrapIds: [], chain: 0, dungeonClosed: false };
   emit();
 }
 
 export function buyFromMerchant(merchantId: "mira" | "orrin" | "tallow", itemId: string) {
   const merchant = state.merchants[merchantId];
-  const target = STALL_GOODS.filter((good) => good.merchant === merchantId).reduce((sum, good) => sum + good.targetStock, 0);
-  const held = merchant.stock.reduce((sum, line) => sum + line.qty, 0);
-  if (shopState(merchant.gold, held, target, merchantId !== "orrin") === "CLOSED") {
+  if (merchantStatus(merchant) === "CLOSED") {
     return { ok: false, reason: `${merchant.name} is closed until the stall has Gold and stock again.`, save: state };
   }
   const result = playerBuy(state, merchantId, itemId);
@@ -402,19 +427,11 @@ export function buyFromMerchant(merchantId: "mira" | "orrin" | "tallow", itemId:
   return result;
 }
 
-export function listItem(itemId: string, price: number) {
-  const owned = state.inventory[itemId] ?? 0;
-  if (itemId === "cinder" || itemId.startsWith("rumour")) return { ok: false, reason: "That cannot be listed." };
-  if (owned < 1 || price < 1) return { ok: false, reason: "Nothing to list at that price." };
-  if (state.listings.length >= MARKET.maxListingsPerAccount) return { ok: false, reason: "Five listings is the cap." };
-  state = {
-    ...state,
-    inventory: { ...state.inventory, [itemId]: owned - 1 },
-    listings: [{ id: `list-${state.day}-${itemId}-${price}`, itemId, seller: "player", price, qty: 1, listedDay: state.day, currency: "PLAY_GOLD", cls: "PLAY_ONLY" }, ...state.listings],
-    ledger: [{ id: `list-${Date.now()}`, day: state.day, text: `Listed ${itemId} for ${price} Gold. Play gold only. The stall fee is 10% if it sells.` }, ...state.ledger],
-  };
+export function listItem(itemId: string, price: number, currency: Currency = "PLAY_GOLD") {
+  const result = listForSale(state, itemId, price, currency);
+  state = { ...state, ...result.save, screen: state.screen, priceNote: result.reason };
   emit();
-  return { ok: true, reason: "Listed." };
+  return result;
 }
 
 function expireRumours(save: SaveData): SaveData {
@@ -432,75 +449,115 @@ export function buyBackRumour(id: string) {
   const orrin = state.merchants.orrin;
   const rumour = orrin.rumours.find((fact) => fact.id === id);
   if (!rumour || rumour.burned) return { ok: false, reason: "Already learned — buy-back impossible." };
-  const last = ECONOMY.rumourBasePrice + rumour.quality * 4;
-  const price = Math.round(playBuybackGold(last, rumour.buybacks ?? 0));
-  if (state.gold < price) return { ok: false, reason: `Buy-back costs ${price} Gold.` };
+  const epochs = Math.max(0, state.day - (rumour.bornDay ?? state.day));
+  const raids = state.raidsCleared ?? 0;
+  const tier = raids >= 60 ? 4 : raids >= 30 ? 3 : raids >= 10 ? 2 : 1;
+  const ask = rumourPrice(orrin.sales, epochs, tier);
+  const price = buybackPrice(ask.price, rumour.buybacks ?? 0);
+  if ((state.near ?? 0) + 1e-9 < price) return { ok: false, reason: `Buy-back costs ${price.toFixed(4)} mock NEAR. Last ask ${ask.price.toFixed(4)}. Nothing was taken.` };
   state = {
     ...state,
-    gold: state.gold - price,
-    merchants: { ...state.merchants, orrin: { ...orrin, gold: orrin.gold + price, rumours: orrin.rumours.filter((fact) => fact.id !== id) } },
-    ledger: [{ id: `bb-${id}`, day: state.day, text: `Bought the unsold page back for ${price} Gold and burned it. Heroes who already saw the death still remember it.` }, ...state.ledger],
+    near: (state.near ?? 0) - price,
+    merchants: { ...state.merchants, orrin: { ...orrin, near: merchantNear(orrin) + price, rumours: orrin.rumours.filter((fact) => fact.id !== id), history: [{ id: `bb-${id}`, day: state.day, text: `Buy-back burned the page for ${price.toFixed(4)} mock NEAR.` }, ...(orrin.history ?? [])] } },
+    ledger: [{ id: `bb-${id}`, day: state.day, text: `Bought the unsold page back for ${price.toFixed(4)} mock NEAR and burned it. Inputs: base ${ask.inputs.base}, freshness ${ask.inputs.freshness.toFixed(2)}, demand ${ask.inputs.demand}, richness ${ask.inputs.richness.toFixed(2)}, previous buy-backs ${rumour.buybacks ?? 0}.` }, ...state.ledger],
+    priceNote: `Buy-back ${price.toFixed(4)} = min(3×base, last ${ask.price.toFixed(4)} × 1.25^${rumour.buybacks ?? 0}).`,
+    merchantCue: { id: "orrin", action: "talk", nonce: Date.now() },
   };
   emit();
   return { ok: true, reason: "The page is ash." };
 }
 
 export function cancelListing(id: string) {
-  const listing = state.listings.find((entry) => entry.id === id);
-  if (!listing) return;
-  state = {
-    ...state,
-    listings: state.listings.filter((entry) => entry.id !== id),
-    inventory: { ...state.inventory, [listing.itemId]: (state.inventory[listing.itemId] ?? 0) + listing.qty },
-  };
+  const result = cancelSale(state, id);
+  state = { ...state, ...result.save, screen: state.screen };
   emit();
+  return result;
 }
 
-export function buyListing(id: string) {
-  cancelListing(id);
+export function buyListing(id: string, fail = false) {
+  const result = buySale(state, id, fail);
+  state = { ...state, ...result.save, screen: state.screen, priceNote: result.reason };
+  emit();
+  return result;
 }
 
-export function craftTrap(kind: "spike" | "pit" | "boulder") {
-  const recipe = RECIPES[`play:trap:${kind}`];
+export function fundShop(id: "mira" | "orrin" | "tallow", near: number, itemId?: string, qty = 0) {
+  const result = recoverMerchant(state, id, near, itemId, qty);
+  state = { ...state, ...result.save, screen: state.screen, priceNote: result.reason, merchantCue: { id, action: "restock", nonce: Date.now() } };
+  emit();
+  return result;
+}
+
+export function craftTrap(kind: "spike" | "pit" | "boulder" | "potion" | "armor" | "boots") {
+  const id = (kind === "potion" || kind === "armor" || kind === "boots" ? `play:gear:${kind}` : `play:trap:${kind}`) as keyof typeof RECIPES;
+  const inputs = recipeInputs(id);
   const inventory = { ...state.inventory };
-  for (const [material, qty] of Object.entries(recipe)) {
-    if (material === "cls") continue;
-    if ((inventory[material] ?? 0) < Number(qty)) return { ok: false, reason: `Need ${qty} ${material}.` };
+  for (const [material, qty] of inputs) {
+    if ((inventory[material] ?? 0) < qty) {
+      const reason = `Need ${qty} ${material}.`;
+      state = { ...state, priceNote: reason };
+      emit();
+      return { ok: false, reason };
+    }
   }
-  for (const [material, qty] of Object.entries(recipe)) {
-    if (material === "cls") continue;
-    inventory[material] -= Number(qty);
-  }
-  inventory[kind] = (inventory[kind] ?? 0) + 1;
+  const classes = inputs.map(([material]) => itemClass(state, material));
+  const cls = craftOutputClass(classes);
+  for (const [material, qty] of inputs) inventory[material] -= qty;
+  const output = kind;
+  inventory[output] = (inventory[output] ?? 0) + 1;
   state = {
     ...state,
     inventory,
-    ledger: [{ id: `craft-${kind}-${state.day}`, day: state.day, text: `Crafted a play-only ${kind}. Iron, ash, and bone stay play materials.` }, ...state.ledger],
+    classes: { ...state.classes, [output]: cls },
+    ledger: [{ id: `craft-${kind}-${state.day}`, day: state.day, text: `Crafted ${kind}. Output class ${cls}, the lowest input class.` }, ...state.ledger],
+    priceNote: `Crafted ${kind}. Output class ${cls}, the lowest input class.`,
+    merchantCue: { id: "mira", action: "work", nonce: Date.now() },
   };
   emit();
-  return { ok: true, reason: `Crafted ${kind}.` };
+  return { ok: true, reason: `Crafted ${kind}. Class ${cls}.` };
+}
+
+export function supplyMaterial(kind: "iron" | "ash" | "bone", qty: number) {
+  const held = state.inventory[kind] ?? 0;
+  if (qty < 1 || held < qty) return { ok: false, reason: `Not enough ${kind} to supply.` };
+  const mira = state.merchants.mira;
+  if (merchantStatus(mira) === "CLOSED") return { ok: false, reason: "Mira is closed and is not buying salvage." };
+  const goodId = `play:resource:${kind}` as keyof typeof RULE_GOODS;
+  const line = mira.stock.find((entry) => entry.itemId === goodId);
+  const stock = line?.qty ?? RULE_GOODS[goodId].target;
+  const book = mira.quoteBook?.[goodId];
+  const quote = liveQuote(goodId, stock, (book?.buys ?? 0) + qty, book?.sells ?? 0, (book?.buys ?? 0) + (book?.sells ?? 0) + qty, book);
+  const payout = quote.price * qty;
+  if (mira.gold + 1e-9 < payout) return { ok: false, reason: "Mira cannot pay for that salvage. Nothing was taken." };
+  const stockNext = line
+    ? mira.stock.map((entry) => entry.itemId === goodId ? { ...entry, qty: entry.qty + qty } : entry)
+    : [...mira.stock, { itemId: goodId, qty }];
+  state = {
+    ...state,
+    inventory: { ...state.inventory, [kind]: held - qty },
+    gold: state.gold + payout,
+    classes: { ...state.classes, [kind]: "PLAY_ONLY" },
+    merchants: {
+      ...state.merchants,
+      mira: {
+        ...mira,
+        gold: mira.gold - payout,
+        spentTodayGold: (mira.spentTodayGold ?? 0) + payout,
+        stock: stockNext,
+        quoteBook: { ...mira.quoteBook, [goodId]: { ema: quote.inputs.ema, price: quote.price, buys: (book?.buys ?? 0) + qty, sells: book?.sells ?? 0 } },
+        history: [{ id: `supply-${kind}-${state.day}`, day: state.day, text: quote.reason }, ...(mira.history ?? [])],
+      },
+    },
+    ledger: [{ id: `supply-${state.day}-${kind}-${qty}`, day: state.day, text: `Supplied ${qty} ${kind} to Mira for ${payout.toFixed(2)} Gold. ${quote.reason}` }, ...state.ledger],
+    priceNote: `${quote.reason} After delivery, stock is ${stock + qty}.`,
+    merchantCue: { id: "mira", action: "work", nonce: Date.now() },
+  };
+  emit();
+  return { ok: true, reason: `Mira took the ${kind}.` };
 }
 
 export function supplyIron(qty: number) {
-  const held = state.inventory.iron ?? 0;
-  if (qty < 1 || held < qty) return { ok: false, reason: "Not enough iron to supply." };
-  const mira = state.merchants.mira;
-  const heldIron = mira.stock.filter((line) => line.itemId === "iron").reduce((sum, line) => sum + line.qty, 0);
-  const quote = stockPrice("play:resource:iron", heldIron > 0 ? heldIron : 100, 0, qty, 12);
-  const payout = Math.round(quote.price * qty);
-  if (mira.gold < payout) return { ok: false, reason: "Mira cannot pay for that iron." };
-  const stock = mira.stock.some((line) => line.itemId === "iron")
-    ? mira.stock.map((line) => line.itemId === "iron" ? { ...line, qty: line.qty + qty } : line)
-    : [...mira.stock, { itemId: "iron", qty }];
-  state = {
-    ...state,
-    inventory: { ...state.inventory, iron: held - qty },
-    gold: state.gold + payout,
-    merchants: { ...state.merchants, mira: { ...mira, gold: mira.gold - payout, stock } },
-    ledger: [{ id: `supply-${state.day}-${qty}`, day: state.day, text: `Supplied ${qty} iron to Mira for ${payout} Gold. ${quote.reason}` }, ...state.ledger],
-  };
-  emit();
-  return { ok: true, reason: "Mira took the iron." };
+  return supplyMaterial("iron", qty);
 }
 
 export function forgeKit() {
@@ -527,6 +584,7 @@ export function toSteps(report: RaidReport): VisualStep[] {
     z: (event.iz ?? RULES.grid.entrance.iz) * CELL,
     text: event.text,
     trapId: event.trapId,
+    damage: event.damage,
   }));
 }
 

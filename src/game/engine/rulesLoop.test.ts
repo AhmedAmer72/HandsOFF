@@ -56,7 +56,10 @@ describe("live raid rules", () => {
     startRaid();
     const second = getState();
     expect(second.merchants.orrin.rumours).toHaveLength(0);
-    expect(second.heroes.kara.facts.some((fact) => fact.memory === "warned")).toBe(true);
+    expect(second.pending?.heroId).toBe("ivo");
+    expect(second.heroes.ivo.facts.some((fact) => fact.memory === "warned")).toBe(true);
+    expect(second.heroes.kara.facts.some((fact) => fact.memory === "warned")).toBe(false);
+    expect(second.heroes.kara.facts.some((fact) => fact.memory === "observed")).toBe(true);
     expect(second.pending?.trapsTriggered).toHaveLength(0);
   });
 

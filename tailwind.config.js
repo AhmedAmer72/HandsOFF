@@ -14,10 +14,12 @@ export default {
         memory: "#3FA7A0",
         rust: "#B5532E",
         blood: "#8E1B1B",
+        fog: "#1B1A22",
+        inktext: "#3A2A1A",
       },
       fontFamily: {
-        display: ["Cinzel", "Palatino Linotype", "Palatino", "serif"],
-        body: ["Source Sans 3", "Segoe UI", "sans-serif"],
+        display: ["Lilita One", "Baloo 2", "cursive"],
+        body: ["Fredoka", "Baloo 2", "sans-serif"],
       },
       boxShadow: {
         panel: "0 18px 50px rgba(0,0,0,0.45)",

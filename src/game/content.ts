@@ -1,5 +1,6 @@
 export type ScreenId =
   | "menu"
+  | "home"
   | "dungeon"
   | "map"
   | "gate"
@@ -7,6 +8,11 @@ export type ScreenId =
   | "workshop"
   | "registry"
   | "chronicle"
+  | "report"
+  | "week"
+  | "deed"
+  | "guild"
+  | "takehome"
   | "settings"
   | "gallery"
   | "sandbox";
