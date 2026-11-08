@@ -1,6 +1,6 @@
 # v10.2 restore and shared world map
 
-Checked 8 November 2026, 5:28 AM Africa/Cairo. Navigation note, 8 November 2026, 1:46 PM Africa/Cairo: the hex island is no longer a screen. The same sections open from the left icon bar. An old save whose screen is still `map` opens Home.
+Checked 8 November 2026, 5:28 AM Africa/Cairo. Navigation note, 8 November 2026, 2:02 PM Africa/Cairo: the website opens on the landing page. Get Started enters My Dungeon as a guest. In-game navigation is My Dungeon, World Map, Market, and Workshop. The other screens stay behind the gear menu or inside a raid. The world map lists halls published on this device. It is not a live network.
 
 UNDERREALM stays a dungeon-owner game. Kara, Brann, and Ivo still decide whether to raid. The world map does not offer a player-controlled raid, a party, or an "enter their dungeon" action. `rules/economy.ts` was not edited.
 

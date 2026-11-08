@@ -113,7 +113,7 @@ export async function hydrate() {
   loadRegistry();
   const saved = await readSave();
   if (!saved) return;
-  state = { ...state, ...saved, upgrades: saved.upgrades ?? [], continueReady: true, screen: (saved.screen as ScreenId) || "menu" };
+  state = { ...state, ...saved, upgrades: saved.upgrades ?? [], continueReady: true, screen: "menu" };
   listeners.forEach((listener) => listener());
 }
 

@@ -1,42 +1,53 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { ScreenId } from "../game/content";
 import { setScreen } from "../game/store";
 import { sfx } from "../game/audio";
 
-/** v10.2 sections 5.1–5.13, without the world map. */
 const LINKS: { id: ScreenId; label: string; icon: ReactNode }[] = [
-  { id: "home", label: "Home", icon: <path d="M4 11 12 4l8 7v8H4v-8z" /> },
-  { id: "dungeon", label: "Raid", icon: <path d="M5 19 12 4l7 15H5zm7-8v5" /> },
-  { id: "gate", label: "Gate", icon: <path d="M6 20V8h12v12M9 20v-6h6v6M4 8h16" /> },
+  { id: "dungeon", label: "My Dungeon", icon: <path d="M4 20V9l8-5 8 5v11H4zm6 0v-6h4v6" /> },
+  { id: "map", label: "World Map", icon: <path d="M4 6l5-2 6 2 5-2v14l-5 2-6-2-5 2V6zm5 0v14m6-12v14" /> },
   { id: "market", label: "Market", icon: <path d="M4 9h16l-2 11H6L4 9zm2-4h12v4H6V5z" /> },
   { id: "workshop", label: "Workshop", icon: <path d="M4 18h16v2H4v-2zM7 16l5-8 2 2-5 8-2-2zm7-7 4 4-2 2-4-4 2-2z" /> },
-  { id: "report", label: "Board", icon: <path d="M6 4h9l3 3v13H6V4zm8 1v3h3" /> },
-  { id: "registry", label: "Heroes", icon: <path d="M8 19v-2a3 3 0 0 1 3-3h2a3 3 0 0 1 3 3v2M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" /> },
-  { id: "chronicle", label: "Replay", icon: <path d="M8 6v12l10-6-10-6z" /> },
-  { id: "week", label: "Week", icon: <path d="M5 19V7h14v12H5zm0-9h14M8 4v3M16 4v3" /> },
-  { id: "deed", label: "Charter", icon: <path d="M7 3h8l3 3v15H7V3zm7 1v3h3M9 11h6M9 15h6" /> },
-  { id: "guild", label: "Guild", icon: <path d="M4 18 12 4l8 14H4zm8-6v4" /> },
-  { id: "takehome", label: "Take home", icon: <path d="M5 10h14v9H5v-9zm2-4h10v4H7V6z" /> },
-  { id: "settings", label: "Settings", icon: <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm-7 4h2m10 0h2M12 5v2m0 10v2" /> },
 ];
 
+const MORE: { id: ScreenId; label: string }[] = [
+  { id: "settings", label: "Settings" },
+  { id: "deed", label: "Charter" },
+  { id: "takehome", label: "Take it home" },
+  { id: "guild", label: "Guild · simulated" },
+  { id: "week", label: "A week of raids · simulated" },
+  { id: "menu", label: "Entrance" },
+];
+
+function primaryOf(screen: ScreenId): ScreenId | null {
+  if (screen === "market") return "market";
+  if (screen === "workshop") return "workshop";
+  if (screen === "map" || screen === "spectator" || screen === "public") return "map";
+  if (screen === "dungeon" || screen === "home" || screen === "gate" || screen === "report" || screen === "chronicle" || screen === "registry") return "dungeon";
+  return null;
+}
+
 export function Shell({ screen }: { screen: ScreenId }) {
+  const [open, setOpen] = useState(false);
+  const active = primaryOf(screen);
   function go(id: ScreenId) {
     sfx.ui();
+    setOpen(false);
     setScreen(id);
   }
   return (
-    <aside className="z-30 flex h-full w-[4.5rem] shrink-0 flex-col border-r border-gold/20 bg-ink/95 md:w-52">
-      <button className="hidden px-4 py-4 text-left font-display text-sm tracking-[0.16em] text-gold md:block" onClick={() => go("home")}>UNDERREALM</button>
-      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2">
+    <aside className="z-30 flex h-full w-[4.5rem] shrink-0 flex-col border-r border-gold/20 bg-ink/95 md:w-56">
+      <p className="hidden px-4 pb-1 pt-4 font-display text-sm tracking-[0.16em] text-gold md:block">UNDERREALM</p>
+      <p className="hidden px-4 pb-3 text-[11px] leading-snug text-parchment/70 md:block">Guest — progress is saved on this device until you sign in.</p>
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2" aria-label="Game">
         {LINKS.map((link) => {
-          const active = screen === link.id;
+          const current = active === link.id;
           return (
             <button
               key={link.id}
               title={link.label}
-              aria-current={active ? "page" : undefined}
-              className={`flex min-h-11 items-center justify-center gap-3 rounded-2xl px-2 text-left text-sm md:justify-start md:px-3 ${active ? "bg-gold text-ink" : "text-parchment/80 hover:bg-white/5 hover:text-gold"}`}
+              aria-current={current ? "page" : undefined}
+              className={`flex min-h-11 items-center justify-center gap-3 rounded-2xl px-2 text-left text-sm md:justify-start md:px-3 ${current ? "bg-gold text-ink" : "text-parchment/80 hover:bg-white/5 hover:text-gold"}`}
               onClick={() => go(link.id)}
             >
               <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">{link.icon}</svg>
@@ -45,6 +56,20 @@ export function Shell({ screen }: { screen: ScreenId }) {
           );
         })}
       </nav>
+      <div className="relative border-t border-gold/20 p-2">
+        <p className="mb-2 px-1 text-[10px] leading-snug text-parchment/70 md:hidden">Guest save on this device.</p>
+        <button className="flex min-h-11 w-full items-center justify-center gap-3 rounded-2xl px-2 text-sm text-parchment/80 hover:bg-white/5 hover:text-gold md:justify-start md:px-3" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((value) => !value)}>
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm-7 4h2m10 0h2M12 5v2m0 10v2" /></svg>
+          <span className="hidden md:inline">More</span>
+        </button>
+        {open && (
+          <div className="absolute bottom-16 left-2 z-40 w-56 rounded-2xl border border-gold/30 bg-ink p-2 shadow-panel" role="menu">
+            {MORE.map((item) => (
+              <button key={item.id} className="block min-h-11 w-full rounded-xl px-3 text-left text-sm text-parchment hover:bg-white/5 hover:text-gold" role="menuitem" onClick={() => go(item.id)}>{item.label}</button>
+            ))}
+          </div>
+        )}
+      </div>
     </aside>
   );
 }

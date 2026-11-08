@@ -52,7 +52,7 @@ function StallHall({ place, title }: { place: "market" | "workshop"; title: stri
       getQuality: () => game.quality,
       onNear: setNear,
       onUse: (id) => {
-        if (id === "exit") setScreen("home");
+        if (id === "exit") setScreen("dungeon");
         else setOpen(id);
       },
     });
@@ -64,7 +64,7 @@ function StallHall({ place, title }: { place: "market" | "workshop"; title: stri
       <canvas ref={canvasRef} data-testid={`${place}-hall`} className="view h-full min-h-[70vh] w-full" />
       <div className="pointer-events-none absolute left-3 top-3">
         <p className="font-display text-2xl text-gold">{title}</p>
-        {!open && spot && <p className="mt-2 rounded-2xl bg-ink/80 px-3 py-2 text-sm" data-testid="interact-prompt">{spot.prompt}</p>}
+        {!open && <p className="mt-2 max-w-xs rounded-2xl bg-ink/80 px-3 py-2 text-sm" data-testid={spot ? "interact-prompt" : "place-controls"}>{spot ? spot.prompt : "WASD moves. Q and C turn. E talks when you are close. R resets the view."}</p>}
       </div>
       {open && (
         <div className="absolute inset-x-0 bottom-0 z-20 max-h-[70%] overflow-auto p-3" data-testid={`${place}-panel`}>

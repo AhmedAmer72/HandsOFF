@@ -55,8 +55,9 @@ export function ReportScreen() {
         <p className="mt-2 text-sm text-parchment/70">{report.decision.reason}</p>
       </Panel>
       <div className="flex flex-wrap gap-2">
-        <Button onClick={() => { if (game.phase === "report") nextDay(); else setScreen("dungeon"); }}>Next wave</Button>
-        <Button tone="ghost" onClick={() => setScreen("gate")}>Gate market</Button>
+        <Button onClick={() => { if (game.phase === "report") nextDay(); else setScreen("dungeon"); }}>Continue</Button>
+        <Button tone="ghost" onClick={() => setScreen("dungeon")}>My Dungeon</Button>
+        <Button tone="ghost" onClick={() => setScreen("market")}>Market</Button>
         <Button tone="ghost" onClick={() => setScreen("workshop")}>Workshop</Button>
         <Button tone="ghost" onClick={() => setScreen("chronicle")}>Watch replay</Button>
       </div>
@@ -107,6 +108,7 @@ export function DeedScreen() {
   const holder = owner === "player";
   return (
     <section className="mx-auto flex max-w-3xl flex-col gap-4 p-4" data-tick={tick}>
+      <p className="text-xs uppercase tracking-[0.2em] text-ember">Simulated</p>
       <Title>{holder ? "Ashgate charter" : "Ashgate, public"}</Title>
       <Panel>
         {holder ? (
@@ -133,6 +135,7 @@ export function GuildScreen() {
   const [note, setNote] = useState("Simulated guild purse. Nothing leaves this device.");
   return (
     <section className="mx-auto flex max-w-3xl flex-col gap-4 p-4" data-tick={tick}>
+      <p className="text-xs uppercase tracking-[0.2em] text-ember">Simulated</p>
       <Title>Guild board</Title>
       <p className="text-sm text-parchment/75">{note}</p>
       <Panel>

@@ -40,9 +40,9 @@ import { mountDungeon } from "../three/dungeon";
 import { mountGallery } from "../three/gallery";
 import { MainMenu } from "./screens/MainMenu";
 import { MockSandbox } from "./screens/MockSandbox";
-import { DeedScreen, GuildScreen, HomeScreen, ReportScreen, TakeHomeScreen, WeekScreen } from "./screens/PlayScreens";
+import { DeedScreen, GuildScreen, ReportScreen, TakeHomeScreen, WeekScreen } from "./screens/PlayScreens";
 import { MarketHall, WorkshopHall } from "./stalls/StallHalls";
-import { SpectatorScreen } from "./world/WorldScreens";
+import { SpectatorScreen, WorldMap } from "./world/WorldScreens";
 import { renderTrapIcons } from "./trapIcons";
 import { Shell } from "./shell";
 import { CHRONICLE, chronicleKind } from "./kit";
@@ -61,11 +61,11 @@ export function App() {
   const game = useGame();
   return (
     <div className="flex h-full min-h-screen bg-ink font-body text-parchment">
-      {game.screen !== "menu" && <Shell screen={game.screen === "map" ? "home" : game.screen} />}
-      <main className="min-h-0 min-w-0 flex-1">
+      {game.screen !== "menu" && <Shell screen={game.screen} />}
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         {game.screen === "menu" && <MainMenu />}
-        {(game.screen === "home" || game.screen === "map") && <HomeScreen />}
-        {game.screen === "dungeon" && <DungeonScreen />}
+        {(game.screen === "dungeon" || game.screen === "home") && <DungeonScreen />}
+        {game.screen === "map" && <WorldMap />}
         {game.screen === "gate" && <GateMarket />}
         {game.screen === "market" && <MarketHall />}
         {game.screen === "workshop" && <WorkshopHall />}
@@ -240,7 +240,8 @@ function DungeonScreen() {
           <span>Wave {game.day}</span>
           <span>Tier {dungeonTier(game.raidsCleared ?? 0)}</span>
           <span>Chain ×{game.chain ?? 0}</span>
-          <button className="ml-auto min-h-11 rounded-2xl border border-gold/30 px-3" onClick={() => setLogOpen((value) => !value)}>Chronicle</button>
+          {game.phase !== "raid" && game.pageResult !== "decision" && <button className="ml-auto min-h-11 rounded-2xl border border-gold/30 px-3" onClick={() => setScreen("gate")}>Contract board</button>}
+          <button className={`min-h-11 rounded-2xl border border-gold/30 px-3 ${game.phase === "raid" || game.pageResult === "decision" ? "ml-auto" : ""}`} onClick={() => setLogOpen((value) => !value)}>Chronicle</button>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
           {(["kara", "brann", "ivo"] as const).map((id) => {
@@ -250,7 +251,7 @@ function DungeonScreen() {
             const open = openHero === id;
             const bounty = game.raids.filter((raid) => raid.heroId === id && raid.survived).length;
             return (
-              <button key={id} className="hud-glass pointer-events-auto w-52 shrink-0 rounded-2xl px-3 py-2 text-left" onClick={() => setOpenHero(open ? null : id)}>
+              <div key={id} role="button" tabIndex={0} className="hud-glass pointer-events-auto w-52 shrink-0 rounded-2xl px-3 py-2 text-left" onClick={() => setOpenHero(open ? null : id)} onKeyDown={(event) => { if (event.key === "Enter") setOpenHero(open ? null : id); }}>
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="font-display text-xl text-gold">{profile.name}</span>
                   <span className="text-xs uppercase tracking-wider text-parchment/70">{profile.role}</span>
@@ -264,7 +265,8 @@ function DungeonScreen() {
                 {known[0] ? <p className="mt-1 text-sm text-memory">{known[0].memory ?? "warned"} · {known[0].source ?? "record"}</p> : <p className="mt-1 text-sm text-parchment/70">No trap memory yet</p>}
                 {open && <p className="mt-1 text-sm text-parchment/90">{body.memory[0]}</p>}
                 {open && known.slice(0, 3).map((fact) => <p key={fact.id} className="text-sm">{fact.text}</p>)}
-              </button>
+                {open && <button type="button" className="mt-1 block text-xs text-gold underline" onClick={(event) => { event.stopPropagation(); setScreen("registry"); }}>Hero record</button>}
+              </div>
             );
           })}
         </div>
@@ -280,8 +282,11 @@ function DungeonScreen() {
           <p>Spike kills {game.trapKills?.spike ?? 0}. Tier {dungeonTier(game.raidsCleared ?? 0)}.</p>
           {game.dungeonClosed && <p className="text-blood">The vault is empty. The next wave restocks it.</p>}
           <div className="mt-2 flex flex-wrap gap-2">
-            <button className="min-h-11 rounded-2xl bg-gold px-3 text-ink" onClick={() => nextDay()}>{game.dungeonClosed ? "Restock and continue" : "Next wave"}</button>
+            <button className="min-h-11 rounded-2xl bg-gold px-3 text-ink" onClick={() => nextDay()}>{game.dungeonClosed ? "Restock and continue" : "Continue"}</button>
             <button className="min-h-11 rounded-2xl border border-gold/40 px-3" onClick={() => setScreen("report")}>Full report</button>
+            <button className="min-h-11 rounded-2xl border border-gold/40 px-3" onClick={() => setScreen("market")}>Market</button>
+            <button className="min-h-11 rounded-2xl border border-gold/40 px-3" onClick={() => setScreen("workshop")}>Workshop</button>
+            <button className="min-h-11 rounded-2xl border border-gold/40 px-3" onClick={() => setScreen("chronicle")}>Watch replay</button>
           </div>
         </div>
       )}
@@ -341,6 +346,7 @@ function GateMarket() {
   const raider = chooseRaider(game);
   return (
     <section className="grid gap-4 p-4 lg:grid-cols-3">
+      <div className="lg:col-span-3"><button className="min-h-11 rounded-2xl border border-gold/40 px-3 text-sm" onClick={() => setScreen("dungeon")}>Return to your dungeon</button></div>
       <article className="rounded border border-gold/25 bg-panel p-4 lg:col-span-3">
         <h3 className="font-display text-2xl text-gold">Raid board</h3>
         <p className="text-sm text-parchment/70">Each hero accepts or refuses on their own numbers. A counter would move a split only. Posting an offer does not spend Gold.</p>
@@ -389,6 +395,7 @@ function Registry() {
   const game = useGame();
   return (
     <section className="grid gap-4 p-4 lg:grid-cols-2">
+      <div className="lg:col-span-2"><button className="min-h-11 rounded-2xl border border-gold/40 px-3 text-sm" onClick={() => setScreen("dungeon")}>Return to your dungeon</button></div>
       {(["kara", "brann", "ivo"] as const).map((id) => {
         const profile = HERO_PROFILES[id];
         const hero = game.heroes[id];
@@ -442,6 +449,7 @@ function Chronicle() {
   }, [playing, speed, rows.length]);
   return (
     <section className="mx-auto flex max-w-3xl flex-col gap-4 p-4">
+      <button className="min-h-11 self-start rounded-2xl border border-gold/40 px-3 text-sm" onClick={() => setScreen(game.raids.length ? "report" : "dungeon")}>Back to the raid</button>
       <h2 className="font-display text-3xl text-gold">Replay</h2>
       <p className="text-sm text-parchment/75">Replayed from recorded inputs. Diary text and hero decisions are the ones already stored.</p>
       {raid && <p className="text-sm">Day {raid.day} · {raid.heroId}. Outcome {outcomeHash(rows)}. {raid.decision.reason}</p>}
@@ -478,6 +486,7 @@ function Settings() {
   const [music, setMusic] = useState(false);
   return (
     <section className="mx-auto max-w-xl p-6">
+      <button className="mb-4 min-h-11 rounded-2xl border border-gold/40 px-3 text-sm" onClick={() => setScreen("dungeon")}>Return to your dungeon</button>
       <h2 className="font-display text-3xl text-gold">Settings</h2>
       <div className="mt-4 flex flex-wrap gap-2">
         <button className={`min-h-11 rounded-2xl px-3 ${sound ? "bg-gold text-ink" : "border border-gold/30"}`} onClick={() => setSound((value) => !value)}>Sound {sound ? "on" : "off"}</button>

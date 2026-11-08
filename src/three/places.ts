@@ -113,11 +113,11 @@ export function marketLayout(): { pieces: Piece[]; spots: PlaceSpot[]; focus: { 
   ];
   pieces.find((entry) => entry.id === "tallow-bottle")!.url = dungeon("bottle_A_green");
   const spots: PlaceSpot[] = [
-    { id: "mira", label: "Mira", prompt: "Click Mira", x: mira.x, z: mira.z, color: "#b5532e" },
-    { id: "orrin", label: "Orrin", prompt: "Click Orrin", x: orrin.x, z: orrin.z, color: "#c9a15b" },
-    { id: "tallow", label: "Tallow", prompt: "Click Tallow", x: tallow.x, z: tallow.z, color: "#f2c14e" },
-    { id: "board", label: "Listing board", prompt: "Click the listing board", x: board.x, z: board.z, color: "#3fa7a0" },
-    { id: "exit", label: "Door", prompt: "Click the door to leave", x: exit.x, z: exit.z, color: "#e9d8b4" },
+    { id: "mira", label: "Mira", prompt: "Press E to talk to Mira", x: mira.x, z: mira.z, color: "#b5532e" },
+    { id: "orrin", label: "Orrin", prompt: "Press E to talk to Orrin", x: orrin.x, z: orrin.z, color: "#c9a15b" },
+    { id: "tallow", label: "Tallow", prompt: "Press E to talk to Tallow", x: tallow.x, z: tallow.z, color: "#f2c14e" },
+    { id: "board", label: "Listing board", prompt: "Press E to use the listing board", x: board.x, z: board.z, color: "#3fa7a0" },
+    { id: "exit", label: "Door", prompt: "Press E to leave", x: exit.x, z: exit.z, color: "#e9d8b4" },
   ];
   return { pieces, spots, focus: { x: mira.x, z: mira.z } };
 }
@@ -142,10 +142,10 @@ export function workshopLayout(): { pieces: Piece[]; spots: PlaceSpot[]; focus: 
   pieces.find((entry) => entry.id === "anvil")!.url = item("anvil");
   pieces.find((entry) => entry.id === "anvil")!.file = "anvil.gltf";
   const spots: PlaceSpot[] = [
-    { id: "anvil", label: "Anvil", prompt: "Click the anvil", x: anvil.x, z: anvil.z, color: "#8d6a45" },
-    { id: "bench", label: "Armor bench", prompt: "Click the armor bench", x: bench.x, z: bench.z, color: "#f2c14e" },
-    { id: "forge", label: "Forge", prompt: "Click the forge", x: forge.x, z: forge.z, color: "#ff7a32" },
-    { id: "exit", label: "Door", prompt: "Click the door to leave", x: exit.x, z: exit.z, color: "#e9d8b4" },
+    { id: "anvil", label: "Anvil", prompt: "Press E to use the anvil", x: anvil.x, z: anvil.z, color: "#8d6a45" },
+    { id: "bench", label: "Armor bench", prompt: "Press E to use the armor bench", x: bench.x, z: bench.z, color: "#f2c14e" },
+    { id: "forge", label: "Forge", prompt: "Press E to use the forge", x: forge.x, z: forge.z, color: "#ff7a32" },
+    { id: "exit", label: "Door", prompt: "Press E to leave", x: exit.x, z: exit.z, color: "#e9d8b4" },
   ];
   return { pieces, spots, focus: forge };
 }
@@ -345,9 +345,16 @@ export function mountPlace(canvas: HTMLCanvasElement, options: {
     const target = event.target as HTMLElement | null;
     if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) return;
     if (options.getLocked()) return;
+    if (event.key.toLowerCase() === "e") {
+      if (event.repeat) return;
+      event.preventDefault();
+      const spot = nearest();
+      if (spot) options.onUse(spot);
+      return;
+    }
     keys.add(event.key.toLowerCase());
     if (event.key === "q") yaw = THREE.MathUtils.clamp(yaw - 0.08, -0.7, 0.7);
-    if (event.key === "e") yaw = THREE.MathUtils.clamp(yaw + 0.08, -0.7, 0.7);
+    if (event.key === "c") yaw = THREE.MathUtils.clamp(yaw + 0.08, -0.7, 0.7);
     if (event.key.toLowerCase() === "r") {
       yaw = 0;
       view = 9;
@@ -363,8 +370,8 @@ export function mountPlace(canvas: HTMLCanvasElement, options: {
   }
   function onPointerUp(event: PointerEvent) {
     if (Math.hypot(event.clientX - downX, event.clientY - downY) > 6) return;
-    const spot = pick(event) ?? nearest();
-    if (spot) options.onUse(spot);
+    const spot = pick(event);
+    if (spot && spot === nearest()) options.onUse(spot);
   }
   function onWheel(event: WheelEvent) {
     if (options.getLocked()) return;

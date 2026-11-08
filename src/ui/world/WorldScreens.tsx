@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { HERO_PROFILES } from "../../game/config/heroProfiles";
 import { leaveWatch, publishHall, setScreen, switchKeeper, unpublishCurrent, useGame, watchRaid } from "../../game/store";
-import { MAP_GATES } from "../../game/world/hexIsland";
-import { getActivity, hexCenter, listPublic, loadRegistry, padPosition, readRegistry, type HallQuery, type PublicDungeon } from "../../game/world/registry";
+import { getActivity, listPublic, loadRegistry, padPosition, readRegistry, type HallQuery, type PublicDungeon } from "../../game/world/registry";
 import { mountDiorama, type MapMarker } from "../../three/diorama";
 import { Button, Chip, Field, Panel, Title } from "../kit";
 
@@ -33,10 +33,6 @@ export function WorldMap() {
   }, [query, game.catalogNonce, game.dungeonPublished, game.dungeonClosed, game.raidsCleared]);
   const selected = board.halls.find((hall) => hall.dungeonId === selectedId) ?? null;
   markersRef.current = [
-    ...MAP_GATES.map((gate) => {
-      const at = hexCenter(gate.col, gate.row);
-      return { id: gate.id, name: gate.name, x: at.x, z: at.z, state: "OPEN" as const, active: false, traffic: 0, own: false, tier: 1 };
-    }),
     ...board.halls.map((hall) => {
       const pad = padPosition(hall.pad);
       return {
@@ -68,12 +64,7 @@ export function WorldMap() {
       getQuality: () => game.quality,
       getReduceMotion: () => Boolean(game.reduceMotion),
       onSelect: (id) => {
-        if (!id) return;
-        const gate = MAP_GATES.find((entry) => entry.id === id);
-        if (gate) {
-          setScreen(gate.screen);
-          return;
-        }
+        if (!id || id.startsWith("gate:")) return;
         selectRef.current(id);
       },
       onLabels: (next) => {
@@ -90,10 +81,9 @@ export function WorldMap() {
     <section className="relative h-full min-h-[70vh]">
       <canvas ref={canvasRef} data-testid="world-map" className="view h-full min-h-[70vh] w-full" />
       {labels.map((label) => (
-        <button key={label.id} data-testid={label.id.startsWith("gate:") ? "map-gate" : "dungeon-marker"} className="absolute z-10 -translate-x-1/2 rounded-full bg-ink/80 px-2 py-1 text-xs text-gold" style={{ left: label.x, top: label.y }} onClick={() => {
-          const gate = MAP_GATES.find((entry) => entry.id === label.id);
-          if (gate) setScreen(gate.screen);
-          else setSelectedId(label.id);
+        <button key={label.id} data-testid="dungeon-marker" className="absolute z-10 -translate-x-1/2 rounded-full bg-ink/80 px-2 py-1 text-xs text-gold" style={{ left: label.x, top: label.y }} onClick={() => {
+          if (label.id.startsWith("gate:")) return;
+          setSelectedId(label.id);
         }}>
           {label.name}
         </button>
@@ -122,7 +112,7 @@ export function WorldMap() {
               <option value="quiet">Quiet</option>
             </select>
           </Field>
-          <p className="pb-2 text-xs text-parchment/70" data-testid="hall-count">{board.total} public {board.total === 1 ? "hall" : "halls"}</p>
+          <p className="pb-2 text-xs text-parchment/70" data-testid="hall-count">{board.total} public {board.total === 1 ? "hall" : "halls"} on this device. Another computer will not see them.</p>
         </div>
         <div className="pointer-events-auto flex items-end justify-between gap-3">
           <Button tone="ghost" onClick={() => setHallOpen((value) => !value)}>{hallOpen ? "Close hall slip" : "Your hall"}</Button>
@@ -139,6 +129,7 @@ export function WorldMap() {
               <Button onClick={() => { setNote(publishHall(hallName, blurb, shownName).reason); setSelectedId(`hall:${game.ownerId || "keeper-local"}`); }}>Publish</Button>
               {game.dungeonPublished && <Button tone="ghost" onClick={() => setNote(unpublishCurrent().reason)}>Unpublish</Button>}
             </div>
+            <p className="mt-3 text-xs uppercase tracking-[0.16em] text-ember">Mock · this device only</p>
             <Field label="Sit as another keeper"><input data-testid="keeper-id" className="w-full rounded-xl bg-black/40 px-2 py-2" value={keeperId} placeholder="keeper-b" onChange={(event) => setKeeperId(event.target.value)} /></Field>
             <Field label="Their name"><input data-testid="keeper-name" className="w-full rounded-xl bg-black/40 px-2 py-2" value={keeperName} onChange={(event) => setKeeperName(event.target.value)} /></Field>
             <Button tone="ghost" className="mt-2" onClick={() => setNote(switchKeeper(keeperId, keeperName || keeperId).reason)}>Switch keeper</Button>
@@ -202,7 +193,7 @@ export function SpectatorScreen() {
       {!activity && <p>That raid is no longer on the board.</p>}
       {activity && (
         <Panel>
-          <p className="font-display text-2xl text-gold">{activity.heroId ?? "Hero"}</p>
+          <p className="font-display text-2xl text-gold">{activity.heroId && activity.heroId in HERO_PROFILES ? `${HERO_PROFILES[activity.heroId as keyof typeof HERO_PROFILES].name} · ${HERO_PROFILES[activity.heroId as keyof typeof HERO_PROFILES].role}` : (activity.heroId ?? "Hero")}</p>
           <p className="mt-2 text-sm" data-testid="spectator-line">{event?.text ?? "The raid has no steps yet."}</p>
           <p className="mt-2 text-xs text-parchment/60">Step {activity.events.length ? cursor + 1 : 0} of {activity.events.length}. Outcome {activity.outcomeHash ?? "not settled"}.</p>
         </Panel>
