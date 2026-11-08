@@ -55,17 +55,28 @@ export interface HallQuery {
   activity?: "active" | "quiet" | "any";
 }
 
-/** Geography of the diorama. These are places, not dungeon names. */
-export const WORLD_PADS = [
-  { id: "ridge", x: -14, z: -8 },
-  { id: "ford", x: -4, z: -10 },
-  { id: "mill", x: 8, z: -8 },
-  { id: "barrow", x: 16, z: -2 },
-  { id: "south-gate", x: -12, z: 6 },
-  { id: "cinder-road", x: 0, z: 8 },
-  { id: "hollow", x: 12, z: 8 },
-  { id: "march", x: 4, z: -2 },
+/** Pointy-top KayKit hex. Flat-to-flat is 2, point-to-point is about 2.31. */
+const HEX_RADIUS = 1.1547005383792515;
+
+export function hexCenter(col: number, row: number) {
+  const x = Math.sqrt(3) * HEX_RADIUS * (col + ((row & 1) === 1 ? 0.5 : 0));
+  const z = HEX_RADIUS * 1.5 * row;
+  return { x, z };
+}
+
+/** Landmark hexes on the island. These are places, not dungeon names. */
+const LANDMARKS = [
+  { id: "castle", col: 4, row: 3 },
+  { id: "tower", col: 6, row: 2 },
+  { id: "mine", col: 2, row: 4 },
+  { id: "tavern", col: 5, row: 4 },
+  { id: "church", col: 2, row: 2 },
+  { id: "mill", col: 6, row: 4 },
+  { id: "home", col: 3, row: 5 },
+  { id: "smith", col: 3, row: 2 },
 ] as const;
+
+export const WORLD_PADS = LANDMARKS.map((place) => ({ id: place.id, ...hexCenter(place.col, place.row) }));
 
 export function emptyRegistry(): RegistryFile {
   return { dungeons: [], activity: [] };

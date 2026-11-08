@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { PALETTE } from "../game/visual/palette";
-import { dungeon } from "../game/content";
+import { ISLAND_FOCUS, hexIsland } from "../game/world/hexIsland";
 import { spawn } from "./loader";
 import type { Quality } from "../game/content";
 
@@ -29,14 +29,16 @@ export function mountDiorama(canvas: HTMLCanvasElement, hooks: {
   } catch {
     return { ready: Promise.resolve(), dispose() {} };
   }
-  renderer.setClearColor(PALETTE.fog);
+  renderer.setClearColor("#14161c");
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(PALETTE.fog, 28, 70);
-  const camera = new THREE.OrthographicCamera(-20, 20, 14, -14, 0.1, 120);
-  const focus = new THREE.Vector3(0, 0, 0);
-  let yaw = 0.6;
-  let view = 18;
+  scene.fog = new THREE.Fog("#14161c", 24, 55);
+  const camera = new THREE.OrthographicCamera(-20, 20, 14, -14, 0.1, 160);
+  const focus = new THREE.Vector3(ISLAND_FOCUS.x, 0, ISLAND_FOCUS.z);
+  let yaw = 0.35;
+  let view = 14;
   const hemi = new THREE.HemisphereLight("#d9c7a2", "#241910", 0.55);
   const sun = new THREE.DirectionalLight("#ffe0b0", 1.1);
   sun.position.set(-8, 18, 10);
@@ -46,36 +48,6 @@ export function mountDiorama(canvas: HTMLCanvasElement, hooks: {
   torch.position.set(0, 3, 8);
   scene.add(torch);
 
-  const ground = new THREE.Mesh(
-    new THREE.BoxGeometry(46, 0.4, 34),
-    new THREE.MeshStandardMaterial({ color: "#3A2A1A", roughness: 0.9 }),
-  );
-  ground.position.y = -0.2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-  const river = new THREE.Mesh(
-    new THREE.BoxGeometry(46, 0.08, 4),
-    new THREE.MeshStandardMaterial({ color: "#1d3a3a", roughness: 0.4, metalness: 0.1 }),
-  );
-  river.position.set(0, 0.02, 0);
-  scene.add(river);
-  const roadMat = new THREE.MeshStandardMaterial({ color: PALETTE.stone, roughness: 0.85 });
-  const roadNS = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 30), roadMat);
-  roadNS.position.set(0, 0.05, 0);
-  const roadEW = new THREE.Mesh(new THREE.BoxGeometry(40, 0.08, 2.2), roadMat);
-  roadEW.position.set(0, 0.05, -2);
-  scene.add(roadNS, roadEW);
-  for (const bridgeX of [-8, 8]) {
-    const bridge = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.16, 4.4), new THREE.MeshStandardMaterial({ color: "#6b4a2e", roughness: 0.8 }));
-    bridge.position.set(bridgeX, 0.12, 0);
-    scene.add(bridge);
-  }
-  const ridgeMat = new THREE.MeshStandardMaterial({ color: PALETTE.darkStone, roughness: 0.95 });
-  for (const hill of [[-18, -12, 6], [18, -11, 5], [-16, 12, 4], [17, 11, 5.5]]) {
-    const mesh = new THREE.Mesh(new THREE.ConeGeometry(hill[2], hill[2] * 1.3, 5), ridgeMat);
-    mesh.position.set(hill[0], hill[2] * 0.4, hill[1]);
-    scene.add(mesh);
-  }
   const markers = new THREE.Group();
   scene.add(markers);
   const raycaster = new THREE.Raycaster();
@@ -120,27 +92,14 @@ export function mountDiorama(canvas: HTMLCanvasElement, hooks: {
       const group = new THREE.Group();
       group.position.set(marker.x, 0, marker.z);
       group.userData.id = marker.id;
-      const color = marker.state === "CLOSED" ? "#5c584f" : marker.active ? "#ff9a3c" : "#f2c14e";
-      const plinth = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.7, 0.9, 0.4, 6),
-        new THREE.MeshStandardMaterial({ color: marker.state === "CLOSED" ? "#3a3834" : "#4a3828", roughness: 0.8 }),
+      const color = marker.state === "CLOSED" ? "#6d6a62" : marker.active ? "#ff9a3c" : PALETTE.gold;
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(marker.own ? 1.15 : 0.95, 0.07, 8, 6),
+        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: marker.state === "CLOSED" ? 0.05 : 0.35 }),
       );
-      plinth.position.y = 0.2;
-      const tower = new THREE.Mesh(
-        new THREE.BoxGeometry(0.7, 0.5 + marker.tier * 0.35, 0.7),
-        new THREE.MeshStandardMaterial({ color, roughness: 0.55, emissive: marker.active ? "#ff9a3c" : "#000000", emissiveIntensity: marker.active ? 0.35 : 0 }),
-      );
-      tower.position.y = 0.7 + marker.tier * 0.15;
-      group.add(plinth, tower);
-      if (marker.own) {
-        const ring = new THREE.Mesh(
-          new THREE.TorusGeometry(1.15, 0.06, 6, 16),
-          new THREE.MeshStandardMaterial({ color: PALETTE.gold, emissive: PALETTE.gold, emissiveIntensity: 0.2 }),
-        );
-        ring.rotation.x = Math.PI / 2;
-        ring.position.y = 0.08;
-        group.add(ring);
-      }
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 0.08;
+      group.add(ring);
       const arrows = Math.max(0, Math.min(3, marker.traffic));
       for (let index = 0; index < arrows; index += 1) {
         const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.45, 4), new THREE.MeshStandardMaterial({ color: PALETTE.memory }));
@@ -157,20 +116,23 @@ export function mountDiorama(canvas: HTMLCanvasElement, hooks: {
     }
   }
 
-  const props: Array<[string, number, number, number]> = [
-    ["banner_red", -14, -8, 0],
-    ["pillar", 16, -2, 0.4],
-    ["rubble_large", -12, 6, 0],
-    ["wall_broken", 8, -8, 1],
-    ["barrel_large", 0, 8, 0],
-  ];
-  const ready = Promise.all(props.map(async ([file, x, z, rot]) => {
-    const mesh = await spawn(dungeon(file), "cast");
-    mesh.position.set(x, 0, z);
-    mesh.rotation.y = rot;
-    mesh.scale.setScalar(file === "banner_red" ? 0.8 : 1);
-    scene.add(mesh);
-  })).catch(() => undefined);
+  const ready = (async () => {
+    const pieces = hexIsland();
+    const groups = new Map<string, typeof pieces>();
+    for (const piece of pieces) {
+      const list = groups.get(piece.url) ?? [];
+      list.push(piece);
+      groups.set(piece.url, list);
+    }
+    await Promise.all([...groups.entries()].map(async ([url, entries]) => {
+      for (const entry of entries) {
+        const mesh = await spawn(url, "cast");
+        mesh.position.set(entry.x, entry.y, entry.z);
+        mesh.rotation.y = entry.rot;
+        scene.add(mesh);
+      }
+    }));
+  })().catch(() => undefined);
 
   function pick(event: PointerEvent) {
     const rect = canvas.getBoundingClientRect();
@@ -231,7 +193,7 @@ export function mountDiorama(canvas: HTMLCanvasElement, hooks: {
       const width = canvas.clientWidth || 1;
       const height = canvas.clientHeight || 1;
       hooks.onLabels(list.map((marker) => {
-        const point = new THREE.Vector3(marker.x, 1.2, marker.z).project(camera);
+        const point = new THREE.Vector3(marker.x, 2.2, marker.z).project(camera);
         return {
           id: marker.id,
           name: marker.name,
