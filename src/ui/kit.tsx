@@ -14,7 +14,7 @@ export function Button({ tone = "gold", className = "", ...props }: ButtonHTMLAt
     : tone === "ember"
       ? "bg-ember text-ink hover:bg-torch"
       : "border border-gold/40 bg-ink/40 text-parchment hover:border-gold hover:text-gold";
-  return <button className={`min-h-11 rounded-2xl px-4 py-2 text-sm transition disabled:hover:bg-gold ${toneClass} ${className}`} {...props} />;
+  return <button className={`min-h-11 rounded-2xl px-4 py-2 text-sm disabled:hover:bg-inherit ${toneClass} ${className}`} {...props} />;
 }
 
 export function Chip({ children, hot = false }: { children: ReactNode; hot?: boolean }) {

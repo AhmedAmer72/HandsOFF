@@ -16,25 +16,26 @@ export function mountLandingProps(canvas: HTMLCanvasElement) {
   const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 40);
   camera.position.set(0, 0.4, 8);
   scene.add(new THREE.AmbientLight("#ffe7c2", 0.45));
-  const gold = new THREE.PointLight("#ffb03a", 18, 12);
-  gold.position.set(-2, 1, 3);
-  const blue = new THREE.PointLight("#3ec6ff", 12, 10);
-  blue.position.set(2.4, -0.4, 2);
-  scene.add(gold, blue);
+  const gold = new THREE.PointLight("#ffb03a", 22, 14);
+  gold.position.set(-1.4, 1.2, 3);
+  const ember = new THREE.PointLight("#ff7a32", 10, 12);
+  ember.position.set(2.2, -0.2, 2.4);
+  scene.add(gold, ember);
   const roots: THREE.Object3D[] = [];
   let frame = 0;
   const ready = (async () => {
     const specs = [
-      { url: weapon("axe_2handed"), x: -2.3, y: 0.7, z: 0, s: 1.3, ry: 0.4 },
-      { url: dungeon("chest_gold"), x: 2.15, y: 1.15, z: -0.2, s: 1.1, ry: -0.5 },
-      { url: weapon("dagger"), x: 2.5, y: -0.9, z: 0.2, s: 1.4, ry: 0.8 },
-      { url: dungeon("chest"), x: -1.7, y: -1.25, z: 0.3, s: 0.85, ry: 0.2 },
+      { url: weapon("axe_2handed"), x: -2.35, y: 0.85, z: 0, s: 1.15, ry: 0.35 },
+      { url: dungeon("chest_gold"), x: 1.7, y: 0.95, z: -0.2, s: 1.05, ry: -0.45 },
+      { url: weapon("dagger"), x: 2.15, y: -0.05, z: 0.3, s: 1.15, ry: 0.7 },
+      { url: dungeon("chest"), x: -0.15, y: 1.45, z: 0.2, s: 0.62, ry: 0.15 },
     ];
     for (const spec of specs) {
       const mesh = await spawn(spec.url, "cast");
       mesh.position.set(spec.x, spec.y, spec.z);
       mesh.scale.setScalar(spec.s);
       mesh.rotation.y = spec.ry;
+      mesh.userData.rest = { y: spec.y, ry: spec.ry, kind: spec.url.includes("dagger") ? "dagger" : "prop" };
       scene.add(mesh);
       roots.push(mesh);
     }
@@ -43,7 +44,11 @@ export function mountLandingProps(canvas: HTMLCanvasElement) {
   function resize() {
     const width = canvas.clientWidth || 1;
     const height = canvas.clientHeight || 1;
+    const narrow = width / height < 0.85;
     camera.aspect = width / height;
+    camera.fov = narrow ? 42 : 32;
+    camera.position.z = narrow ? 11.5 : 8;
+    camera.position.x = narrow ? 0.45 : 0;
     camera.updateProjectionMatrix();
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     renderer.setSize(width, height, false);
@@ -52,13 +57,18 @@ export function mountLandingProps(canvas: HTMLCanvasElement) {
   observer.observe(canvas);
   resize();
   const clock = new THREE.Clock();
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   function tick() {
     frame = requestAnimationFrame(tick);
-    const t = clock.getElapsedTime();
-    roots.forEach((mesh, index) => {
-      mesh.rotation.y += 0.004;
-      mesh.position.y += Math.sin(t * 1.2 + index) * 0.002;
-    });
+    if (!reduce) {
+      const t = clock.getElapsedTime();
+      roots.forEach((mesh, index) => {
+        const spec = mesh.userData.rest as { y: number; ry: number; kind: string };
+        const lift = spec.kind === "dagger" && canvas.clientWidth / canvas.clientHeight < 0.85 ? 1.15 : 0;
+        mesh.rotation.y = spec.ry + Math.sin(t * 0.35 + index) * 0.12;
+        mesh.position.y = spec.y + lift + Math.sin(t * 0.8 + index) * 0.06;
+      });
+    }
     renderer.render(scene, camera);
   }
   tick();
