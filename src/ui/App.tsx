@@ -1,27 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ITEMS, SITES } from "../game/content";
 import { goodsRule } from "../game/config/economyRules";
-import { GOODS as RULE_GOODS, RAID, RECIPES } from "../../rules/economy";
+import { GOODS as RULE_GOODS, RAID } from "../../rules/economy";
 import { HERO_PROFILES } from "../game/config/heroProfiles";
-import { RULES } from "../game/config/gameRules";
 import { TRAP_DEFINITIONS, TRAP_IDS } from "../game/config/trapDefinitions";
 import { quotePrice } from "../game/engine/pricing";
-import { chooseRaider, evaluateHero } from "../game/engine/decisions";
+import { evaluateHero } from "../game/engine/decisions";
 import { merchantStatus } from "../game/engine/market";
 import { sfx } from "../game/audio";
 import {
+  acceptRaidOffer,
   armPossess,
   bindDungeon,
+  counterRaidOffer,
+  fundRaidOffer,
+  hallIdOf,
+  refuseRaidOffer,
   buyBackRumour,
   buyFromMerchant,
   buyUpgrade,
-  cancelListing,
   craftTrap,
-  forgeKit,
   supplyIron,
-  supplyMaterial,
-  listItem,
-  buyListing,
   markDiary,
   newGame,
   nextDay,
@@ -42,14 +40,18 @@ import {
   toSteps,
   useGame,
 } from "../game/store";
+import { offersOf, readRegistry } from "../game/world/registry";
+import { outcomeHash } from "../game/engine/raid";
 import { mountDungeon } from "../three/dungeon";
 import { mountGallery } from "../three/gallery";
 import { MainMenu } from "./screens/MainMenu";
 import { MockSandbox } from "./screens/MockSandbox";
-import { DeedScreen, GuildScreen, HomeScreen, ReportScreen, TakeHomeScreen, WeekScreen } from "./screens/PlayScreens";
+import { DeedScreen, GuildScreen, ReportScreen, TakeHomeScreen, WeekScreen } from "./screens/PlayScreens";
+import { MarketHall, WorkshopHall } from "./stalls/StallHalls";
+import { SpectatorScreen, WorldMap } from "./world/WorldScreens";
 import { renderTrapIcons } from "./trapIcons";
 import { Shell } from "./shell";
-import { CHRONICLE, chronicleKind } from "./kit";
+import { Button, CHRONICLE, chronicleKind, Num, Panel, Receipt } from "./kit";
 
 const TUTORIAL = [
   "Choose Spike Trap on the bar. It follows the cursor. Click tile 4, 6.",
@@ -64,16 +66,16 @@ const TUTORIAL = [
 export function App() {
   const game = useGame();
   return (
-    <div className="flex h-full min-h-screen flex-col bg-ink font-body text-parchment">
+    <div className="flex h-full min-h-screen bg-ink font-body text-parchment">
       {game.screen !== "menu" && <Shell screen={game.screen} />}
-      <main className="min-h-0 flex-1">
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         {game.screen === "menu" && <MainMenu />}
-        {game.screen === "home" && <HomeScreen />}
-        {game.screen === "dungeon" && <DungeonScreen />}
+        {(game.screen === "dungeon" || game.screen === "home") && <DungeonScreen />}
         {game.screen === "map" && <WorldMap />}
         {game.screen === "gate" && <GateMarket />}
-        {game.screen === "market" && <Marketplace />}
-        {game.screen === "workshop" && <Workshop />}
+        {game.screen === "market" && <MarketHall />}
+        {game.screen === "workshop" && <WorkshopHall />}
+        {game.screen === "spectator" && <SpectatorScreen />}
         {game.screen === "registry" && <Registry />}
         {game.screen === "chronicle" && <Chronicle />}
         {game.screen === "report" && <ReportScreen />}
@@ -98,6 +100,16 @@ function DungeonScreen() {
   const [openHero, setOpenHero] = useState<"kara" | "brann" | "ivo" | null>(null);
   const [feed, setFeed] = useState("All");
   const [logOpen, setLogOpen] = useState(false);
+  const [vaultPulse, setVaultPulse] = useState<"up" | "down" | null>(null);
+  const prevVault = useRef(game.vault);
+  useEffect(() => {
+    const previous = prevVault.current;
+    prevVault.current = game.vault;
+    if (game.reduceMotion || previous === game.vault) return;
+    setVaultPulse(game.vault > previous ? "up" : "down");
+    const timer = window.setTimeout(() => setVaultPulse(null), 320);
+    return () => window.clearTimeout(timer);
+  }, [game.vault, game.reduceMotion]);
   useEffect(() => {
     let live = true;
     void renderTrapIcons().then((icons) => {
@@ -143,7 +155,7 @@ function DungeonScreen() {
       onGate: () => {
         if (hooks.current.phase === "report") nextDay();
         else if (hooks.current.phase === "prep") {
-          startRaid();
+          setScreen("gate");
           sfx.ui();
         }
       },
@@ -232,68 +244,75 @@ function DungeonScreen() {
   const report = game.pending;
   const hero = report ? HERO_PROFILES[report.heroId] : HERO_PROFILES.kara;
 
+  const picked = openHero ? game.heroes[openHero] : null;
+  const pickedProfile = openHero ? HERO_PROFILES[openHero] : null;
+  const pickedFacts = picked?.facts.filter((fact) => !fact.burned) ?? [];
+  const lowVault = game.vault < RAID.vaultStart * 0.25;
+
   return (
-    <div className="relative h-full min-h-[640px]">
+    <div className={`relative h-full min-h-[640px] ${game.reduceMotion ? "motion-reduce" : ""}`}>
       <canvas ref={canvasRef} className="view absolute inset-0 h-full w-full" />
       <div className="pointer-events-none absolute inset-x-0 top-2 flex flex-col gap-2 px-2 sm:px-3">
-        <div className="hud-glass pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl px-3 py-2 text-sm">
-          <span>Vault <b className={game.vault < RAID.vaultStart * 0.25 ? "text-blood" : "text-gold"}>{game.vault}</b></span>
-          <span>{game.phase === "raid" ? `−${RAID.bleedPerHeroPerSec}/s` : "−0/s"}</span>
-          <span>Gold <b className="text-gold">{Math.round(game.gold)}</b></span>
-          <span className="text-ember" aria-label={`${game.cinder} cinder`}>Cinder {"●".repeat(game.cinder)}{"○".repeat(Math.max(0, RAID.cinder.cap - game.cinder))}</span>
-          <span>Wave {game.day}</span>
-          <span>Tier {dungeonTier(game.raidsCleared ?? 0)}</span>
-          <span>Chain ×{game.chain ?? 0}</span>
-          <button className="ml-auto min-h-11 rounded-2xl border border-gold/30 px-3" onClick={() => setLogOpen((value) => !value)}>Chronicle</button>
+        <div className="hud-glass pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-hud px-3 py-2 text-sm">
+          <span>Vault <Num className={`${lowVault ? "text-blood" : "text-gold"} ${vaultPulse ? "vault-tick" : ""}`}>{game.vault}</Num></span>
+          <span className="num">{game.phase === "raid" ? `−${RAID.bleedPerHeroPerSec}/s` : "−0/s"}{lowVault ? " · low" : ""}</span>
+          <span>Gold <Num className="text-gold">{Math.round(game.gold)}</Num></span>
+          <span className="text-ember" aria-label={`${game.cinder} of ${RAID.cinder.cap} cinder`}>Cinder {"●".repeat(game.cinder)}{"○".repeat(Math.max(0, RAID.cinder.cap - game.cinder))}</span>
+          <span className="num">Wave {game.day}</span>
+          <span className="num">Tier {dungeonTier(game.raidsCleared ?? 0)}</span>
+          {game.phase !== "raid" && game.pageResult !== "decision" && <Button tone="ghost" className="ml-auto" onClick={() => setScreen("gate")}>Contract board</Button>}
+          <Button tone="ghost" className={game.phase === "raid" || game.pageResult === "decision" ? "ml-auto" : ""} onClick={() => setLogOpen((value) => !value)}>Chronicle</Button>
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="pointer-events-auto flex flex-wrap gap-2">
           {(["kara", "brann", "ivo"] as const).map((id) => {
             const body = game.heroes[id];
             const profile = HERO_PROFILES[id];
-            const known = body.facts.filter((fact) => !fact.burned);
             const open = openHero === id;
-            const bounty = game.raids.filter((raid) => raid.heroId === id && raid.survived).length;
             return (
-              <button key={id} className="hud-glass pointer-events-auto w-52 shrink-0 rounded-2xl px-3 py-2 text-left" onClick={() => setOpenHero(open ? null : id)}>
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="font-display text-xl text-gold">{profile.name}</span>
-                  <span className="text-xs uppercase tracking-wider text-parchment/70">{profile.role}</span>
-                </div>
-                <p className="text-sm">HP {body.hp}/{body.maxHp}</p>
-                <p className="text-sm">Purse {body.gold} · Bounty {bounty}</p>
-                <p className="text-xs text-parchment/70">Gear {body.equipment.join(", ") || "pack only"}</p>
-                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
-                  <div className="h-full bg-blood" style={{ width: `${Math.max(0, (body.hp / body.maxHp) * 100)}%` }} />
-                </div>
-                {known[0] ? <p className="mt-1 text-sm text-memory">{known[0].memory ?? "warned"} · {known[0].source ?? "record"}</p> : <p className="mt-1 text-sm text-parchment/70">No trap memory yet</p>}
-                {open && <p className="mt-1 text-sm text-parchment/90">{body.memory[0]}</p>}
-                {open && known.slice(0, 3).map((fact) => <p key={fact.id} className="text-sm">{fact.text}</p>)}
+              <button key={id} className={`min-h-11 rounded-full px-3 text-sm ${open ? "bg-gold text-ink" : "hud-glass text-parchment"}`} aria-pressed={open} onClick={() => setOpenHero(open ? null : id)}>
+                {profile.name} <span className="num">{body.hp}/{body.maxHp}</span>
               </button>
             );
           })}
         </div>
+        {picked && pickedProfile && (
+          <div className="hud-glass pointer-events-auto max-w-sm rounded-hud p-3 text-sm">
+            <p className="font-display text-xl text-gold">{pickedProfile.name} · {pickedProfile.role}</p>
+            <p>HP <span className="num">{picked.hp}/{picked.maxHp}</span> · Purse <span className="num">{picked.gold}</span></p>
+            <p className="text-parchment/75">Gear {picked.equipment.join(", ") || "pack only"}</p>
+            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10" aria-hidden="true">
+              <div className="h-full bg-blood" style={{ width: `${Math.max(0, (picked.hp / picked.maxHp) * 100)}%` }} />
+            </div>
+            {pickedFacts[0] ? <p className="mt-1 text-memory">{pickedFacts[0].memory ?? "warned"} · {pickedFacts[0].source ?? "record"}</p> : <p className="mt-1 text-parchment/70">No trap memory yet</p>}
+            <p className="mt-1 text-parchment/80">{picked.memory[0]}</p>
+            {pickedFacts.slice(0, 3).map((fact) => <p key={fact.id}>{fact.text}</p>)}
+            <button type="button" className="mt-1 min-h-11 text-sm text-gold underline" onClick={() => setScreen("registry")}>Hero record</button>
+          </div>
+        )}
       </div>
       {game.phase === "report" && report && (
-        <div className="hud-glass pointer-events-auto absolute left-3 top-28 max-w-sm rounded-2xl p-4 text-sm">
-          <div className="font-display text-lg text-gold">Raid results</div>
+        <Receipt className="pointer-events-auto absolute left-3 top-28 max-w-sm text-sm">
+          <div className="font-display text-lg">Raid results</div>
           <p>{report.survived ? `${hero.name} survived.` : `${hero.name} died.`}</p>
-          <p>Traps sprung: {report.trapsTriggered.length}. Chain ×{game.chain ?? 0}.</p>
-          <p>Walked {report.events.filter((event) => event.type === "move").map((event) => `${event.ix},${event.iz}`).join(" · ")}.</p>
-          <p>Pages {game.pageResult === "burned" ? "burned" : game.pageResult === "escaped" ? "landed" : "still in the air"}: {report.facts.length}.</p>
-          <p>Salvage in hand: iron {game.inventory.iron ?? 0}, ash {game.inventory.ash ?? 0}, bone {game.inventory.bone ?? 0}.</p>
-          <p>Spike kills {game.trapKills?.spike ?? 0}. Tier {dungeonTier(game.raidsCleared ?? 0)}.</p>
+          <p>Traps sprung <span className="num">{report.trapsTriggered.length}</span>. Chain ×<span className="num">{game.chain ?? 0}</span>.</p>
+          <p>Pages {game.pageResult === "burned" ? "burned" : game.pageResult === "escaped" ? "landed" : "still in the air"}: <span className="num">{report.facts.length}</span>. A landed page is sold. It does not teach a hero.</p>
+          <p>Salvage: iron <span className="num">{game.inventory.iron ?? 0}</span>, ash <span className="num">{game.inventory.ash ?? 0}</span>, bone <span className="num">{game.inventory.bone ?? 0}</span>.</p>
+          <p>Tier <span className="num">{dungeonTier(game.raidsCleared ?? 0)}</span>.</p>
           {game.dungeonClosed && <p className="text-blood">The vault is empty. The next wave restocks it.</p>}
           <div className="mt-2 flex flex-wrap gap-2">
-            <button className="min-h-11 rounded-2xl bg-gold px-3 text-ink" onClick={() => nextDay()}>{game.dungeonClosed ? "Restock and continue" : "Next wave"}</button>
-            <button className="min-h-11 rounded-2xl border border-gold/40 px-3" onClick={() => setScreen("report")}>Full report</button>
+            <Button onClick={() => nextDay()}>{game.dungeonClosed ? "Restock and continue" : "Continue"}</Button>
+            <Button tone="ghost" className="!text-ink" onClick={() => setScreen("report")}>Full report</Button>
+            <Button tone="ghost" className="!text-ink" onClick={() => setScreen("market")}>Market</Button>
+            <Button tone="ghost" className="!text-ink" onClick={() => setScreen("workshop")}>Workshop</Button>
+            <Button tone="ghost" className="!text-ink" onClick={() => setScreen("chronicle")}>Watch replay</Button>
           </div>
-        </div>
+        </Receipt>
       )}
-      <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-3">
-        <div className="hud-glass w-[min(42rem,100%)] rounded-2xl px-4 py-3 text-center">
-          <p className="text-sm text-parchment">{game.pageResult === "decision" ? `The page is in the air. Click it to burn for ${RAID.cinder.burnCost} cinder. ${seconds}s.` : hint}</p>
+      <div className="pointer-events-none absolute inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] flex justify-center px-3">
+        <div className="hud-glass w-[min(42rem,100%)] rounded-hud px-4 py-3 text-center">
+          <p className="text-sm text-parchment">{game.pageResult === "decision" ? `The page is in the air. Burn costs ${RAID.cinder.burnCost} cinder${game.cinder < RAID.cinder.burnCost ? ", and you do not have enough" : ""}. Waiting lets it land as a rumour. No hero learns it until they buy it. ${seconds}s.` : hint}</p>
           {toast && <p className="mt-1 text-xs text-gold">{toast}</p>}
-          <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-parchment/45">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
+          <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-parchment/55">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
         </div>
       </div>
       <div className={`pointer-events-auto absolute right-2 top-36 z-20 w-[min(20rem,calc(100%-1rem))] lg:right-3 ${logOpen ? "block" : "hidden"}`}>
@@ -316,21 +335,22 @@ function DungeonScreen() {
           {game.ledger.length === 0 && <p className="mt-2 text-parchment/70">The chronicle is empty.</p>}
         </div>
       </div>
-      <div className="absolute bottom-24 left-0 right-0 flex justify-start gap-2 overflow-x-auto px-3 pb-1 sm:justify-center">
+      <div className="absolute bottom-[max(7.5rem,calc(env(safe-area-inset-bottom)+6.5rem))] left-0 right-0 flex justify-start gap-2 overflow-x-auto px-3 pb-1 sm:justify-center">
         {TRAP_IDS.map((id) => {
           const trap = TRAP_DEFINITIONS[id];
           const selected = game.selectedTrap === id;
+          const short = game.gold < trap.cost;
           return (
-            <button key={id} className={`hud-glass flex min-h-11 w-24 shrink-0 flex-col items-center gap-1 rounded-2xl px-2 py-2 text-sm ${selected ? "ring-2 ring-gold" : "hover:ring-1 hover:ring-gold/50"}`} onClick={() => selected ? clearTrap() : armTrap(id)}>
+            <button key={id} disabled={short} aria-pressed={selected} className={`hud-glass flex min-h-11 w-24 shrink-0 flex-col items-center gap-1 rounded-hud px-2 py-2 text-sm ${selected ? "ring-2 ring-gold" : ""}`} onClick={() => selected ? clearTrap() : armTrap(id)}>
               {trapIcons[id] ? <img src={trapIcons[id]} alt="" className="h-14 w-14 object-contain" /> : <span className="h-14 w-14 rounded-xl bg-white/5" />}
               <span className={selected ? "text-gold" : "text-parchment"}>{trap.name}</span>
-              <span className="text-[10px] text-gold">{trap.cost} gold</span>
+              <span className="num text-[10px] text-gold">{short ? "Short" : `${trap.cost} gold`}</span>
             </button>
           );
         })}
-        <button className={`hud-glass min-h-11 w-24 shrink-0 rounded-2xl px-2 py-2 text-sm ${game.possessArmed ? "ring-2 ring-gold text-gold" : ""}`} disabled={game.day < RAID.possess.fromWave} onClick={() => armPossess()}>
+        <button className={`hud-glass min-h-11 w-24 shrink-0 rounded-hud px-2 py-2 text-sm ${game.possessArmed ? "ring-2 ring-gold text-gold" : ""}`} disabled={game.day < RAID.possess.fromWave || game.gold < RAID.possess.cost} onClick={() => armPossess()}>
           Possess
-          <span className="mt-1 block text-[10px] text-gold">{RAID.possess.cost} gold</span>
+          <span className="num mt-1 block text-[10px] text-gold">{game.day < RAID.possess.fromWave ? `Wave ${RAID.possess.fromWave}` : `${RAID.possess.cost} gold`}</span>
         </button>
       </div>
       <p className="pointer-events-none absolute bottom-1 right-3 text-[10px] text-parchment/35">{game.fps.toFixed(0)} fps · p95 {(game.frameP95 ?? 0).toFixed(0)} ms · {game.drawCalls} draws · {game.triangles} tris · {game.textureCount ?? 0} tex · {game.rendererInfo || "renderer"}</p>
@@ -338,64 +358,43 @@ function DungeonScreen() {
   );
 }
 
-function WorldMap() {
-  const game = useGame();
-  const [site, setSite] = useState(SITES[0]);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const view = mountGallery(canvas);
-    void view.show(site.model);
-    return () => view.dispose();
-  }, [site]);
-  return (
-    <section className="grid h-full min-h-0 gap-4 p-4 lg:grid-cols-[1fr_320px]">
-      <div>
-        <h2 className="font-display text-3xl text-gold">World map</h2>
-        <p className="mb-4 text-sm text-parchment/70">Day {game.day}. Reputation {game.reputation}. The hexes are drawn here. Markers use the downloaded models.</p>
-        <div className="relative h-[420px]">
-          {SITES.map((entry) => {
-            const x = 180 + entry.q * 92 + entry.r * 46;
-            const y = 160 + entry.r * 80;
-            return (
-              <button key={entry.id} className="absolute h-20 w-20 text-xs" style={{ left: x, top: y, clipPath: "polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%)", background: entry.kind === "dungeon" ? "#6a3a28" : "#3d3428" }} onClick={() => { setSite(entry); note(`Marked ${entry.name}.`); }}>
-                <span className="block px-2 pt-6 text-parchment">{entry.name}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <div className="rounded border border-gold/30 bg-panel p-3">
-        <div className="font-display text-xl text-gold">{site.name}</div>
-        <p className="text-sm text-parchment/75">{site.detail}</p>
-        <canvas ref={canvasRef} className="view mt-3 h-64 w-full rounded bg-black" />
-        {site.kind === "dungeon" && <button className="mt-3 rounded bg-ember px-3 py-1 text-ink" onClick={() => setScreen("dungeon")}>Enter</button>}
-        {site.kind === "merchant" && <button className="mt-3 rounded bg-gold px-3 py-1 text-ink" onClick={() => setScreen("gate")}>Open gate market</button>}
-      </div>
-    </section>
-  );
-}
-
 function GateMarket() {
   const game = useGame();
+  const [slip, setSlip] = useState("");
   const merchants = [game.merchants.mira, game.merchants.orrin, game.merchants.tallow];
   const board = (["kara", "brann", "ivo"] as const).map((id) => evaluateHero(game, game.heroes[id]));
-  const raider = chooseRaider(game);
+  const offer = offersOf(readRegistry()).find((entry) => entry.dungeonId === hallIdOf(game) && !entry.consumed && entry.status !== "EXPIRED_REFUNDED");
+  const raider = board.filter((trace) => trace.accept).sort((a, b) => b.score - a.score)[0];
   return (
-    <section className="grid gap-4 p-4 lg:grid-cols-3">
-      <article className="rounded border border-gold/25 bg-panel p-4 lg:col-span-3">
+    <section className="grid gap-4 p-4 lg:grid-cols-3" data-testid="contract-board">
+      <div className="lg:col-span-3"><Button tone="ghost" onClick={() => setScreen("dungeon")}>Return to your dungeon</Button></div>
+      <Panel className="lg:col-span-3">
         <h3 className="font-display text-2xl text-gold">Raid board</h3>
-        <p className="text-sm text-parchment/70">Each hero accepts or refuses on their own numbers. A counter would move a split only. Posting an offer does not spend Gold.</p>
-        <ul className="mt-2 space-y-1 text-sm">
-          {board.map((trace) => <li key={trace.heroId}>{trace.accept ? "Accepted" : "Refused"} · {trace.reason}</li>)}
+        <p className="text-sm text-parchment/70">A patron or the owner can fund 0.01 from the mock purse. Heroes decide on their own. A counter moves the split only. The price never changes. This is not a chain payment.</p>
+        <p className="num mt-2 text-sm">Mock purse {(game.near ?? 0).toFixed(4)}. {offer ? `Offer ${offer.status}. Split ${Math.round(offer.split.owner * 100)}/${Math.round(offer.split.agents * 100)}/${Math.round(offer.split.guild * 100)}/${Math.round(offer.split.ops * 100)}.` : "No open offer."}</p>
+        <ul className="mt-2 space-y-2 text-sm">
+          {board.map((trace) => (
+            <li key={trace.heroId}>
+              <p>{trace.accept ? "Accepted" : "Refused"} · {trace.reason}</p>
+              {(trace.counterShift ?? 0) > 0 && offer?.status === "OPEN" && (
+                <Button tone="ghost" className="mt-1" onClick={() => void counterRaidOffer(trace.heroId).then((result) => setSlip(result.reason))}>Record {trace.heroId}'s counter</Button>
+              )}
+            </li>
+          ))}
         </ul>
-        <p className="mt-2 text-sm">Next through the gate: {raider.heroId}.</p>
-      </article>
+        <p className="mt-2 text-sm">{raider ? `${raider.heroId} is willing.` : "No hero is willing. A raid cannot start."}</p>
+        {slip && <p className="mt-2 text-sm text-gold">{slip}</p>}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button onClick={() => void fundRaidOffer().then((result) => setSlip(result.reason))}>Fund offer</Button>
+          {offer?.status === "COUNTER_PENDING" && <Button tone="ghost" onClick={() => void refuseRaidOffer().then((result) => setSlip(result.reason))}>Refuse counter</Button>}
+          {offer && offer.status !== "SETTLED" && <Button tone="ghost" onClick={() => void acceptRaidOffer().then((result) => setSlip(result.reason))}>Accept offer</Button>}
+          <Button tone="ghost" disabled={!offer || offer.status !== "SETTLED" || !raider} onClick={() => { const result = startRaid(); setSlip(result?.reason ?? "The raid started."); if (result?.ok) setScreen("dungeon"); }}>Send the willing hero</Button>
+        </div>
+      </Panel>
       {merchants.map((merchant) => {
         const status = merchantStatus(merchant);
         return (
-        <article key={merchant.id} className="rounded border border-gold/25 bg-panel p-4">
+        <Panel key={merchant.id}>
           <h3 className="font-display text-2xl text-gold">{merchant.name}</h3>
           <p className="text-sm text-parchment/70">{merchant.role} · {merchant.gold.toFixed(0)} gold · {(merchant.near ?? 0).toFixed(4)} mock NEAR · {status}</p>
           <ul className="mt-3 space-y-2 text-sm">
@@ -416,7 +415,7 @@ function GateMarket() {
               </li>
             ))}
           </ul>
-        </article>
+        </Panel>
         );
       })}
       <article className="rounded border border-white/10 bg-panel2 p-4 lg:col-span-3">
@@ -428,82 +427,11 @@ function GateMarket() {
   );
 }
 
-function Marketplace() {
-  const game = useGame();
-  const [price, setPrice] = useState(10);
-  const [nearPrice, setNearPrice] = useState(0.01);
-  const open = game.listings.filter((listing) => (listing.status ?? "LISTED") === "LISTED");
-  return (
-    <section className="grid gap-4 p-4 lg:grid-cols-2">
-      <div>
-        <h2 className="font-display text-3xl text-gold">Player market</h2>
-        <p className="text-sm text-parchment/70">A listing sits in escrow. A sale pays the seller 90, the guild 5, and ops 5. Cancel and expiry return the item with no fee. Play-only goods cannot be listed for mock NEAR.</p>
-        <p className="mt-2 text-sm">Your mock NEAR {game.near ?? 0}. Guild gold {(game.guildGold ?? 0).toFixed(2)}. Ops gold {(game.opsGold ?? 0).toFixed(2)}.</p>
-        {game.priceNote && <p className="mt-2 text-sm text-gold">{game.priceNote}</p>}
-        <ul className="mt-4 space-y-2">
-          {open.map((listing) => (
-            <li key={listing.id} className="flex items-center justify-between rounded border border-white/10 px-3 py-2 text-sm">
-              <span>{goodsRule(listing.itemId)?.name ?? listing.itemId} · {listing.price} {listing.currency ?? "PLAY_GOLD"} · {listing.cls ?? "PLAY_ONLY"} · escrow</span>
-              <span className="flex gap-2">
-                {listing.seller !== "player" && <button className="rounded border border-gold/40 px-2 py-1" onClick={() => buyListing(listing.id)}>Buy</button>}
-                {listing.seller === "player" && <button className="rounded border border-white/20 px-2 py-1" onClick={() => cancelListing(listing.id)}>Cancel</button>}
-              </span>
-            </li>
-          ))}
-          {open.length === 0 && <li className="text-sm text-parchment/60">No listings.</li>}
-        </ul>
-      </div>
-      <div>
-        <h3 className="font-display text-gold">Your packs</h3>
-        {Object.entries(game.inventory).filter(([, qty]) => qty > 0).map(([id, qty]) => (
-          <div key={id} className="mt-2 flex items-center justify-between gap-2 text-sm">
-            <span>{goodsRule(id)?.name ?? ITEMS.find((item) => item.id === id)?.name ?? id} × {qty} · {game.classes?.[id] ?? "PLAY_ONLY"}</span>
-            <span className="flex gap-1">
-              <button className="rounded border border-white/20 px-2 py-1" onClick={() => listItem(id, price, "PLAY_GOLD")}>List {price}g</button>
-              <button className="rounded border border-white/20 px-2 py-1" onClick={() => listItem(id, nearPrice, "NEAR")}>List NEAR</button>
-            </span>
-          </div>
-        ))}
-        <label className="mt-4 block text-sm">Gold ask
-          <input className="ml-2 w-20 bg-black/40 px-2" type="number" value={price} min={1} onChange={(event) => setPrice(Number(event.target.value))} />
-        </label>
-        <label className="mt-2 block text-sm">Mock NEAR ask
-          <input className="ml-2 w-24 bg-black/40 px-2" type="number" value={nearPrice} min={0.0001} step={0.001} onChange={(event) => setNearPrice(Number(event.target.value))} />
-        </label>
-      </div>
-    </section>
-  );
-}
-
-function Workshop() {
-  const game = useGame();
-  return (
-    <section className="mx-auto max-w-3xl p-6">
-      <h2 className="font-display text-3xl text-gold">Workshop</h2>
-      <p className="text-sm text-parchment/70">Four iron nails become a spike kit. The next spike trap then costs no Gold.</p>
-      <p className="mt-3 text-sm">Nails in hand: {game.inventory.nail ?? 0}. Kits: {game.inventory.kit ?? 0}. Cinder: {game.cinder}.</p>
-      <p className="mt-3 text-sm">Iron {game.inventory.iron ?? 0} · ash {game.inventory.ash ?? 0} · bone {game.inventory.bone ?? 0}</p>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {(Object.keys(RECIPES) as (keyof typeof RECIPES)[]).map((id) => {
-          const kind = id.endsWith("potion") ? "potion" : id.endsWith("armor") ? "armor" : id.endsWith("boots") ? "boots" : id.endsWith("pit") ? "pit" : id.endsWith("boulder") ? "boulder" : "spike";
-          return <button key={id} className="rounded bg-ember px-3 py-1 text-ink" onClick={() => craftTrap(kind)}>{id}</button>;
-        })}
-      </div>
-      <button className="mt-4 rounded border border-gold/40 px-3 py-1" onClick={() => supplyIron(5)}>Supply 5 iron</button>
-      <button className="mt-4 ml-3 rounded border border-gold/40 px-3 py-1" onClick={() => supplyMaterial("ash", 5)}>Supply 5 ash</button>
-      <button className="mt-4 ml-3 rounded border border-gold/40 px-3 py-1" onClick={() => supplyMaterial("bone", 5)}>Supply 5 bone</button>
-      <button className="mt-4 ml-3 rounded bg-ember px-3 py-1 text-ink" onClick={() => forgeKit()}>Forge spike kit</button>
-      <button className="mt-4 ml-3 rounded border border-gold/40 px-3 py-1" onClick={() => buyUpgrade("vault-brace")}>Vault brace · {RULES.vaultBraceCost}g</button>
-      <p className="mt-3 text-sm">Installed: {game.upgrades.join(", ") || "none"}.</p>
-      {game.priceNote && <p className="mt-3 text-sm text-gold">{game.priceNote}</p>}
-    </section>
-  );
-}
-
 function Registry() {
   const game = useGame();
   return (
     <section className="grid gap-4 p-4 lg:grid-cols-2">
+      <div className="lg:col-span-2"><button className="min-h-11 rounded-2xl border border-gold/40 px-3 text-sm" onClick={() => setScreen("dungeon")}>Return to your dungeon</button></div>
       {(["kara", "brann", "ivo"] as const).map((id) => {
         const profile = HERO_PROFILES[id];
         const hero = game.heroes[id];
@@ -557,13 +485,14 @@ function Chronicle() {
   }, [playing, speed, rows.length]);
   return (
     <section className="mx-auto flex max-w-3xl flex-col gap-4 p-4">
+      <Button tone="ghost" className="self-start" onClick={() => setScreen(game.raids.length ? "report" : "dungeon")}>Back to the raid</Button>
       <h2 className="font-display text-3xl text-gold">Replay</h2>
       <p className="text-sm text-parchment/75">Replayed from recorded inputs. Diary text and hero decisions are the ones already stored.</p>
-      {raid && <p className="text-sm">Day {raid.day} · {raid.heroId}. {raid.decision.reason}</p>}
+      {raid && <p className="text-sm">Day {raid.day} · {raid.heroId}. Outcome {outcomeHash(rows)}. {raid.decision.reason}</p>}
       <div className="flex flex-wrap gap-2">
-        <button className="min-h-11 rounded-2xl bg-gold px-4 text-ink" onClick={() => setPlaying((value) => !value)}>{playing ? "Pause" : "Play"}</button>
+        <Button onClick={() => setPlaying((value) => !value)}>{playing ? "Pause" : "Play"}</Button>
         {([1, 2, 4] as const).map((value) => (
-          <button key={value} className={`min-h-11 rounded-2xl px-4 ${speed === value ? "bg-gold text-ink" : "border border-gold/40"}`} onClick={() => setSpeed(value)}>{value}×</button>
+          <Button key={value} tone={speed === value ? "gold" : "ghost"} onClick={() => setSpeed(value)}>{value}×</Button>
         ))}
       </div>
       <ol className="space-y-2">
@@ -593,6 +522,7 @@ function Settings() {
   const [music, setMusic] = useState(false);
   return (
     <section className="mx-auto max-w-xl p-6">
+      <Button tone="ghost" className="mb-4" onClick={() => setScreen("dungeon")}>Return to your dungeon</Button>
       <h2 className="font-display text-3xl text-gold">Settings</h2>
       <div className="mt-4 flex flex-wrap gap-2">
         <button className={`min-h-11 rounded-2xl px-3 ${sound ? "bg-gold text-ink" : "border border-gold/30"}`} onClick={() => setSound((value) => !value)}>Sound {sound ? "on" : "off"}</button>

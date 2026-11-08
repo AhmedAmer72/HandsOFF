@@ -1,3 +1,5 @@
+export const BLOCKCHAIN_MODE = "mock" as const;
+
 const BLOCKED = /near\.org|nearprotocol|intents\.near|relayer\.near|outlayer/i;
 
 export function assertLocalOnly(url: string) {

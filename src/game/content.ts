@@ -15,7 +15,9 @@ export type ScreenId =
   | "takehome"
   | "settings"
   | "gallery"
-  | "sandbox";
+  | "sandbox"
+  | "spectator"
+  | "public";
 
 export type HeroId = "brann" | "kara" | "ivo";
 export type Quality = "low" | "medium" | "high";

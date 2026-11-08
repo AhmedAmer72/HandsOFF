@@ -1,5 +1,5 @@
 import type { ScreenId } from "../../game/content";
-import { enterDungeon, setScreen } from "../../game/store";
+import { setScreen } from "../../game/store";
 import { sfx } from "../../game/audio";
 import { liftButton } from "../../animations/mainMenuTimeline";
 
@@ -11,10 +11,9 @@ const CARDS: { id: ScreenId | "raid"; title: string; subtitle: string }[] = [
 ];
 
 export function MainMenuFeatures() {
-  function open(id: (typeof CARDS)[number]["id"]) {
+  function open() {
     sfx.ui();
-    if (id === "raid") enterDungeon();
-    else setScreen(id);
+    setScreen("home");
   }
   return (
     <div className="menu-bit grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -24,7 +23,7 @@ export function MainMenuFeatures() {
           className="hud-glass rounded-2xl px-4 py-3 text-left"
           onMouseEnter={(event) => liftButton(event.currentTarget, true)}
           onMouseLeave={(event) => liftButton(event.currentTarget, false)}
-          onClick={() => open(card.id)}
+          onClick={() => open()}
         >
           <div className="font-display text-gold">{card.title}</div>
           <svg viewBox="0 0 32 32" className="mt-2 h-6 w-6 text-gold" aria-hidden="true">

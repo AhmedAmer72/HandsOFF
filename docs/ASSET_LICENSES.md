@@ -9,6 +9,7 @@ Each pack was read on its own page and from the `License.txt` inside its own arc
 | Adventurers 2.0 | `KayKit_Adventurers_2.0_FREE.zip` | Permitted | Permitted | Not required | Permitted | APPROVED_CC0 |
 | Dungeon Pack 1.1 (page title Dungeon Remastered; itch redirects to the rebrand) | `KayKit_Dungeon_Pack_1.1_FREE.zip` | Permitted | Permitted | Not required | Permitted | APPROVED_CC0 |
 | Character Animations 1.1 | `KayKit_Character_Animations_1.1.zip` | Permitted | Permitted | Not required | Permitted | APPROVED_CC0 |
+| Medieval Hexagon 1.0 | `KayKit_Medieval_Hexagon_Pack_1.0_FREE.zip` | Permitted | Permitted | Not required | Permitted | APPROVED_CC0 |
 
 Character Animations is not one of the four named pages. The Adventurers page links to it as the free clip library, and the Skeletons page points at the same free animations. Its own License.txt was read separately. It is also CC0.
 

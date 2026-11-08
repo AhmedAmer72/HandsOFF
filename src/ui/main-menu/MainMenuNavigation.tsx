@@ -1,5 +1,5 @@
 import type { ScreenId } from "../../game/content";
-import { enterDungeon, newGame, setScreen } from "../../game/store";
+import { newGame, setScreen } from "../../game/store";
 import { sfx } from "../../game/audio";
 import { Logo } from "./Logo";
 
@@ -15,8 +15,7 @@ const LINKS: { id: ScreenId; label: string }[] = [
 export function MainMenuNavigation({ active, continueReady }: { active: ScreenId; continueReady: boolean }) {
   function go(id: ScreenId) {
     sfx.ui();
-    if (id === "dungeon") enterDungeon();
-    else setScreen(id);
+    setScreen(id === "menu" ? "menu" : "home");
   }
   return (
     <header className="menu-bit pointer-events-auto flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-8">

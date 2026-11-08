@@ -1,18 +1,18 @@
 import { useSyncExternalStore } from "react";
-import type { Quality, ScreenId, WorldMode } from "./content";
+import type { HeroId, Quality, ScreenId, WorldMode } from "./content";
 import { CELL } from "./content";
-import { RAID, RECIPES, RUMOUR, SALVAGE, GOODS as RULE_GOODS, type Currency } from "../../rules/economy";
+import { PERMIT, RAID, RECIPES, RUMOUR, SALVAGE, GOODS as RULE_GOODS, type Currency } from "../../rules/economy";
 import { buybackPrice, liveQuote, rumourPrice } from "./rules/money";
 import { buySale, cancelSale, craftOutputClass, expireSales, itemClass, listForSale, merchantBuyListing, merchantNear, merchantStatus, recipeInputs, recoverMerchant } from "./engine/market";
 import { isWalkable, RULES } from "./config/gameRules";
 import { TRAP_DEFINITIONS, type TrapId } from "./config/trapDefinitions";
 import { HERO_PROFILES } from "./config/heroProfiles";
-import { applyPurchase, chooseRaider, playerBuy } from "./engine/decisions";
+import { applyPurchase, chooseRaider, evaluateHero, playerBuy } from "./engine/decisions";
 import { createSave, restock } from "./engine/newGame";
-import { simulateRaid } from "./engine/raid";
+import { outcomeHash, simulateRaid } from "./engine/raid";
 import type { PlacedTrap, RaidReport, SaveData } from "./engine/types";
 import { clearSave, readSave, writeSave } from "./persist";
-
+import { beginActivity, consumeRecord, counterRecord, endActivity, expireRecord, fundRecord, getActivity, loadRegistry, offerExpired, offersOf, pushHalls, readRegistry, refuseRecord, settleRecord, unpublishHall, upsertHall, writeRegistry } from "./world/registry";
 export interface VisualStep {
   type: string;
   x: number;
@@ -43,9 +43,12 @@ interface Session extends SaveData {
   frameP95?: number;
   textureCount?: number;
   merchantCue?: { id: string; action: string; nonce: number };
+  catalogNonce: number;
+  spectating: boolean;
+  spectatorDungeonId: string | null;
 }
 
-let state: Session = { ...createSave("menu"), quality: "high", worldMode: "prototype", screen: "menu", selectedTrap: null, selection: null, fps: 0, minFps: 0, avgFps: 0, drawCalls: 0, triangles: 0, rendererInfo: "", lastDecision: "", priceNote: "", pageResult: "idle", possessArmed: false, continueReady: false };
+let state: Session = { ...createSave("menu"), quality: "high", worldMode: "prototype", screen: "menu", selectedTrap: null, selection: null, fps: 0, minFps: 0, avgFps: 0, drawCalls: 0, triangles: 0, rendererInfo: "", lastDecision: "", priceNote: "", pageResult: "idle", possessArmed: false, continueReady: false, catalogNonce: 0, spectating: false, spectatorDungeonId: null };
 const listeners = new Set<() => void>();
 let dungeonApi: { ready: Promise<void>; playRoute: (steps: VisualStep[]) => Promise<void>; focusHero: () => void } | null = null;
 
@@ -81,7 +84,13 @@ function emit() {
     phase: state.phase,
     pending: state.pending,
     screen: state.screen,
+    ownerId: state.ownerId,
+    displayName: state.displayName,
+    dungeonName: state.dungeonName,
+    dungeonDescription: state.dungeonDescription,
+    dungeonPublished: state.dungeonPublished,
   };
+  rememberKeeper(saved);
   void writeSave(saved);
   listeners.forEach((listener) => listener());
 }
@@ -100,9 +109,10 @@ export function useGame() {
 }
 
 export async function hydrate() {
+  loadRegistry();
   const saved = await readSave();
   if (!saved) return;
-  state = { ...state, ...saved, upgrades: saved.upgrades ?? [], continueReady: true, screen: (saved.screen as ScreenId) || "menu" };
+  state = { ...state, ...saved, upgrades: saved.upgrades ?? [], continueReady: true, screen: "menu" };
   listeners.forEach((listener) => listener());
 }
 
@@ -125,7 +135,8 @@ export function enterDungeon() {
 }
 
 export function setScreen(screen: ScreenId) {
-  state = { ...state, screen };
+  const leavingWatch = screen !== "spectator";
+  state = { ...state, screen, spectating: leavingWatch ? false : state.spectating, spectatorDungeonId: leavingWatch ? null : state.spectatorDungeonId };
   emit();
 }
 
@@ -160,12 +171,14 @@ export function setReduceMotion(value: boolean) {
 }
 
 export function newGame() {
-  state = { ...createSave("dungeon"), quality: state.quality, worldMode: "prototype", screen: "dungeon", selectedTrap: null, selection: null, fps: 0, minFps: 0, avgFps: 0, drawCalls: 0, triangles: 0, rendererInfo: state.rendererInfo, lastDecision: "A new dungeon day begins.", priceNote: "", pageResult: "idle", possessArmed: false, continueReady: true };
+  if (state.dungeonPublished) writeRegistry(unpublishHall(readRegistry(), hallIdOf(state)));
+  state = { ...createSave("dungeon"), ownerId: state.ownerId, displayName: state.displayName, dungeonName: state.dungeonName, dungeonDescription: state.dungeonDescription, dungeonPublished: false, quality: state.quality, worldMode: "prototype", screen: "dungeon", selectedTrap: null, selection: null, fps: 0, minFps: 0, avgFps: 0, drawCalls: 0, triangles: 0, rendererInfo: state.rendererInfo, lastDecision: "A new dungeon day begins.", priceNote: "", pageResult: "idle", possessArmed: false, continueReady: true, catalogNonce: state.catalogNonce + 1, spectating: false, spectatorDungeonId: null };
   void clearSave();
   emit();
 }
 
 export function placeTrap(trapId: TrapId, ix: number, iz: number): { ok: boolean; reason: string; id?: string } {
+  if (state.spectating) return { ok: false, reason: "Spectators cannot move traps." };
   const rule = TRAP_DEFINITIONS[trapId];
   if (!rule) return { ok: false, reason: "Unknown trap." };
   if (state.phase !== "prep") return { ok: false, reason: "Traps can be placed before the raid." };
@@ -192,6 +205,7 @@ export function placeTrap(trapId: TrapId, ix: number, iz: number): { ok: boolean
 }
 
 export function relayTrap(id: string) {
+  if (state.spectating) return { ok: false, reason: "Spectators cannot move traps." };
   const trap = state.traps.find((entry) => entry.id === id);
   if (!trap || state.phase !== "prep") return { ok: false, reason: "Re-lay before the gate opens." };
   if (state.gold < RAID.relay) return { ok: false, reason: `Re-lay costs ${RAID.relay} Gold.` };
@@ -212,6 +226,7 @@ export function relayTrap(id: string) {
 }
 
 export function relayTrapTo(id: string, ix: number, iz: number) {
+  if (state.spectating) return { ok: false, reason: "Spectators cannot move traps." };
   const trap = state.traps.find((entry) => entry.id === id);
   if (!trap || state.phase !== "prep") return { ok: false, reason: "Re-lay before the gate opens." };
   if (Math.abs(trap.ix - ix) + Math.abs(trap.iz - iz) !== 1) return { ok: false, reason: "Re-lay onto a neighboring tile." };
@@ -244,6 +259,7 @@ export function clearTrap() {
 }
 
 export function armPossess() {
+  if (state.spectating) return { ok: false, reason: "Spectators cannot take the hall guard." };
   if (state.day < RAID.possess.fromWave) return { ok: false, reason: "Possess opens on raid 2." };
   if (state.possessArmed) return { ok: true, reason: "The hall guard is already marked." };
   if (state.gold < RAID.possess.cost) return { ok: false, reason: `Possess costs ${RAID.possess.cost} Gold.` };
@@ -258,6 +274,7 @@ export function armPossess() {
 }
 
 export function triggerTrap(id: string) {
+  if (state.spectating) return { ok: false, reason: "Spectators cannot trigger traps." };
   const trap = state.traps.find((entry) => entry.id === id);
   if (!trap) return { ok: false, reason: "That trap is not placed." };
   if (state.phase !== "prep" && state.phase !== "raid") return { ok: false, reason: "Trigger a trap before the page flies." };
@@ -280,9 +297,97 @@ export function dungeonTier(raidsCleared: number) {
   return 1;
 }
 
+const refundedOffers = new Set<string>();
+
+export function reviewOffers(now = Date.now()) {
+  let file = readRegistry();
+  let refund = 0;
+  for (const offer of offersOf(file)) {
+    const raids = offer.dungeonId === hallIdOf(state) ? (state.raidsCleared ?? 0) : (offer.slotsAtFund ?? 0);
+    if (!offerExpired(offer, now, raids)) continue;
+    const result = expireRecord(file, offer.id);
+    file = result.file;
+    if (result.ok && result.funderId === (state.ownerId || "keeper-local") && !refundedOffers.has(offer.id)) {
+      refund += result.refund;
+      refundedOffers.add(offer.id);
+    }
+  }
+  if (refund === 0 && file === readRegistry()) return { ok: true, reason: "No offer expired." };
+  writeRegistry(file);
+  if (refund > 0) state = { ...state, near: (state.near ?? 0) + refund };
+  void pushHalls({ action: "review", now, raidsCleared: state.raidsCleared ?? 0 });
+  emit();
+  return { ok: true, reason: refund > 0 ? "An expired offer returned the mock purse. Nothing was sent on a chain." : "An offer expired." };
+}
+
+export async function fundRaidOffer(dungeonId = hallIdOf(state)) {
+  reviewOffers();
+  if ((state.near ?? 0) + 1e-9 < PERMIT.price) return { ok: false, reason: "The mock purse does not hold 0.01. Nothing was taken." };
+  const slots = dungeonId === hallIdOf(state) ? (state.raidsCleared ?? 0) : null;
+  const funded = fundRecord(readRegistry(), { dungeonId, funderId: state.ownerId || "keeper-local", slotsAtFund: slots });
+  if (!funded.ok || !funded.offer) return { ok: false, reason: funded.reason };
+  state = { ...state, near: (state.near ?? 0) - PERMIT.price, priceNote: funded.reason };
+  writeRegistry(funded.file);
+  await pushHalls({ action: "fund", dungeonId, funderId: funded.offer.funderId, slotsAtFund: slots, now: funded.offer.fundedAt });
+  const kept = offersOf(readRegistry()).some((offer) => offer.id === funded.offer?.id);
+  if (!kept) {
+    state = { ...state, near: (state.near ?? 0) + PERMIT.price };
+    emit();
+    return { ok: false, reason: "An offer is already open for this hall. Nothing more was taken." };
+  }
+  emit();
+  return { ok: true, reason: funded.reason };
+}
+
+export async function counterRaidOffer(heroId: HeroId) {
+  const offer = offersOf(readRegistry()).find((entry) => entry.dungeonId === hallIdOf(state) && entry.status === "OPEN");
+  if (!offer) return { ok: false, reason: "There is no open offer on your hall." };
+  const trace = evaluateHero(state, state.heroes[heroId]);
+  if (!trace.accept || !trace.counterShift) return { ok: false, reason: `${trace.heroId} does not counter this offer.` };
+  const result = counterRecord(readRegistry(), offer.id, heroId, trace.counterShift);
+  if (!result.ok) return { ok: false, reason: result.reason };
+  writeRegistry(result.file);
+  await pushHalls({ action: "counter", offerId: offer.id, heroId, shift: trace.counterShift });
+  emit();
+  return { ok: true, reason: result.reason };
+}
+
+export async function refuseRaidOffer() {
+  const offer = offersOf(readRegistry()).find((entry) => entry.dungeonId === hallIdOf(state) && entry.status === "COUNTER_PENDING");
+  if (!offer) return { ok: false, reason: "Only the owner of this hall can refuse a counter, and there is none waiting." };
+  const result = refuseRecord(readRegistry(), offer.id);
+  if (!result.ok) return { ok: false, reason: result.reason };
+  writeRegistry(result.file);
+  await pushHalls({ action: "refuse", offerId: offer.id });
+  emit();
+  return { ok: true, reason: result.reason };
+}
+
+export async function acceptRaidOffer() {
+  const offer = offersOf(readRegistry()).find((entry) => entry.dungeonId === hallIdOf(state) && (entry.status === "OPEN" || entry.status === "COUNTER_PENDING"));
+  if (!offer) return { ok: false, reason: "Only the owner can accept an offer on this hall." };
+  const result = settleRecord(readRegistry(), offer.id);
+  if (!result.ok || !result.offer) return { ok: false, reason: result.reason };
+  state = { ...state, near: (state.near ?? 0) + PERMIT.price * result.offer.split.owner };
+  writeRegistry(result.file);
+  await pushHalls({ action: "settle", offerId: offer.id });
+  emit();
+  return { ok: true, reason: `${result.reason} Owner share stays in the mock purse. This is not a chain payment.` };
+}
+
 export function startRaid() {
-  if (state.dungeonClosed) return;
-  if (state.phase !== "prep" && state.phase !== "report") return;
+  if (state.spectating) return { ok: false, reason: "Spectators cannot open the gate." };
+  if (state.dungeonClosed) return { ok: false, reason: "The hall is closed." };
+  if (state.phase !== "prep" && state.phase !== "report") return { ok: false, reason: "The hall is not ready for a raid." };
+  reviewOffers();
+  const permit = offersOf(readRegistry()).find((offer) => offer.dungeonId === hallIdOf(state) && offer.status === "SETTLED" && !offer.consumed);
+  if (!permit) return { ok: false, reason: "No settled offer. Fund one on the contract board. Nothing started." };
+  const decisionPreview = chooseRaider(state);
+  if (!decisionPreview.accept) return { ok: false, reason: "No hero accepted the offer. The raid did not start." };
+  const consumed = consumeRecord(readRegistry(), permit.id);
+  if (!consumed.ok) return { ok: false, reason: consumed.reason };
+  writeRegistry(consumed.file);
+  void pushHalls({ action: "consume", offerId: permit.id });
   let save: SaveData = state;
   const decision = chooseRaider(save);
   if (decision.purchase) save = applyPurchase(save, decision.heroId, decision.purchase);
@@ -298,7 +403,13 @@ export function startRaid() {
     spentTrapIds: save.spentTrapIds ?? [],
   });
   const report: RaidReport = { ...simulated.report, decision };
-  const heroes = { ...save.heroes, [decision.heroId]: simulated.hero };
+  const heroes = {
+    ...save.heroes,
+    [decision.heroId]: {
+      ...simulated.hero,
+      near: (simulated.hero.near ?? 0) + PERMIT.price * permit.split.agents,
+    },
+  };
   const boots = save.heroes[decision.heroId].equipment.includes("boots") ? 1.3 : 1;
   const speed = HERO_PROFILES[decision.heroId].moveSpeed * boots;
   const steps = simulated.report.events.filter((event) => event.type === "move" || event.type === "enter").length;
@@ -342,7 +453,32 @@ export function startRaid() {
     screen: "dungeon",
     possessArmed: false,
   };
+  if (state.dungeonPublished) {
+    const events: { tick: number; type: string; text: string; ix?: number; iz?: number }[] = report.events.map((event) => ({
+      tick: event.tick,
+      type: event.type,
+      text: event.text,
+      ix: event.ix,
+      iz: event.iz,
+    }));
+    writeRegistry(upsertHall(readRegistry(), projectHall(state)));
+    shareHall();
+    const activity = beginActivity(readRegistry(), {
+      dungeonId: hallIdOf(state),
+      active: true,
+      heroId: report.heroId,
+      events,
+      outcomeHash: outcomeHash(report.events),
+      finished: false,
+      updatedAt: new Date().toISOString(),
+    });
+    writeRegistry(activity);
+    const shared = activity.activity.find((entry) => entry.dungeonId === hallIdOf(state));
+    if (shared) void pushHalls({ action: "activity", activity: shared });
+    state = { ...state, catalogNonce: state.catalogNonce + 1 };
+  }
   emit();
+  return { ok: true, reason: decision.reason };
 }
 
 export function markDiary() {
@@ -352,6 +488,7 @@ export function markDiary() {
 }
 
 export function resolvePage(choice: "burn" | "escape") {
+  if (state.spectating) return { ok: false, reason: "Spectators cannot burn or keep a page." };
   const report = state.pending;
   if (!report || state.phase !== "diary") return { ok: false, reason: "No diary page is waiting." };
   if (choice === "burn") {
@@ -400,7 +537,12 @@ export function buyUpgrade(id: "vault-brace") {
 }
 
 export function nextDay() {
+  if (state.spectating) return;
   if (state.phase !== "report") return;
+  const settled = state.pending;
+  const summary = settled ? `${settled.heroId} ${settled.survived ? "left the hall" : "fell"} on day ${settled.day}.` : "";
+  const published = Boolean(state.dungeonPublished);
+  const dungeonId = hallIdOf(state);
   const aged = expireRumours(state);
   const traded = settleListings(aged);
   const stepped = traded.tutorialStep >= 6 ? 7 : traded.tutorialStep === 3 ? 4 : traded.tutorialStep === 5 ? 6 : traded.tutorialStep;
@@ -413,6 +555,13 @@ export function nextDay() {
   }
   const saved = restock(next);
   state = { ...state, ...saved, screen: state.screen, tutorialStep: stepped, phase: "prep", pageResult: "idle", spentTrapIds: [], chain: 0, dungeonClosed: false };
+  if (published) {
+    writeRegistry(upsertHall(readRegistry(), projectHall(state)));
+    writeRegistry(endActivity(readRegistry(), dungeonId, summary));
+    shareHall();
+    void pushHalls({ action: "end", dungeonId, summary });
+    state = { ...state, catalogNonce: state.catalogNonce + 1 };
+  }
   emit();
 }
 
@@ -574,6 +723,185 @@ export function forgeKit() {
 
 export function note(text: string) {
   state = { ...state, ledger: [{ id: `note-${Date.now()}`, day: state.day, text }, ...state.ledger] };
+  emit();
+}
+
+const keeperSlots = new Map<string, SaveData>();
+const KEEPER_KEY = "underrealm-keepers-v1";
+
+export function hallIdOf(save: { ownerId?: string }) {
+  return `hall:${save.ownerId || "keeper-local"}`;
+}
+
+function projectHall(save: SaveData) {
+  const live = save.pending != null && (save.phase === "raid" || save.phase === "diary" || save.phase === "report");
+  const previous = readRegistry().dungeons.find((entry) => entry.dungeonId === hallIdOf(save));
+  return {
+    dungeonId: hallIdOf(save),
+    ownerId: save.ownerId || "keeper-local",
+    displayName: save.displayName || "Ashgate Keeper",
+    name: save.dungeonName || "Ashgate",
+    description: save.dungeonDescription || "",
+    published: true,
+    tier: dungeonTier(save.raidsCleared ?? 0),
+    state: save.dungeonClosed ? "CLOSED" as const : "OPEN" as const,
+    raidCount: save.raidsCleared ?? 0,
+    activeRaidCount: live ? 1 : 0,
+    heroTraffic: save.raidsCleared ?? 0,
+    lastActivityAt: new Date().toISOString(),
+    merchantStates: {
+      mira: merchantStatus(save.merchants.mira),
+      orrin: merchantStatus(save.merchants.orrin),
+      tallow: merchantStatus(save.merchants.tallow),
+    },
+    lastRaidSummary: previous?.lastRaidSummary ?? "",
+  };
+}
+
+function rememberKeeper(save: SaveData) {
+  const id = save.ownerId || "keeper-local";
+  keeperSlots.set(id, save);
+  try {
+    if (typeof localStorage === "undefined") return;
+    const raw = localStorage.getItem(KEEPER_KEY);
+    const bag = raw ? JSON.parse(raw) as Record<string, SaveData> : {};
+    bag[id] = save;
+    localStorage.setItem(KEEPER_KEY, JSON.stringify(bag));
+  } catch {
+    // The memory slot is enough for this session.
+  }
+}
+
+function recallKeeper(id: string): SaveData | null {
+  if (keeperSlots.has(id)) return keeperSlots.get(id) ?? null;
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const raw = localStorage.getItem(KEEPER_KEY);
+    const bag = raw ? JSON.parse(raw) as Record<string, SaveData> : {};
+    return bag[id] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function publishHall(name: string, description: string, displayName: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, reason: "The hall needs a public name." };
+  state = {
+    ...state,
+    dungeonPublished: true,
+    dungeonName: trimmed,
+    dungeonDescription: description.trim(),
+    displayName: displayName.trim() || state.displayName || "Ashgate Keeper",
+  };
+  writeRegistry(upsertHall(readRegistry(), projectHall(state)));
+  shareHall();
+  state = { ...state, catalogNonce: state.catalogNonce + 1, priceNote: `${trimmed} is on the world map.` };
+  emit();
+  return { ok: true, reason: state.priceNote };
+}
+
+function shareHall() {
+  const card = readRegistry().dungeons.find((hall) => hall.dungeonId === hallIdOf(state));
+  if (card) void pushHalls({ action: "upsert", hall: card });
+}
+
+export function unpublishCurrent() {
+  const id = hallIdOf(state);
+  writeRegistry(unpublishHall(readRegistry(), id));
+  void pushHalls({ action: "unpublish", dungeonId: id });
+  state = { ...state, dungeonPublished: false, catalogNonce: state.catalogNonce + 1, priceNote: "The hall is a draft again. Other keepers cannot see it." };
+  emit();
+  return { ok: true, reason: state.priceNote };
+}
+
+export function switchKeeper(ownerId: string, displayName: string) {
+  const clean = ownerId.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "").slice(0, 32);
+  if (!clean) return { ok: false, reason: "The keeper needs a name." };
+  rememberKeeper({
+    version: 3,
+    day: state.day,
+    seed: state.seed,
+    gold: state.gold,
+    cinder: state.cinder,
+    reputation: state.reputation,
+    vault: state.vault,
+    inventory: state.inventory,
+    traps: state.traps,
+    heroes: state.heroes,
+    merchants: state.merchants,
+    listings: state.listings,
+    ledger: state.ledger,
+    raids: state.raids,
+    tutorialStep: state.tutorialStep,
+    upgrades: state.upgrades,
+    trapKills: state.trapKills,
+    raidsCleared: state.raidsCleared,
+    dungeonClosed: state.dungeonClosed,
+    freeReopenUsed: state.freeReopenUsed,
+    spentTrapIds: state.spentTrapIds,
+    chain: state.chain,
+    near: state.near,
+    guildGold: state.guildGold,
+    opsGold: state.opsGold,
+    travelerGold: state.travelerGold,
+    classes: state.classes,
+    phase: state.phase,
+    pending: state.pending,
+    screen: state.screen,
+    ownerId: state.ownerId,
+    displayName: state.displayName,
+    dungeonName: state.dungeonName,
+    dungeonDescription: state.dungeonDescription,
+    dungeonPublished: state.dungeonPublished,
+  });
+  const found = recallKeeper(clean);
+  const next = found ?? {
+    ...createSave("map"),
+    ownerId: clean,
+    displayName: displayName.trim() || clean,
+    dungeonName: `${(displayName.trim() || clean)}'s hall`,
+    dungeonPublished: false,
+  };
+  state = {
+    ...createSave("map"),
+    ...next,
+    ownerId: clean,
+    displayName: next.displayName || displayName.trim() || clean,
+    quality: state.quality,
+    worldMode: state.worldMode,
+    screen: "map",
+    selectedTrap: null,
+    selection: null,
+    fps: 0,
+    minFps: 0,
+    avgFps: 0,
+    drawCalls: 0,
+    triangles: 0,
+    rendererInfo: state.rendererInfo,
+    lastDecision: "",
+    priceNote: `Sitting as ${next.displayName || clean}.`,
+    pageResult: "idle",
+    possessArmed: false,
+    continueReady: true,
+    catalogNonce: state.catalogNonce + 1,
+    spectating: false,
+    spectatorDungeonId: null,
+  };
+  emit();
+  return { ok: true, reason: state.priceNote };
+}
+
+export function watchRaid(dungeonId: string) {
+  const activity = getActivity(readRegistry(), dungeonId);
+  if (!activity?.active) return { ok: false, reason: "No live raid to watch." };
+  state = { ...state, spectating: true, spectatorDungeonId: dungeonId, screen: "spectator" };
+  emit();
+  return { ok: true, reason: "Watching. You cannot touch the hall." };
+}
+
+export function leaveWatch() {
+  state = { ...state, spectating: false, spectatorDungeonId: null, screen: "map" };
   emit();
 }
 
