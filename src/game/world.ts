@@ -1,4 +1,4 @@
-import { dungeon, item } from "./content";
+import { dungeon } from "./content";
 import { cellKey, isWalkable, walkableCells, type Cell } from "./config/gameRules";
 import type { Piece } from "./content";
 
@@ -14,8 +14,7 @@ export function ashgatePieces(): Piece[] {
   const open = new Set(cells.map((cell) => cellKey(cell.ix, cell.iz)));
   const out: Piece[] = [];
   for (const cell of cells) {
-    const rocky = (cell.ix + cell.iz) % 6 === 0;
-    const file = rocky ? "floor_tile_large_rocks" : "floor_tile_large";
+    const file = cell.iz >= 8 ? "floor_wood_large" : "floor_tile_large";
     out.push(piece({
       id: `floor-${cell.ix}-${cell.iz}`,
       url: dungeon(file),
@@ -53,29 +52,30 @@ export function ashgatePieces(): Piece[] {
       }));
     }
   }
-  const props: Array<{ id: string; file: string; ix: number; iz: number; y?: number; kind?: Piece["kind"]; label: string; pack?: string; url?: string }> = [
-    { id: "vault-chest", file: "chest_gold", ix: 4, iz: 0, kind: "vault", label: "Treasure vault" },
-    { id: "vault-coins", file: "coin_stack_large", ix: 5, iz: 1, label: "Vault coins" },
-    { id: "banner", file: "banner_red", ix: 6, iz: 7, label: "Hall banner" },
-    { id: "store-barrel", file: "barrel_small", ix: 0, iz: 5, label: "Store barrel" },
-    { id: "store-table", file: "table_small", ix: 1, iz: 6, label: "Store table" },
-    { id: "anvil", file: "anvil", ix: 1, iz: 4, label: "Mira's anvil", url: item("anvil"), pack: "rpg-tools" },
-    { id: "chamber-pillar", file: "pillar", ix: 9, iz: 5, label: "Trap chamber pillar" },
-    { id: "combat-rubble", file: "rubble_half", ix: 9, iz: 2, label: "Combat rubble" },
-    { id: "torch-a", file: "torch_mounted", ix: 2, iz: 7, y: 1.7, kind: "light", label: "Hall torch" },
-    { id: "torch-b", file: "torch_lit", ix: 6, iz: 4, y: 1.6, kind: "light", label: "Hall torch" },
-    { id: "torch-c", file: "torch_mounted", ix: 7, iz: 6, y: 1.7, kind: "light", label: "Chamber torch" },
-    { id: "torch-d", file: "torch_lit", ix: 3, iz: 1, y: 1.55, kind: "light", label: "Vault torch" },
+  // Dressing stays off the trap floor. The chest and coins sit on the vault's
+  // north wall, the store is two pieces against the west wall, and torches
+  // are mounted on walls that the camera does not cut away.
+  const props: Array<{ id: string; file: string; x: number; z: number; y?: number; rot?: number; kind?: Piece["kind"]; label: string }> = [
+    { id: "vault-chest", file: "chest_gold", x: 4 * CELL, z: -1.05, kind: "vault", label: "Treasure vault" },
+    { id: "vault-coins", file: "coin_stack_medium", x: 5 * CELL + 1.15, z: -0.95, label: "Vault coins" },
+    { id: "store-barrel", file: "barrel_small", x: -1.2, z: 5 * CELL, rot: 0.35, label: "Store barrel" },
+    { id: "store-crates", file: "box_stacked", x: -1.05, z: 6 * CELL + 0.45, rot: -0.15, label: "Store crates" },
+    { id: "torch-vault", file: "torch_mounted", x: 3 * CELL, y: 1.65, z: -1.7, kind: "light", label: "Vault torch" },
+    { id: "torch-store", file: "torch_mounted", x: -1.75, y: 1.65, z: 4 * CELL, rot: Math.PI / 2, kind: "light", label: "Store torch" },
+    { id: "torch-entrance", file: "torch_mounted", x: 4 * CELL - 1.75, y: 1.65, z: 9 * CELL, rot: Math.PI / 2, kind: "light", label: "Entrance torch" },
+    { id: "torch-chamber", file: "torch_mounted", x: 8 * CELL, y: 1.65, z: 6 * CELL - 1.7, kind: "light", label: "Chamber torch" },
+    { id: "torch-combat", file: "torch_lit", x: 7 * CELL - 1.75, y: 1.5, z: 2 * CELL, rot: Math.PI / 2, kind: "light", label: "Combat torch" },
   ];
   for (const prop of props) {
     out.push(piece({
       id: prop.id,
-      url: prop.url ?? dungeon(prop.file),
+      url: dungeon(prop.file),
       file: `${prop.file}.gltf`,
-      pack: prop.pack ?? "dungeon-remastered",
-      x: prop.ix * CELL,
-      z: prop.iz * CELL,
+      pack: "dungeon-remastered",
+      x: prop.x,
+      z: prop.z,
       y: prop.y ?? 0,
+      rot: prop.rot ?? 0,
       kind: prop.kind ?? "prop",
       label: prop.label,
     }));

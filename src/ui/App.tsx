@@ -55,11 +55,11 @@ import { Button, CHRONICLE, chronicleKind, Num, Panel, Receipt } from "./kit";
 
 const TUTORIAL = [
   "Choose Spike Trap on the bar. It follows the cursor. Click tile 4, 6.",
-  "Click the red banner in the south doorway. The chosen hero walks in.",
+  "Click the south doorway. The chosen hero walks in.",
   "Click the flying page to burn it, or let the moment pass.",
-  "Orrin keeps a landed page. Click him to buy it back.",
-  "Click the gate again. A hero who bought the rumour walks around the spike.",
-  "Click Mira to supply iron, or Tallow to buy a phial.",
+  "Orrin keeps a landed page. Buy it back at his stall in the Market.",
+  "Click the south doorway again. A hero who bought the rumour walks around the spike.",
+  "Supply iron or buy a phial from the stalls in the Market.",
   "Chapter 7. The vault brace is in the workshop. After that, the next day is yours.",
 ];
 

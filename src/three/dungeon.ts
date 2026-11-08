@@ -1,6 +1,6 @@
 import gsap from "gsap";
 import * as THREE from "three";
-import { ANIMATION_FILES, CELL, CLIP_ALIASES, HEROES, dungeon, heroModel, item, monsterModel, type HeroId, type Piece, type Quality, type WorldMode } from "../game/content";
+import { ANIMATION_FILES, CELL, CLIP_ALIASES, HEROES, item, monsterModel, type HeroId, type Piece, type Quality, type WorldMode } from "../game/content";
 import { HERO_PROFILES } from "../game/config/heroProfiles";
 import { RULES } from "../game/config/gameRules";
 import { ashgatePieces } from "../game/world";
@@ -94,7 +94,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 120);
   const focus = new THREE.Vector3(8, 0, 8);
   let yaw = 0;
-  let view = 12.5;
+  let view = 18;
   const pointer = new THREE.Vector2();
   const raycaster = new THREE.Raycaster();
   const selectables: THREE.Object3D[] = [];
@@ -186,18 +186,6 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   embers.geometry.setAttribute("position", new THREE.BufferAttribute(emberPositions, 3));
   embers.visible = false;
   scene.add(embers);
-
-  async function stockShelf(id: string, url: string, x: number, z: number) {
-    const meshes: THREE.Object3D[] = [];
-    for (let index = 0; index < 4; index += 1) {
-      const mesh = await spawn(url, "cast");
-      mesh.position.set(x + index * 0.42, 0.15, z);
-      mesh.scale.setScalar(0.55);
-      scene.add(mesh);
-      meshes.push(mesh);
-    }
-    shelves.push({ id, meshes });
-  }
 
   function burstEmbers(at: THREE.Vector3) {
     for (let index = 0; index < 36; index += 1) {
@@ -420,47 +408,15 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
         hp: 100,
       });
       actor.root.rotation.y = Math.PI;
+      actor.root.visible = false;
       if (lead.id === "kara") hero = actor;
     }
-    const merchants = [
-      { id: "mira", name: "Mira", model: heroModel("Knight"), file: "Knight.glb", weapon: item("hammer"), x: 0, z: 6 },
-      { id: "orrin", name: "Orrin", model: heroModel("Rogue_Hooded"), file: "Rogue_Hooded.glb", weapon: item("map"), x: 0, z: 4 },
-      { id: "tallow", name: "Tallow", model: heroModel("Ranger"), file: "Ranger.glb", weapon: item("lantern"), x: 1, z: 5 },
-    ];
-    for (const merchant of merchants) {
-      const actor = await addActor({
-        id: merchant.id,
-        name: merchant.name,
-        model: merchant.model,
-        file: merchant.file,
-        family: "merchant",
-        x: merchant.x * CELL,
-        z: merchant.z * CELL,
-        weapon: merchant.weapon,
-        hp: 1,
-      });
-      actor.root.rotation.y = Math.PI / 2;
-    }
-    const gate = await spawn(dungeon("banner_red"), "cast");
-    gate.position.set(4 * CELL, 0, 11 * CELL - 0.4);
-    gate.scale.setScalar(1.35);
-    gate.userData.action = "gate";
-    gate.userData.level = true;
-    const gateHit = new THREE.Mesh(new THREE.BoxGeometry(2.4, 3.2, 1.4), new THREE.MeshBasicMaterial({ visible: false }));
-    gateHit.position.y = 1.5;
-    gateHit.userData.action = "gate";
-    gate.add(gateHit);
-    scene.add(gate);
-    selectables.push(gate);
-    await stockShelf("mira", item("nail"), 0.6, 6 * CELL + 0.9);
-    await stockShelf("tallow", dungeon("bottle_A_green"), CELL + 0.6, 5 * CELL + 0.9);
-    await stockShelf("orrin", item("map"), 0.8, 4 * CELL + 0.4);
-    focus.set(4 * CELL, 0, 7 * CELL);
+    focus.set(3 * CELL, 0, 4 * CELL);
     scene.traverse((obj) => {
       if (obj instanceof THREE.PointLight) livingLights.push(obj);
       const meta = obj.userData.meta as Piece | undefined;
       if (meta?.cutaway) livingWalls.push({ mesh: obj, z: meta.z });
-      if (meta?.label?.toLowerCase().includes("banner") || obj === gate) livingBanners.push(obj);
+      if (meta?.label?.toLowerCase().includes("banner")) livingBanners.push(obj);
       if (meta?.label === "Vault coins") livingCoins.push(obj);
     });
     const posts = [
@@ -468,7 +424,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       { ...RULES.skeletons[1], model: monsterModel("Skeleton_Warrior"), file: "Skeleton_Warrior.glb", weapon: undefined as string | undefined },
     ];
     for (const enemy of posts) {
-      await addActor({
+      const actor = await addActor({
         id: enemy.id,
         name: enemy.name,
         model: enemy.model,
@@ -479,6 +435,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
         weapon: enemy.weapon,
         hp: enemy.hp,
       });
+      actor.root.rotation.y = 0;
     }
     const page = await spawn(item("journal_open"));
     page.visible = false;
@@ -549,7 +506,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       carrying = trapId;
     }
     const cell = snap(hit.point);
-    const blocked = actors.some((actor) => actor.root.position.distanceTo(cell) < 1.4) || !hooks.getPhase || hooks.getPhase() === "raid";
+    const blocked = actors.some((actor) => actor.root.visible && actor.root.position.distanceTo(cell) < 1.4) || !hooks.getPhase || hooks.getPhase() === "raid";
     placing.position.set(cell.x, 0.7, cell.z);
     placing.visible = true;
     ring.position.set(cell.x, 0.08, cell.z);
@@ -592,7 +549,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     const data = found.node.userData;
     if (data.action === "burn") return "Click the page to burn it.";
     if (data.placedId) return "Placed trap. Click it, then a neighboring tile.";
-    if (data.action === "gate") return hooks.getPhase() === "report" ? "Red banner. Click for the next day." : "Red banner. Click to open the raid.";
+    if (data.action === "gate") return hooks.getPhase() === "report" ? "South doorway. Click for the next day." : "South doorway. Click to open the raid.";
     if (data.action === "craft") return "Anvil. Click to craft a spike from iron and bone.";
     if (data.action === "brace") return "Vault chest. Click to brace it.";
     if (data.pick) {
@@ -752,7 +709,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
 
   function onWheel(event: WheelEvent) {
     event.preventDefault();
-    view = THREE.MathUtils.clamp(view + event.deltaY * 0.01, 4.5, 18);
+    view = THREE.MathUtils.clamp(view + event.deltaY * 0.01, 4.5, 28);
     resize();
   }
 
@@ -762,11 +719,11 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     if (event.key === "e") yaw = THREE.MathUtils.clamp(yaw + 0.08, -0.7, 0.7);
     if (event.key.toLowerCase() === "r") {
       yaw = 0;
-      view = 9;
-      if (hero) focus.set(hero.root.position.x, 0, hero.root.position.z);
+      view = 18;
+      focus.set(3 * CELL, 0, 4 * CELL);
       resize();
     }
-    if (event.key.toLowerCase() === "f" && hero) focus.set(hero.root.position.x, 0, hero.root.position.z);
+    if (event.key.toLowerCase() === "f" && hero?.root.visible) focus.set(hero.root.position.x, 0, hero.root.position.z);
   }
 
   function hurtHero(amount: number) {
@@ -1065,6 +1022,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
         gsap.delayedCall(seconds, resolve);
       });
       hero = actors.find((actor) => actor.family === "hero" && actor.id === hooks.getHero()) ?? hero;
+      if (hero) hero.root.visible = true;
       if (hero && steps[0]) hero.root.position.set(steps[0].x, 0, steps[0].z);
       for (const step of steps) {
         if (!running || !hero) break;
@@ -1120,7 +1078,13 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
         }
       }
       scripted = false;
-      if (hero && hero.hp > 0) play(hero, "idle");
+      if (hero) {
+        play(hero, "idle");
+        if (hero.hp > 0) {
+          hero.root.visible = false;
+          hero.root.position.copy(hero.home);
+        }
+      }
     },
     showTrap(ix: number, iz: number, url: string) {
       void spawn(url, "cast").then((mesh) => {
