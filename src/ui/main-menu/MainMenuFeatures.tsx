@@ -13,7 +13,7 @@ const CARDS: { id: ScreenId | "raid"; title: string; subtitle: string }[] = [
 export function MainMenuFeatures() {
   function open() {
     sfx.ui();
-    setScreen("map");
+    setScreen("home");
   }
   return (
     <div className="menu-bit grid grid-cols-2 gap-3 lg:grid-cols-4">

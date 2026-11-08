@@ -42,7 +42,7 @@ import { MainMenu } from "./screens/MainMenu";
 import { MockSandbox } from "./screens/MockSandbox";
 import { DeedScreen, GuildScreen, HomeScreen, ReportScreen, TakeHomeScreen, WeekScreen } from "./screens/PlayScreens";
 import { MarketHall, WorkshopHall } from "./stalls/StallHalls";
-import { SpectatorScreen, WorldMap } from "./world/WorldScreens";
+import { SpectatorScreen } from "./world/WorldScreens";
 import { renderTrapIcons } from "./trapIcons";
 import { Shell } from "./shell";
 import { CHRONICLE, chronicleKind } from "./kit";
@@ -60,13 +60,12 @@ const TUTORIAL = [
 export function App() {
   const game = useGame();
   return (
-    <div className="flex h-full min-h-screen flex-col bg-ink font-body text-parchment">
-      {game.screen !== "menu" && <Shell screen={game.screen} />}
-      <main className="min-h-0 flex-1">
+    <div className="flex h-full min-h-screen bg-ink font-body text-parchment">
+      {game.screen !== "menu" && <Shell screen={game.screen === "map" ? "home" : game.screen} />}
+      <main className="min-h-0 min-w-0 flex-1">
         {game.screen === "menu" && <MainMenu />}
-        {game.screen === "home" && <HomeScreen />}
+        {(game.screen === "home" || game.screen === "map") && <HomeScreen />}
         {game.screen === "dungeon" && <DungeonScreen />}
-        {game.screen === "map" && <WorldMap />}
         {game.screen === "gate" && <GateMarket />}
         {game.screen === "market" && <MarketHall />}
         {game.screen === "workshop" && <WorkshopHall />}

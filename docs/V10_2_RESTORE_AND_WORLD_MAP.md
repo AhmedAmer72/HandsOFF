@@ -1,6 +1,6 @@
 # v10.2 restore and shared world map
 
-Checked 8 November 2026, 5:28 AM Africa/Cairo.
+Checked 8 November 2026, 5:28 AM Africa/Cairo. Navigation note, 8 November 2026, 1:46 PM Africa/Cairo: the hex island is no longer a screen. The same sections open from the left icon bar. An old save whose screen is still `map` opens Home.
 
 UNDERREALM stays a dungeon-owner game. Kara, Brann, and Ivo still decide whether to raid. The world map does not offer a player-controlled raid, a party, or an "enter their dungeon" action. `rules/economy.ts` was not edited.
 

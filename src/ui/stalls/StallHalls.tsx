@@ -52,7 +52,7 @@ function StallHall({ place, title }: { place: "market" | "workshop"; title: stri
       getQuality: () => game.quality,
       onNear: setNear,
       onUse: (id) => {
-        if (id === "exit") setScreen("map");
+        if (id === "exit") setScreen("home");
         else setOpen(id);
       },
     });

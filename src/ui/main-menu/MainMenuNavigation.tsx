@@ -15,7 +15,7 @@ const LINKS: { id: ScreenId; label: string }[] = [
 export function MainMenuNavigation({ active, continueReady }: { active: ScreenId; continueReady: boolean }) {
   function go(id: ScreenId) {
     sfx.ui();
-    setScreen(id === "menu" ? "menu" : "map");
+    setScreen(id === "menu" ? "menu" : "home");
   }
   return (
     <header className="menu-bit pointer-events-auto flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-8">
@@ -33,7 +33,7 @@ export function MainMenuNavigation({ active, continueReady }: { active: ScreenId
         <button className="rounded-full px-3 py-1 text-parchment/80 hover:text-gold" onClick={() => go("settings")}>Settings</button>
         <button className="rounded-full px-3 py-1 text-parchment/80 hover:text-gold" onClick={() => go("registry")}>Profile</button>
         {continueReady ? (
-          <button className="rounded-full border border-gold/40 px-3 py-1 text-gold" onClick={() => { sfx.ui(); newGame(); setScreen("map"); }}>New game</button>
+          <button className="rounded-full border border-gold/40 px-3 py-1 text-gold" onClick={() => { sfx.ui(); newGame(); }}>New game</button>
         ) : null}
       </div>
     </header>

@@ -13,7 +13,7 @@ export function MainMenuHero({ continueReady, onTrailer }: { continueReady: bool
           className="rounded-full bg-gold px-6 py-3 font-display text-ink"
           onMouseEnter={(event) => liftButton(event.currentTarget, true)}
           onMouseLeave={(event) => liftButton(event.currentTarget, false)}
-          onClick={() => { sfx.ui(); setScreen("map"); }}
+          onClick={() => { sfx.ui(); setScreen("home"); }}
         >
           {continueReady ? "Enter the world" : "New game"}
         </button>

@@ -53,7 +53,7 @@ export function MainMenu() {
         <header className="z-20 grid grid-cols-[auto_1fr_auto] items-center border-b border-white/10 bg-black/80">
           <button className="border-r border-white/10 px-4 py-3 font-camp text-lg tracking-[0.14em] text-white" onClick={() => go("camp-hero")}>UNDERREALM</button>
           <nav className="flex justify-center gap-6 text-xs uppercase tracking-[0.18em] text-white/70">
-            <button onClick={() => { sfx.ui(); setScreen("map"); }}>World</button>
+            <button onClick={() => { sfx.ui(); setScreen("home"); }}>Home</button>
             <button onClick={() => go("camp-realm")}>About</button>
             <button onClick={() => go("camp-symbols")}>Symbols</button>
           </nav>
@@ -72,7 +72,7 @@ export function MainMenu() {
             <canvas ref={heroCanvas} className="pointer-events-none absolute inset-0 h-full w-full" />
             <h1 className="relative max-w-3xl font-camp text-4xl uppercase leading-[0.95] text-white drop-shadow md:text-6xl">Ashgate opens: burn the page</h1>
             <p className="relative mt-5 max-w-md text-sm text-white/75">Three heroes buy a way in. You lay the traps. A diary page flies. Burn it, or let the rumour land.</p>
-            <button className="relative mt-8 bg-gold px-10 py-2 font-camp text-sm tracking-[0.2em] text-black shadow-[0_0_24px_rgba(242,193,78,0.45)] [clip-path:polygon(10%_0,90%_0,100%_50%,90%_100%,10%_100%,0_50%)]" onClick={() => { sfx.ui(); setScreen("map"); }}>Discover</button>
+            <button className="relative mt-8 bg-gold px-10 py-2 font-camp text-sm tracking-[0.2em] text-black shadow-[0_0_24px_rgba(242,193,78,0.45)] [clip-path:polygon(10%_0,90%_0,100%_50%,90%_100%,10%_100%,0_50%)]" onClick={() => { sfx.ui(); setScreen("home"); }}>Discover</button>
             <button className="relative mt-14 text-[10px] uppercase tracking-[0.28em] text-white/60" onClick={() => go("camp-realm")}>⌄<br />Scroll down</button>
           </section>
           <section id="camp-realm" className="relative min-h-[70vh] bg-[radial-gradient(circle_at_20%_40%,#1d4d46,transparent_40%),radial-gradient(circle_at_80%_60%,#123a55,transparent_42%),linear-gradient(#102018,#05070a)] px-4 py-16">
