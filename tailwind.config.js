@@ -19,6 +19,7 @@ export default {
       },
       fontFamily: {
         display: ["Lilita One", "Baloo 2", "cursive"],
+        camp: ["Black Ops One", "Lilita One", "cursive"],
         body: ["Fredoka", "Baloo 2", "sans-serif"],
       },
       boxShadow: {
