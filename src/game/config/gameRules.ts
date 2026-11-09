@@ -4,8 +4,8 @@ export const RULES = {
     "Trap costs, hero stats, prices, and the burn cost are conservative defaults chosen for this build because the repository had no separate economy rules document.",
   grid: { entrance: { ix: 4, iz: 11 }, vault: { ix: 4, iz: 0 } },
   skeletons: [
-    { id: "guard", ix: 8, iz: 3, hp: 36, attack: 11, name: "Dungeon Guard" },
-    { id: "warrior", ix: 14, iz: 1, hp: 48, attack: 14, name: "Skeleton Warrior" },
+    { id: "guard", ix: 8, iz: 4, hp: 36, attack: 11, name: "Dungeon Guard" },
+    { id: "warrior", ix: 11, iz: 11, hp: 48, attack: 14, name: "Skeleton Warrior" },
   ],
   tutorialHeroHp: 20,
   spikeTutorialCell: { ix: 4, iz: 6 },
@@ -25,53 +25,55 @@ export function cellKey(ix: number, iz: number) {
   return `${ix},${iz}`;
 }
 
-function fill(cells: Cell[], x0: number, z0: number, x1: number, z1: number) {
-  for (let ix = x0; ix <= x1; ix++) {
-    for (let iz = z0; iz <= z1; iz++) cells.push({ ix, iz });
-  }
-}
-
 /**
- * Doorways a hero must lift. `ix, iz` is the cell they step onto as it opens.
- * Locking that id removes the cell from pathfinding.
- * The shut yaw matches a wall across the south edge of that cell.
+ * Doorways a hero must lift. `ix, iz` is the one open cell in a straight wall.
+ * The cells on either side are solid, so the grate lines up with that wall.
+ * Locking the id removes the cell from pathfinding.
+ * Shut yaw is a grate across the middle of the cell, on the same line as the wall.
  */
 export const ROOM_GATES = [
   { id: "court", name: "Court gate", ix: 4, iz: 9, rot: Math.PI },
   { id: "spike", name: "Spike gate", ix: 4, iz: 6, rot: Math.PI },
   { id: "elbow", name: "Elbow gate", ix: 8, iz: 3, rot: Math.PI },
   { id: "vault", name: "Vault gate", ix: 4, iz: 1, rot: Math.PI },
-  { id: "combat", name: "Combat gate", ix: 9, iz: 2, rot: Math.PI / 2 },
+  { id: "combat", name: "Combat gate", ix: 7, iz: 9, rot: Math.PI },
 ] as const;
+
+/** Outer footprint of Ashgate. Rooms sit inside this square. */
+export const HALL_SPAN = 11;
 
 export type RoomGateId = (typeof ROOM_GATES)[number]["id"];
 
 /**
- * Wide Ashgate. Rooms and the runs between them are several tiles across.
- * The court, spike, elbow, and vault gates stay one tile, so locking one still seals that door.
- * The combat room is a side hall. The skeleton warrior stands there, off the short path.
+ * One square hall. Interior cells are knocked out to make straight walls.
+ * Each gate is the single opening in its wall. The south door is one wood
+ * tile, and the foyer is only the six cells behind it.
  */
 export function walkableCells(): Cell[] {
+  const blocked = new Set<string>();
+  const block = (x0: number, z0: number, x1: number, z1: number) => {
+    for (let ix = x0; ix <= x1; ix++) {
+      for (let iz = z0; iz <= z1; iz++) blocked.add(cellKey(ix, iz));
+    }
+  };
+  block(2, 10, 2, 11);
+  block(6, 10, 6, 11);
+  block(2, 9, 3, 9);
+  block(5, 9, 6, 9);
+  block(8, 9, 11, 9);
+  block(0, 6, 3, 6);
+  block(5, 6, 8, 6);
+  block(0, 3, 7, 3);
+  block(9, 3, 11, 3);
+  block(0, 1, 3, 1);
+  block(5, 1, 11, 1);
   const cells: Cell[] = [];
-  fill(cells, 2, 10, 12, 11);
-  fill(cells, 4, 9, 4, 9);
-  fill(cells, -3, 6, 0, 9);
-  fill(cells, 1, 7, 8, 8);
-  fill(cells, 4, 6, 4, 6);
-  fill(cells, 4, 4, 8, 5);
-  fill(cells, 2, 4, 3, 4);
-  fill(cells, 9, 4, 13, 4);
-  fill(cells, 8, 3, 8, 3);
-  fill(cells, 2, 1, 8, 2);
-  fill(cells, 4, 0, 4, 0);
-  fill(cells, 1, -3, 8, -1);
-  fill(cells, 9, 5, 13, 5);
-  fill(cells, 9, 6, 13, 8);
-  fill(cells, 9, 2, 9, 2);
-  fill(cells, 10, 0, 16, 2);
-  const unique = new Map<string, Cell>();
-  for (const cell of cells) unique.set(cellKey(cell.ix, cell.iz), cell);
-  return [...unique.values()];
+  for (let ix = 0; ix <= HALL_SPAN; ix++) {
+    for (let iz = 0; iz <= HALL_SPAN; iz++) {
+      if (!blocked.has(cellKey(ix, iz))) cells.push({ ix, iz });
+    }
+  }
+  return cells;
 }
 
 export function isWalkable(ix: number, iz: number) {

@@ -81,7 +81,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog("#1B1A22", 60, 200);
   scene.add(new THREE.HemisphereLight("#ffe0bf", "#2a1c16", 0.72));
-  const hallFocus = new THREE.Vector3(6.5 * CELL, 0, 4 * CELL);
+  const hallFocus = new THREE.Vector3(5.5 * CELL, 0, 5.5 * CELL);
   const sun = new THREE.DirectionalLight("#d7e4ff", 0.55);
   sun.position.set(hallFocus.x + 16, 32, hallFocus.z + 12);
   sun.target.position.copy(hallFocus);
@@ -99,7 +99,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 240);
   const focus = new THREE.Vector3(8, 0, 8);
   let yaw = 0;
-  let view = 44;
+  let view = 30;
   const pointer = new THREE.Vector2();
   const raycaster = new THREE.Raycaster();
   const selectables: THREE.Object3D[] = [];
@@ -357,8 +357,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
           const gate = ROOM_GATES.find((item) => entry.id === `room-gate-${item.id}`);
           if (gate) {
             const shut = gate.rot;
-            const locked = hooks.getClosedGates().includes(gate.id);
-            mesh.rotation.y = locked ? shut : shut + 0.35;
+            mesh.rotation.y = shut;
             mesh.userData.action = "room-gate";
             mesh.userData.gateId = gate.id;
             roomGates.push({ id: gate.id, ix: gate.ix, iz: gate.iz, mesh, shut, open: shut + Math.PI / 2 });
@@ -621,9 +620,9 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     }
     if (data?.action === "room-gate") {
       const id = String(data.gateId);
-      const locked = hooks.onRoomGate(id);
+      hooks.onRoomGate(id);
       const gate = roomGates.find((entry) => entry.id === id);
-      if (gate) gate.mesh.rotation.y = locked ? gate.shut : gate.shut + 0.35;
+      if (gate) gate.mesh.rotation.y = gate.shut;
       return;
     }
     if (data?.action === "gate") {
@@ -748,7 +747,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     if (event.key === "e") yaw = THREE.MathUtils.clamp(yaw + 0.08, -0.7, 0.7);
     if (event.key.toLowerCase() === "r") {
       yaw = 0;
-      view = 44;
+      view = 30;
       focus.copy(hallFocus);
       resize();
     }
@@ -923,7 +922,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     }
     const vault = hooks.getVault?.() ?? 1200;
     const fog = scene.fog as THREE.Fog;
-    fog.near = vault < 1200 * 0.25 ? 16 : 28;
+    fog.near = vault < 1200 * 0.25 ? 18 : 46;
     const camSide = camera.position.z > focus.z;
     for (const wall of livingWalls) wall.mesh.visible = !(camSide && wall.z > focus.z - 1);
     for (const mark of floatPool) {
@@ -1121,8 +1120,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
         }
       }
       scripted = false;
-      const shut = new Set(hooks.getClosedGates());
-      for (const gate of roomGates) gate.mesh.rotation.y = shut.has(gate.id) ? gate.shut : gate.shut + 0.35;
+      for (const gate of roomGates) gate.mesh.rotation.y = gate.shut;
       if (hero) {
         play(hero, "idle");
         if (hero.hp > 0) {
