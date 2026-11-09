@@ -1,4 +1,4 @@
-import { RULES, cellKey, isWalkable, type Cell } from "../config/gameRules";
+import { ROOM_GATES, RULES, cellKey, isWalkable, type Cell } from "../config/gameRules";
 import type { HeroProfile } from "../config/heroProfiles";
 import { TRAP_DEFINITIONS, type TrapId } from "../config/trapDefinitions";
 import type { Fact } from "./types";
@@ -38,7 +38,25 @@ export function routeCost(cell: Cell, traps: PlacedTrap[], facts: Fact[], profil
   return 1 + profile.caution * 0.1;
 }
 
-export function findPath(traps: PlacedTrap[], facts: Fact[], profile: HeroProfile): Cell[] {
+function gateBlocks(cell: Cell, closedGateIds: readonly string[]) {
+  return ROOM_GATES.some((gate) => closedGateIds.includes(gate.id) && gate.ix === cell.ix && gate.iz === cell.iz);
+}
+
+function reconstruct(parent: Map<string, string>, cells: Map<string, Cell>, from: string) {
+  const path: Cell[] = [];
+  let key: string | undefined = from;
+  const seen = new Set<string>();
+  while (key && !seen.has(key)) {
+    seen.add(key);
+    const cell = cells.get(key);
+    if (!cell) break;
+    path.push(cell);
+    key = parent.get(key);
+  }
+  return path.reverse();
+}
+
+export function findPath(traps: PlacedTrap[], facts: Fact[], profile: HeroProfile, closedGateIds: readonly string[] = []): Cell[] {
   const start = RULES.grid.entrance;
   const goal = RULES.grid.vault;
   const open = new Map<string, number>();
@@ -49,6 +67,8 @@ export function findPath(traps: PlacedTrap[], facts: Fact[], profile: HeroProfil
   open.set(startKey, heuristic(start, goal));
   gScore.set(startKey, 0);
   cells.set(startKey, start);
+  let bestKey = startKey;
+  let bestH = heuristic(start, goal);
 
   while (open.size) {
     let currentKey = "";
@@ -60,19 +80,16 @@ export function findPath(traps: PlacedTrap[], facts: Fact[], profile: HeroProfil
       }
     }
     const current = cells.get(currentKey)!;
-    if (current.ix === goal.ix && current.iz === goal.iz) {
-      const path: Cell[] = [];
-      let key: string | undefined = currentKey;
-      while (key) {
-        path.push(cells.get(key)!);
-        key = parent.get(key);
-      }
-      return path.reverse();
-    }
+    if (current.ix === goal.ix && current.iz === goal.iz) return reconstruct(parent, cells, currentKey);
     open.delete(currentKey);
+    const here = heuristic(current, goal);
+    if (here < bestH) {
+      bestH = here;
+      bestKey = currentKey;
+    }
     for (const [dx, dz] of NEIGHBORS) {
       const next = { ix: current.ix + dx, iz: current.iz + dz };
-      if (!isWalkable(next.ix, next.iz)) continue;
+      if (!isWalkable(next.ix, next.iz) || gateBlocks(next, closedGateIds)) continue;
       const key = cellKey(next.ix, next.iz);
       const step = routeCost(next, traps, facts, profile);
       const g = (gScore.get(currentKey) ?? 0) + step;
@@ -83,7 +100,7 @@ export function findPath(traps: PlacedTrap[], facts: Fact[], profile: HeroProfil
       open.set(key, g + heuristic(next, goal));
     }
   }
-  return [start, goal];
+  return reconstruct(parent, cells, bestKey);
 }
 
 function heuristic(a: Cell, b: Cell) {

@@ -52,6 +52,7 @@ export function createSave(screen = "menu"): SaveData {
     vault: RAID.vaultStart,
     inventory: { nail: 4, iron: 12, bone: 6, ash: 6 },
     traps: [],
+    closedGateIds: [],
     heroes,
     merchants,
     listings: [],

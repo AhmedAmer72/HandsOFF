@@ -401,6 +401,7 @@ export function startRaid() {
     upgrades: save.upgrades,
     possessGuard,
     spentTrapIds: save.spentTrapIds ?? [],
+    closedGateIds: save.closedGateIds ?? [],
   });
   const report: RaidReport = { ...simulated.report, decision };
   const heroes = {
@@ -903,6 +904,18 @@ export function watchRaid(dungeonId: string) {
 export function leaveWatch() {
   state = { ...state, spectating: false, spectatorDungeonId: null, screen: "map" };
   emit();
+}
+
+export function toggleGate(id: string) {
+  if (state.spectating) return { ok: false, locked: false, reason: "Spectators cannot touch the gates." };
+  if (state.phase !== "prep") return { ok: false, locked: (state.closedGateIds ?? []).includes(id), reason: "The gates hold while a raid is on." };
+  const closed = new Set(state.closedGateIds ?? []);
+  if (closed.has(id)) closed.delete(id);
+  else closed.add(id);
+  const locked = closed.has(id);
+  state = { ...state, closedGateIds: [...closed] };
+  emit();
+  return { ok: true, locked, reason: locked ? "Gate locked. The heroes cannot lift it." : "Gate unlocked. A hero can stop and lift it." };
 }
 
 export function toSteps(report: RaidReport): VisualStep[] {

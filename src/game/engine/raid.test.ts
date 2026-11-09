@@ -67,6 +67,18 @@ describe("raid", () => {
     expect(result.report.events.some((event) => event.trapId === "spike")).toBe(false);
     expect(result.report.survived).toBe(true);
   });
+
+  it("makes Kara lift the gates on the bent path", () => {
+    const result = simulateRaid({ day: 2, seed: 3, hero: kara({ hp: 64, maxHp: 64 }), traps: [], tutorial: false });
+    const names = result.report.events.filter((event) => event.type === "gate").map((event) => event.text);
+    expect(names).toEqual([
+      "Kara lifts the Court gate.",
+      "Kara lifts the Spike gate.",
+      "Kara lifts the Elbow gate.",
+      "Kara lifts the Vault gate.",
+    ]);
+    expect(result.report.survived).toBe(true);
+  });
 });
 
 describe("economy", () => {

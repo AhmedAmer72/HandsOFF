@@ -82,7 +82,7 @@ export interface PlacedTrap {
   epoch?: number;
 }
 
-export type RaidEventType = "enter" | "move" | "trap" | "combat" | "flee" | "vault" | "death" | "survive";
+export type RaidEventType = "enter" | "move" | "gate" | "trap" | "combat" | "flee" | "vault" | "death" | "survive";
 
 export interface RaidEvent {
   tick: number;
@@ -137,6 +137,8 @@ export interface SaveData {
   vault: number;
   inventory: Record<string, number>;
   traps: PlacedTrap[];
+  /** Room gates the keeper locked shut. An empty list means every gate can be lifted. */
+  closedGateIds?: string[];
   heroes: Record<HeroId, HeroState>;
   merchants: Record<MerchantState["id"], MerchantState>;
   listings: Listing[];

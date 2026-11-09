@@ -4,8 +4,8 @@ export const RULES = {
     "Trap costs, hero stats, prices, and the burn cost are conservative defaults chosen for this build because the repository had no separate economy rules document.",
   grid: { entrance: { ix: 4, iz: 11 }, vault: { ix: 4, iz: 0 } },
   skeletons: [
-    { id: "guard", ix: 4, iz: 4, hp: 36, attack: 11, name: "Dungeon Guard" },
-    { id: "warrior", ix: 8, iz: 2, hp: 48, attack: 14, name: "Skeleton Warrior" },
+    { id: "guard", ix: 8, iz: 3, hp: 36, attack: 11, name: "Dungeon Guard" },
+    { id: "warrior", ix: 14, iz: 1, hp: 48, attack: 14, name: "Skeleton Warrior" },
   ],
   tutorialHeroHp: 20,
   spikeTutorialCell: { ix: 4, iz: 6 },
@@ -31,16 +31,44 @@ function fill(cells: Cell[], x0: number, z0: number, x1: number, z1: number) {
   }
 }
 
-/** Connected Ashgate: entrance, hall, west store, east trap chamber, combat room, vault. */
+/**
+ * Doorways a hero must lift. `ix, iz` is the cell they step onto as it opens.
+ * Locking that id removes the cell from pathfinding.
+ * The shut yaw matches a wall across the south edge of that cell.
+ */
+export const ROOM_GATES = [
+  { id: "court", name: "Court gate", ix: 4, iz: 9, rot: Math.PI },
+  { id: "spike", name: "Spike gate", ix: 4, iz: 6, rot: Math.PI },
+  { id: "elbow", name: "Elbow gate", ix: 8, iz: 3, rot: Math.PI },
+  { id: "vault", name: "Vault gate", ix: 4, iz: 1, rot: Math.PI },
+  { id: "combat", name: "Combat gate", ix: 9, iz: 2, rot: Math.PI / 2 },
+] as const;
+
+export type RoomGateId = (typeof ROOM_GATES)[number]["id"];
+
+/**
+ * Wide Ashgate. Rooms and the runs between them are several tiles across.
+ * The court, spike, elbow, and vault gates stay one tile, so locking one still seals that door.
+ * The combat room is a side hall. The skeleton warrior stands there, off the short path.
+ */
 export function walkableCells(): Cell[] {
   const cells: Cell[] = [];
-  fill(cells, 4, 8, 4, 11);
-  fill(cells, 2, 4, 6, 7);
-  fill(cells, 0, 4, 1, 6);
-  fill(cells, 7, 4, 9, 6);
-  fill(cells, 7, 1, 9, 3);
-  fill(cells, 2, 3, 6, 3);
-  fill(cells, 3, 0, 5, 2);
+  fill(cells, 2, 10, 12, 11);
+  fill(cells, 4, 9, 4, 9);
+  fill(cells, -3, 6, 0, 9);
+  fill(cells, 1, 7, 8, 8);
+  fill(cells, 4, 6, 4, 6);
+  fill(cells, 4, 4, 8, 5);
+  fill(cells, 2, 4, 3, 4);
+  fill(cells, 9, 4, 13, 4);
+  fill(cells, 8, 3, 8, 3);
+  fill(cells, 2, 1, 8, 2);
+  fill(cells, 4, 0, 4, 0);
+  fill(cells, 1, -3, 8, -1);
+  fill(cells, 9, 5, 13, 5);
+  fill(cells, 9, 6, 13, 8);
+  fill(cells, 9, 2, 9, 2);
+  fill(cells, 10, 0, 16, 2);
   const unique = new Map<string, Cell>();
   for (const cell of cells) unique.set(cellKey(cell.ix, cell.iz), cell);
   return [...unique.values()];

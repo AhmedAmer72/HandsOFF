@@ -37,6 +37,7 @@ import {
   setScreen,
   setStats,
   startRaid,
+  toggleGate,
   toSteps,
   useGame,
 } from "../game/store";
@@ -54,7 +55,7 @@ import { Shell } from "./shell";
 import { Button, CHRONICLE, chronicleKind, Num, Panel, Receipt } from "./kit";
 
 const TUTORIAL = [
-  "Choose Spike Trap on the bar. It follows the cursor. Click tile 4, 6.",
+  "The way to the vault bends through gates. Choose Spike Trap and click tile 4, 6.",
   "Click the south doorway. The chosen hero walks in.",
   "Click the flying page to burn it, or let the moment pass.",
   "Orrin keeps a landed page. Buy it back at his stall in the Market.",
@@ -120,6 +121,7 @@ function DungeonScreen() {
     };
   }, []);
   const [toast, setToast] = useState("");
+  const [walking, setWalking] = useState(false);
   const hooks = useRef(game);
   hooks.current = game;
 
@@ -193,15 +195,29 @@ function DungeonScreen() {
       getReduceMotion: () => Boolean(hooks.current.reduceMotion),
       getChain: () => hooks.current.chain ?? 0,
       getVault: () => hooks.current.vault,
+      onRoomGate: (id) => {
+        const result = toggleGate(id);
+        setToast(result.reason);
+        return result.locked;
+      },
+      getClosedGates: () => hooks.current.closedGateIds ?? [],
     });
     bindDungeon(mounted);
-    void mounted.ready.then(() => {
+    let live = true;
+    void mounted.ready.then(async () => {
       const current = hooks.current;
-      if (current.pending && (current.phase === "raid" || current.phase === "report")) {
-        void mounted.playRoute(toSteps(current.pending));
+      if (!live || !current.pending || (current.phase !== "raid" && current.phase !== "report")) return;
+      setWalking(true);
+      try {
+        await mounted.playRoute(toSteps(current.pending));
+      } finally {
+        if (live) setWalking(false);
       }
     });
-    return () => mounted.dispose();
+    return () => {
+      live = false;
+      mounted.dispose();
+    };
   }, [game.worldMode, game.quality, game.pending?.id]);
 
   useEffect(() => {
@@ -290,7 +306,7 @@ function DungeonScreen() {
           </div>
         )}
       </div>
-      {game.phase === "report" && report && (
+      {game.phase === "report" && report && !walking && (
         <Receipt className="pointer-events-auto absolute left-3 top-28 max-w-sm text-sm">
           <div className="font-display text-lg">Raid results</div>
           <p>{report.survived ? `${hero.name} survived.` : `${hero.name} died.`}</p>

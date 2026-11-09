@@ -2,7 +2,7 @@ import gsap from "gsap";
 import * as THREE from "three";
 import { ANIMATION_FILES, CELL, CLIP_ALIASES, HEROES, item, monsterModel, type HeroId, type Piece, type Quality, type WorldMode } from "../game/content";
 import { HERO_PROFILES } from "../game/config/heroProfiles";
-import { RULES } from "../game/config/gameRules";
+import { ROOM_GATES, RULES } from "../game/config/gameRules";
 import { ashgatePieces } from "../game/world";
 import { TRAP_DEFINITIONS, type TrapId } from "../game/config/trapDefinitions";
 import type { PlacedTrap } from "../game/engine/types";
@@ -45,6 +45,8 @@ export interface DungeonHooks {
   getReduceMotion?: () => boolean;
   getChain?: () => number;
   getVault?: () => number;
+  onRoomGate: (id: string) => boolean;
+  getClosedGates: () => string[];
 }
 
 interface Actor {
@@ -77,29 +79,33 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   renderer.setClearColor("#14100E");
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog("#1B1A22", 28, 72);
+  scene.fog = new THREE.Fog("#1B1A22", 60, 200);
   scene.add(new THREE.HemisphereLight("#ffe0bf", "#2a1c16", 0.72));
+  const hallFocus = new THREE.Vector3(6.5 * CELL, 0, 4 * CELL);
   const sun = new THREE.DirectionalLight("#d7e4ff", 0.55);
-  sun.position.set(12, 18, 8);
+  sun.position.set(hallFocus.x + 16, 32, hallFocus.z + 12);
+  sun.target.position.copy(hallFocus);
+  scene.add(sun.target);
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 60;
-  sun.shadow.camera.left = -20;
-  sun.shadow.camera.right = 20;
-  sun.shadow.camera.top = 20;
-  sun.shadow.camera.bottom = -20;
+  sun.shadow.camera.far = 120;
+  sun.shadow.camera.left = -56;
+  sun.shadow.camera.right = 56;
+  sun.shadow.camera.top = 56;
+  sun.shadow.camera.bottom = -56;
   scene.add(sun);
 
-  const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 120);
+  const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 240);
   const focus = new THREE.Vector3(8, 0, 8);
   let yaw = 0;
-  let view = 18;
+  let view = 44;
   const pointer = new THREE.Vector2();
   const raycaster = new THREE.Raycaster();
   const selectables: THREE.Object3D[] = [];
   const floors: THREE.Object3D[] = [];
   const actors: Actor[] = [];
+  const roomGates: { id: string; ix: number; iz: number; mesh: THREE.Object3D; shut: number; open: number }[] = [];
   const placed: { id: string; trapId: string; mesh: THREE.Object3D; x: number; z: number; spent: boolean }[] = [];
   let clips: THREE.AnimationClip[] = [];
   let hero: Actor | null = null;
@@ -238,7 +244,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   function aimCamera() {
     const az = Math.PI / 4 + yaw;
     const el = 35 * Math.PI / 180;
-    const dist = 32;
+    const dist = 48;
     camera.position.set(
       focus.x + Math.cos(az) * Math.cos(el) * dist,
       2 + Math.sin(el) * dist,
@@ -348,6 +354,16 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
           mesh.rotation.y = entry.rot;
           mesh.userData.level = true;
           mesh.userData.meta = entry;
+          const gate = ROOM_GATES.find((item) => entry.id === `room-gate-${item.id}`);
+          if (gate) {
+            const shut = gate.rot;
+            const locked = hooks.getClosedGates().includes(gate.id);
+            mesh.rotation.y = locked ? shut : shut + 0.35;
+            mesh.userData.action = "room-gate";
+            mesh.userData.gateId = gate.id;
+            roomGates.push({ id: gate.id, ix: gate.ix, iz: gate.iz, mesh, shut, open: shut + Math.PI / 2 });
+            selectables.push(mesh);
+          }
           scene.add(mesh);
           if (entry.kind === "floor" || entry.kind === "trap" || entry.kind === "vault" || entry.id === "anvil" || entry.label === "Entrance gate") {
             selectables.push(mesh);
@@ -391,8 +407,8 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     }
     const heroPosts: Record<HeroId, { x: number; z: number }> = {
       kara: { x: 4 * CELL, z: 10 * CELL },
-      brann: { x: 2 * CELL, z: 5 * CELL },
-      ivo: { x: 6 * CELL, z: 5 * CELL },
+      brann: { x: 3 * CELL, z: 10 * CELL },
+      ivo: { x: 5 * CELL, z: 10 * CELL },
     };
     for (const lead of HEROES) {
       const spot = heroPosts[lead.id];
@@ -411,7 +427,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       actor.root.visible = false;
       if (lead.id === "kara") hero = actor;
     }
-    focus.set(3 * CELL, 0, 4 * CELL);
+    focus.copy(hallFocus);
     scene.traverse((obj) => {
       if (obj instanceof THREE.PointLight) livingLights.push(obj);
       const meta = obj.userData.meta as Piece | undefined;
@@ -549,6 +565,12 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     const data = found.node.userData;
     if (data.action === "burn") return "Click the page to burn it.";
     if (data.placedId) return "Placed trap. Click it, then a neighboring tile.";
+    if (data.action === "room-gate") {
+      const name = ROOM_GATES.find((gate) => gate.id === data.gateId)?.name ?? "Iron gate";
+      return hooks.getClosedGates().includes(String(data.gateId))
+        ? `${name} is locked. Click to unlock it.`
+        : `${name}. Click to lock it. A hero stops here and lifts an unlocked gate.`;
+    }
     if (data.action === "gate") return hooks.getPhase() === "report" ? "South doorway. Click for the next day." : "South doorway. Click to open the raid.";
     if (data.action === "craft") return "Anvil. Click to craft a spike from iron and bone.";
     if (data.action === "brace") return "Vault chest. Click to brace it.";
@@ -595,6 +617,13 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     if (data?.placedId && (hooks.getPhase() === "prep" || hooks.getPhase() === "raid")) {
       trapDrag = { id: String(data.placedId), x: event.clientX, y: event.clientY };
       hooks.clearArm();
+      return;
+    }
+    if (data?.action === "room-gate") {
+      const id = String(data.gateId);
+      const locked = hooks.onRoomGate(id);
+      const gate = roomGates.find((entry) => entry.id === id);
+      if (gate) gate.mesh.rotation.y = locked ? gate.shut : gate.shut + 0.35;
       return;
     }
     if (data?.action === "gate") {
@@ -709,7 +738,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
 
   function onWheel(event: WheelEvent) {
     event.preventDefault();
-    view = THREE.MathUtils.clamp(view + event.deltaY * 0.01, 4.5, 28);
+    view = THREE.MathUtils.clamp(view + event.deltaY * 0.01, 10, 56);
     resize();
   }
 
@@ -719,8 +748,8 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     if (event.key === "e") yaw = THREE.MathUtils.clamp(yaw + 0.08, -0.7, 0.7);
     if (event.key.toLowerCase() === "r") {
       yaw = 0;
-      view = 18;
-      focus.set(3 * CELL, 0, 4 * CELL);
+      view = 44;
+      focus.copy(hallFocus);
       resize();
     }
     if (event.key.toLowerCase() === "f" && hero?.root.visible) focus.set(hero.root.position.x, 0, hero.root.position.z);
@@ -1024,9 +1053,23 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       hero = actors.find((actor) => actor.family === "hero" && actor.id === hooks.getHero()) ?? hero;
       if (hero) hero.root.visible = true;
       if (hero && steps[0]) hero.root.position.set(steps[0].x, 0, steps[0].z);
+      const locked = new Set(hooks.getClosedGates());
+      for (const gate of roomGates) {
+        if (!locked.has(gate.id)) gate.mesh.rotation.y = gate.shut;
+      }
       for (const step of steps) {
         if (!running || !hero) break;
-        if (step.type === "move" || step.type === "enter") {
+        if (step.type === "gate") {
+          const ix = Math.round(step.x / CELL);
+          const iz = Math.round(step.z / CELL);
+          const gate = roomGates.find((entry) => entry.ix === ix && entry.iz === iz);
+          play(hero, "interact", true);
+          if (gate) hero.root.lookAt(gate.mesh.position.x, 0, gate.mesh.position.z);
+          sfx.ui();
+          if (gate && hooks.getReduceMotion?.()) gate.mesh.rotation.y = gate.open;
+          else if (gate) gsap.to(gate.mesh.rotation, { y: gate.open, duration: 0.55, ease: "power2.out" });
+          await pause(hooks.getReduceMotion?.() ? 0.05 : 0.6);
+        } else if (step.type === "move" || step.type === "enter") {
           await glide(hero, step.x, step.z);
         } else if (step.type === "trap" && step.trapId === "boulder") {
           play(hero, "hit", true);
@@ -1078,6 +1121,8 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
         }
       }
       scripted = false;
+      const shut = new Set(hooks.getClosedGates());
+      for (const gate of roomGates) gate.mesh.rotation.y = shut.has(gate.id) ? gate.shut : gate.shut + 0.35;
       if (hero) {
         play(hero, "idle");
         if (hero.hp > 0) {
