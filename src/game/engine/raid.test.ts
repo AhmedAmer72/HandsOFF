@@ -74,7 +74,6 @@ describe("raid", () => {
     expect(names).toEqual([
       "Kara lifts the Court gate.",
       "Kara lifts the Spike gate.",
-      "Kara lifts the Elbow gate.",
       "Kara lifts the Vault gate.",
     ]);
     expect(result.report.survived).toBe(true);

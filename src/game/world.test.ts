@@ -58,7 +58,8 @@ describe("Ashgate dressing", () => {
     expect(path[0]).toEqual({ ix: 4, iz: 11 });
     expect(path.at(-1)).toEqual({ ix: 4, iz: 0 });
     expect(path.some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(true);
-    expect(path.some((cell) => cell.ix === 8 && cell.iz === 3)).toBe(true);
+    expect(path.some((cell) => cell.ix === 9 && cell.iz === 3)).toBe(true);
+    expect(path.some((cell) => cell.ix === 7 && cell.iz === 5)).toBe(true);
     expect(path.some((cell) => cell.ix === 11 && cell.iz === 11)).toBe(false);
     expect(new Set(path.map((cell) => cell.ix)).size).toBeGreaterThan(2);
     expect(path.length).toBeGreaterThan(18);
@@ -74,6 +75,8 @@ describe("Ashgate dressing", () => {
     expect(Math.min(...zs)).toBe(0);
     expect(Math.max(...zs)).toBe(11);
     expect(has(0, 0) && has(11, 0) && has(0, 11) && has(11, 11)).toBe(true);
+    expect(has(4, 0) && has(6, 1) && has(9, 2)).toBe(true);
+    expect(has(2, 0) || has(10, 0)).toBe(false);
     for (const gate of ROOM_GATES) {
       expect(has(gate.ix, gate.iz)).toBe(true);
       expect(has(gate.ix - 1, gate.iz)).toBe(false);

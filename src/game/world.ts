@@ -112,14 +112,14 @@ export function ashgatePieces(): Piece[] {
     { id: "entrance-banner-left", file: "banner_red", x: 4 * CELL - 2.9, z: HALL_SPAN * CELL + 2.7, label: "Entrance banner" },
     { id: "entrance-banner-right", file: "banner_red", x: 4 * CELL + 2.9, z: HALL_SPAN * CELL + 2.7, label: "Entrance banner" },
     { id: "vault-chest", file: "chest_gold", x: 4 * CELL, z: -1.05, kind: "vault", label: "Treasure vault" },
-    { id: "vault-coins", file: "coin_stack_medium", x: 6 * CELL, z: -0.85, label: "Vault coins" },
-    { id: "store-barrel", file: "barrel_small", x: 1 * CELL, z: 7 * CELL, rot: 0.4, label: "Store barrel" },
-    { id: "store-crates", file: "box_small", x: 1 * CELL, z: 10 * CELL, rot: 0.3, label: "Store crates" },
-    { id: "torch-vault", file: "torch_mounted", x: 2 * CELL, y: 1.65, z: -1.7, kind: "light", label: "Vault torch" },
-    { id: "torch-store", file: "torch_mounted", x: -1.7, y: 1.65, z: 7 * CELL, rot: Math.PI / 2, kind: "light", label: "Store torch" },
-    { id: "torch-hall", file: "torch_mounted", x: 2 * CELL, y: 1.65, z: 4 * CELL - 1.7, kind: "light", label: "Hall torch" },
-    { id: "torch-bypass", file: "torch_mounted", x: 9 * CELL, y: 1.65, z: 8 * CELL - 1.7, kind: "light", label: "Bypass torch" },
-    { id: "torch-east", file: "torch_mounted", x: 11 * CELL, y: 1.65, z: 4 * CELL - 1.7, kind: "light", label: "East torch" },
+    { id: "vault-coins", file: "coin_stack_medium", x: 7 * CELL, z: 0.8, label: "Vault coins" },
+    { id: "store-barrel", file: "barrel_small", x: 0.5, z: 10 * CELL, rot: 0.4, label: "Store barrel" },
+    { id: "store-crates", file: "box_small", x: 1 * CELL, z: 11 * CELL, rot: 0.2, label: "Store crates" },
+    { id: "torch-vault", file: "torch_mounted", x: 6 * CELL, y: 1.65, z: -1.7, kind: "light", label: "Vault torch" },
+    { id: "torch-store", file: "torch_mounted", x: -1.7, y: 1.65, z: 10 * CELL, rot: Math.PI / 2, kind: "light", label: "Store torch" },
+    { id: "torch-hall", file: "torch_mounted", x: 3 * CELL, y: 1.65, z: 4 * CELL + 1.6, rot: Math.PI, kind: "light", label: "Hall torch" },
+    { id: "torch-court", file: "torch_mounted", x: 2 * CELL, y: 1.65, z: 7 * CELL - 1.6, kind: "light", label: "Court torch" },
+    { id: "torch-bypass", file: "torch_mounted", x: -1.7, y: 1.65, z: 6 * CELL, rot: Math.PI / 2, kind: "light", label: "Bypass torch" },
   ];
   for (const prop of props) {
     out.push(piece({
@@ -153,11 +153,11 @@ export function ashgatePieces(): Piece[] {
 
 export function roomOf(cell: Cell): string {
   if (cell.iz >= 10 && cell.ix >= 3 && cell.ix <= 5) return "entrance";
-  if (cell.ix <= 1 && cell.iz >= 7) return "storage";
-  if (cell.ix >= 7 && cell.iz >= 10) return "combat";
-  if (cell.iz === 0) return "vault";
-  if (cell.ix >= 9 && cell.iz >= 4 && cell.iz <= 8) return "bypass";
-  if (cell.iz <= 5 && cell.iz >= 2) return "hall";
+  if ((cell.ix <= 1 && cell.iz >= 9) || (cell.ix === 2 && cell.iz === 9)) return "storage";
+  if (cell.ix >= 8 && cell.iz >= 10) return "combat";
+  if (cell.ix >= 4 && cell.ix <= 9 && cell.iz <= 2) return "vault";
+  if (cell.iz >= 7 && cell.iz <= 8 && cell.ix >= 2 && cell.ix <= 5) return "court";
+  if (cell.iz >= 4 && cell.iz <= 5 && cell.ix >= 2 && cell.ix <= 8) return "hall";
   return "corridor";
 }
 
