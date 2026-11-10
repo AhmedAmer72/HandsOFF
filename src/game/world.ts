@@ -1,5 +1,5 @@
 import { dungeon } from "./content";
-import { HALL_SPAN, ROOM_GATES, cellKey, walkableCells, type Cell } from "./config/gameRules";
+import { HALL_SPAN, PILLARS, ROOM_GATES, cellKey, roomModuleAt, walkableCells, type Cell } from "./config/gameRules";
 import type { Piece } from "./content";
 
 const CELL = 4;
@@ -26,7 +26,7 @@ function edgePiece(ix: number, iz: number, side: "n" | "s" | "e" | "w", fileName
   });
 }
 
-function centerPiece(id: string, fileName: string, ix: number, iz: number, rot: number, label: string): Piece {
+function centerPiece(id: string, fileName: string, ix: number, iz: number, rot: number, label: string, cutaway: boolean): Piece {
   return piece({
     id,
     url: dungeon(fileName),
@@ -37,8 +37,18 @@ function centerPiece(id: string, fileName: string, ix: number, iz: number, rot: 
     rot,
     kind: "wall",
     label,
-    cutaway: false,
+    cutaway,
   });
+}
+
+function floorFile(ix: number, iz: number, open: boolean): string {
+  if (open && ix === 4 && iz === HALL_SPAN) return "floor_wood_large";
+  if (!open) return "floor_tile_large";
+  const room = roomOf({ ix, iz });
+  if (room === "vault") return "floor_tile_large_rocks";
+  if (room === "storage" || room === "combat") return "floor_dirt_large";
+  if (room === "hall" && (ix === 1 || ix === 7 || iz === 8)) return "floor_wood_large_dark";
+  return roomModuleAt(ix, iz)?.floor ?? "floor_tile_large";
 }
 
 /** Floors and walls for the square hall, plus the dressed rooms. */
@@ -56,8 +66,7 @@ export function ashgatePieces(): Piece[] {
   };
   for (let ix = 0; ix <= HALL_SPAN; ix++) {
     for (let iz = 0; iz <= HALL_SPAN; iz++) {
-      const wood = iz === HALL_SPAN && ix === 4;
-      const file = wood ? "floor_wood_large" : "floor_tile_large";
+      const file = floorFile(ix, iz, open.has(cellKey(ix, iz)));
       out.push(piece({
         id: `floor-${ix}-${iz}`,
         url: dungeon(file),
@@ -66,7 +75,7 @@ export function ashgatePieces(): Piece[] {
         x: ix * CELL,
         z: iz * CELL,
         kind: "floor",
-        label: "Stone floor",
+        label: file === "floor_wood_large" ? "Wood threshold" : "Stone floor",
       }));
     }
   }
@@ -79,7 +88,12 @@ export function ashgatePieces(): Piece[] {
   }
   // One wall segment per solid cell, centered so a grate sits in the same line.
   // A turn uses two half segments so the corner joins without a second wall.
+  // Camera-facing interior walls may cut away. The outer shell and the cells
+  // beside a gate stay solid, so a grate keeps its jambs.
   const armRot = { e: 0, w: Math.PI, s: -Math.PI / 2, n: Math.PI / 2 } as const;
+  const pillarAt = (ix: number, iz: number) => PILLARS.some((cell) => cell.ix === ix && cell.iz === iz);
+  const gateJamb = (ix: number, iz: number) => ROOM_GATES.some((gate) => gate.iz === iz && Math.abs(gate.ix - ix) === 1);
+  const hideable = (ix: number, iz: number) => !gateJamb(ix, iz) && ix > 0 && ix < HALL_SPAN && iz > 0 && iz < HALL_SPAN;
   for (let ix = 0; ix <= HALL_SPAN; ix++) {
     for (let iz = 0; iz <= HALL_SPAN; iz++) {
       if (!blocked(ix, iz)) continue;
@@ -96,13 +110,19 @@ export function ashgatePieces(): Piece[] {
         const { dx, dz } = step(side);
         return ROOM_GATES.some((gate) => gate.ix === ix + dx && gate.iz === iz + dz);
       });
+      if (pillarAt(ix, iz)) {
+        out.push(centerPiece(`pillar-${ix}-${iz}`, "pillar", ix, iz, 0, "Stone pillar", false));
+        for (const side of solid) out.push(centerPiece(`wall-arm-${side}-${ix}-${iz}`, "wall_half", ix, iz, armRot[side], "Wall", hideable(ix, iz)));
+        continue;
+      }
+      const cutaway = hideable(ix, iz);
       const horizontal = solid.some((side) => side === "e" || side === "w") || gateSide.some((side) => side === "e" || side === "w");
       const vertical = solid.some((side) => side === "n" || side === "s");
       if (horizontal && vertical) {
         const arms = new Set([...solid, ...gateSide]);
-        for (const side of arms) out.push(centerPiece(`wall-arm-${side}-${ix}-${iz}`, "wall_half", ix, iz, armRot[side], "Wall"));
+        for (const side of arms) out.push(centerPiece(`wall-arm-${side}-${ix}-${iz}`, "wall_half", ix, iz, armRot[side], "Wall", cutaway));
       } else {
-        out.push(centerPiece(`wall-run-${ix}-${iz}`, "wall", ix, iz, horizontal ? Math.PI : Math.PI / 2, "Wall"));
+        out.push(centerPiece(`wall-run-${ix}-${iz}`, "wall", ix, iz, horizontal ? Math.PI : Math.PI / 2, "Wall", cutaway));
       }
     }
   }
@@ -112,14 +132,15 @@ export function ashgatePieces(): Piece[] {
     { id: "entrance-banner-left", file: "banner_red", x: 4 * CELL - 2.9, z: HALL_SPAN * CELL + 2.7, label: "Entrance banner" },
     { id: "entrance-banner-right", file: "banner_red", x: 4 * CELL + 2.9, z: HALL_SPAN * CELL + 2.7, label: "Entrance banner" },
     { id: "vault-chest", file: "chest_gold", x: 4 * CELL, z: -1.05, kind: "vault", label: "Treasure vault" },
-    { id: "vault-coins", file: "coin_stack_medium", x: 7 * CELL, z: 0.8, label: "Vault coins" },
+    { id: "vault-coins", file: "coin_stack_medium", x: 6 * CELL, z: 0.7, label: "Vault coins" },
     { id: "store-barrel", file: "barrel_small", x: 0.5, z: 10 * CELL, rot: 0.4, label: "Store barrel" },
     { id: "store-crates", file: "box_small", x: 1 * CELL, z: 11 * CELL, rot: 0.2, label: "Store crates" },
     { id: "torch-vault", file: "torch_mounted", x: 6 * CELL, y: 1.65, z: -1.7, kind: "light", label: "Vault torch" },
     { id: "torch-store", file: "torch_mounted", x: -1.7, y: 1.65, z: 10 * CELL, rot: Math.PI / 2, kind: "light", label: "Store torch" },
-    { id: "torch-hall", file: "torch_mounted", x: 3 * CELL, y: 1.65, z: 4 * CELL + 1.6, rot: Math.PI, kind: "light", label: "Hall torch" },
-    { id: "torch-court", file: "torch_mounted", x: 2 * CELL, y: 1.65, z: 7 * CELL - 1.6, kind: "light", label: "Court torch" },
-    { id: "torch-bypass", file: "torch_mounted", x: -1.7, y: 1.65, z: 6 * CELL, rot: Math.PI / 2, kind: "light", label: "Bypass torch" },
+    { id: "torch-gate-west", file: "torch_mounted", x: 3 * CELL, y: 1.65, z: HALL_SPAN * CELL + 1.55, rot: Math.PI, kind: "light", label: "Gate torch" },
+    { id: "torch-gate-east", file: "torch_mounted", x: 6 * CELL, y: 1.65, z: HALL_SPAN * CELL + 1.55, rot: Math.PI, kind: "light", label: "Gate torch" },
+    { id: "torch-hall", file: "torch_mounted", x: 2 * CELL, y: 1.65, z: 8 * CELL + 1.55, rot: Math.PI, kind: "light", label: "Hall torch" },
+    { id: "torch-traps", file: "torch_mounted", x: 2 * CELL - 1.55, y: 1.65, z: 3 * CELL, rot: Math.PI / 2, kind: "light", label: "Trap chamber torch" },
   ];
   for (const prop of props) {
     out.push(piece({
@@ -152,12 +173,13 @@ export function ashgatePieces(): Piece[] {
 }
 
 export function roomOf(cell: Cell): string {
-  if (cell.iz >= 10 && cell.ix >= 3 && cell.ix <= 5) return "entrance";
-  if ((cell.ix <= 1 && cell.iz >= 9) || (cell.ix === 2 && cell.iz === 9)) return "storage";
-  if (cell.ix >= 8 && cell.iz >= 10) return "combat";
-  if (cell.ix >= 4 && cell.ix <= 9 && cell.iz <= 2) return "vault";
-  if (cell.iz >= 7 && cell.iz <= 8 && cell.ix >= 2 && cell.ix <= 5) return "court";
-  if (cell.iz >= 4 && cell.iz <= 5 && cell.ix >= 2 && cell.ix <= 8) return "hall";
+  if (cell.iz >= 10 && cell.ix <= 2) return "storage";
+  if (cell.iz >= 9 && cell.ix >= 7) return "combat";
+  if ((cell.iz >= 10 && cell.ix >= 3 && cell.ix <= 6) || (cell.ix === 5 && cell.iz === 9)) return "entrance";
+  if (cell.ix >= 3 && cell.ix <= 7 && cell.iz <= 2) return "vault";
+  if (cell.ix === 7 && cell.iz === 3) return "vault";
+  if ((cell.iz === 8 && cell.ix >= 1 && cell.ix <= 7) || (cell.iz === 7 && cell.ix >= 1 && cell.ix <= 7)) return "hall";
+  if (cell.iz >= 3 && cell.iz <= 5 && cell.ix >= 2 && cell.ix <= 5) return "traps";
   return "corridor";
 }
 

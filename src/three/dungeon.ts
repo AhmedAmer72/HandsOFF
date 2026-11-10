@@ -176,6 +176,8 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const livingBanners: THREE.Object3D[] = [];
   const livingCoins: THREE.Object3D[] = [];
   const livingWalls: { mesh: THREE.Object3D; z: number }[] = [];
+  const cutawayBatches: { mesh: THREE.InstancedMesh; slots: { matrix: THREE.Matrix4; z: number }[] }[] = [];
+  let cutawayStamp = Number.NaN;
   const floatPool: { sprite: THREE.Sprite; life: number }[] = [];
   const coinBurst = new THREE.Points(
     new THREE.BufferGeometry(),
@@ -331,17 +333,101 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     return actor;
   }
 
+  const repeatedFiles = new Set([
+    "floor_tile_large.gltf",
+    "floor_dirt_large.gltf",
+    "floor_tile_large_rocks.gltf",
+    "floor_wood_large_dark.gltf",
+    "wall.gltf",
+    "wall_half.gltf",
+    "pillar.gltf",
+  ]);
+
+  function placeMatrix(entry: Piece, local: THREE.Matrix4) {
+    const placed = new THREE.Matrix4().makeRotationY(entry.rot);
+    placed.setPosition(entry.x, entry.y, entry.z);
+    return placed.multiply(local);
+  }
+
+  async function meshTemplate(url: string) {
+    const gltf = await loadGltf(url);
+    const meshes: THREE.Mesh[] = [];
+    gltf.scene.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh || mesh.name === "Icosphere") return;
+      meshes.push(mesh);
+    });
+    const mesh = meshes.length === 1 ? meshes[0] : null;
+    if (!mesh) return null;
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const material of materials) {
+      if (!(material instanceof THREE.MeshStandardMaterial)) continue;
+      material.roughness = THREE.MathUtils.clamp(material.roughness, 0.38, 0.72);
+      if (/gold/i.test(mesh.name) || /gold/i.test(material.name)) material.metalness = Math.max(material.metalness, 0.42);
+      material.envMapIntensity = 0.35;
+    }
+    mesh.updateWorldMatrix(true, false);
+    return { geometry: mesh.geometry, material: mesh.material, local: mesh.matrixWorld.clone() };
+  }
+
+  function addInstances(template: { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[]; local: THREE.Matrix4 }, entries: Piece[], cutaway: boolean) {
+    if (!entries.length) return;
+    const mesh = new THREE.InstancedMesh(template.geometry, template.material, entries.length);
+    mesh.userData.level = true;
+    mesh.receiveShadow = true;
+    mesh.castShadow = entries[0]?.file === "pillar.gltf";
+    mesh.frustumCulled = false;
+    const slots: { matrix: THREE.Matrix4; z: number }[] = [];
+    entries.forEach((entry, index) => {
+      const matrix = placeMatrix(entry, template.local);
+      mesh.setMatrixAt(index, matrix);
+      slots.push({ matrix, z: entry.z });
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    scene.add(mesh);
+    if (entries[0]?.kind === "floor") {
+      mesh.userData.meta = entries[0];
+      floors.push(mesh);
+      selectables.push(mesh);
+    }
+    if (cutaway) cutawayBatches.push({ mesh, slots });
+  }
+
   async function buildLevel() {
     for (const child of [...scene.children]) {
       if (child.userData.level) scene.remove(child);
     }
     selectables.length = 0;
     floors.length = 0;
+    cutawayBatches.length = 0;
+    cutawayStamp = Number.NaN;
     selectables.push(groundPick);
     floors.push(groundPick);
     const layout = ashgatePieces();
-    const groups = new Map<string, Piece[]>();
+    const batches = new Map<string, Piece[]>();
+    const loose: Piece[] = [];
     for (const entry of layout) {
+      if (!repeatedFiles.has(entry.file)) {
+        loose.push(entry);
+        continue;
+      }
+      const list = batches.get(entry.url) ?? [];
+      list.push(entry);
+      batches.set(entry.url, list);
+    }
+    await Promise.all(
+      [...batches.entries()].map(async ([url, entries]) => {
+        const template = await meshTemplate(url);
+        if (!template) {
+          loose.push(...entries);
+          return;
+        }
+        addInstances(template, entries.filter((entry) => !entry.cutaway), false);
+        addInstances(template, entries.filter((entry) => entry.cutaway), true);
+      }),
+    );
+    const groups = new Map<string, Piece[]>();
+    for (const entry of loose) {
       const list = groups.get(entry.url) ?? [];
       list.push(entry);
       groups.set(entry.url, list);
@@ -372,19 +458,24 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
           if (entry.kind === "vault") mesh.userData.action = "brace";
           if (entry.kind === "floor") floors.push(mesh);
           if (entry.kind === "light") {
-            const light = new THREE.PointLight(TORCH, hooks.getQuality() === "low" ? 3 : 7, 9, 1.4);
+            const low = hooks.getQuality() === "low";
+            const vaultLight = entry.id === "torch-vault";
+            const light = new THREE.PointLight(vaultLight ? "#ffc56b" : TORCH, low ? 3 : vaultLight ? 9 : 7, low ? 9 : vaultLight ? 14 : 9, 1.4);
             light.position.set(entry.x, entry.y + 0.35, entry.z);
             light.userData.level = true;
+            light.userData.glow = !low && vaultLight ? 1.55 : 1;
             scene.add(light);
             const flame = new THREE.PointLight("#ffd2a1", 1.5, 2.5);
             flame.position.copy(light.position);
             flame.userData.level = true;
             flame.userData.flicker = true;
+            flame.userData.glow = 1;
             scene.add(flame);
           }
         }
       }),
     );
+    cutawayStamp = Number.NaN;
   }
 
   async function boot() {
@@ -914,7 +1005,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     const scale = visualScale(slow, calm);
     if (!calm) {
       const flicker = 1.15 + Math.sin(now * 0.008) * 0.28 + Math.sin(now * 0.021) * 0.08;
-      for (const light of livingLights) light.intensity = flicker;
+      for (const light of livingLights) light.intensity = flicker * (typeof light.userData.glow === "number" ? light.userData.glow : 1);
       const sway = Math.sin(now * 0.0015) * 0.04;
       for (const banner of livingBanners) banner.rotation.z = sway;
       const bob = Math.sin(now * 0.002) * 0.06;
@@ -924,7 +1015,25 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     const fog = scene.fog as THREE.Fog;
     fog.near = vault < 1200 * 0.25 ? 18 : 46;
     const camSide = camera.position.z > focus.z;
-    for (const wall of livingWalls) wall.mesh.visible = !(camSide && wall.z > focus.z - 1);
+    // Hide interior walls on the near side of the hall. The spike door sits just
+    // south of the camera focus, so the cut starts a full tile closer than that.
+    const cutZ = focus.z + CELL;
+    const stamp = (camSide ? 1 : 0) * 100000 + Math.floor(cutZ);
+    if (stamp !== cutawayStamp) {
+      cutawayStamp = stamp;
+      for (const wall of livingWalls) wall.mesh.visible = !(camSide && wall.z > cutZ);
+      for (const batch of cutawayBatches) {
+        let count = 0;
+        for (const slot of batch.slots) {
+          if (camSide && slot.z > cutZ) continue;
+          batch.mesh.setMatrixAt(count, slot.matrix);
+          count += 1;
+        }
+        batch.mesh.count = count;
+        batch.mesh.visible = count > 0;
+        batch.mesh.instanceMatrix.needsUpdate = true;
+      }
+    }
     for (const mark of floatPool) {
       if (mark.life <= 0) continue;
       mark.life -= dt;

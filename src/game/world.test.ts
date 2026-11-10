@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HERO_PROFILES } from "./config/heroProfiles";
-import { ROOM_GATES, isWalkable, walkableCells } from "./config/gameRules";
+import { ROOM_GATES, RULES, isWalkable, walkableCells } from "./config/gameRules";
 import { findPath } from "./engine/path";
 import { ashgatePieces, roomOf } from "./world";
 
@@ -17,8 +17,13 @@ describe("Ashgate dressing", () => {
       const ix = Math.round(floor.x / CELL);
       const iz = Math.round(floor.z / CELL);
       seen.add(`${ix},${iz}`);
+      const open = isWalkable(ix, iz);
+      const vault = open && roomOf({ ix, iz }) === "vault";
+      const packed = open && (roomOf({ ix, iz }) === "storage" || roomOf({ ix, iz }) === "combat");
+      const hallEdge = open && roomOf({ ix, iz }) === "hall" && (ix === 1 || ix === 7 || iz === 8);
       const wood = iz === 11 && ix === 4;
-      expect(floor.file).toBe(wood ? "floor_wood_large.gltf" : "floor_tile_large.gltf");
+      const file = wood ? "floor_wood_large.gltf" : vault ? "floor_tile_large_rocks.gltf" : packed ? "floor_dirt_large.gltf" : hallEdge ? "floor_wood_large_dark.gltf" : "floor_tile_large.gltf";
+      expect(floor.file).toBe(file);
     }
     for (const cell of walkableCells()) expect(seen.has(`${cell.ix},${cell.iz}`)).toBe(true);
   });
@@ -46,7 +51,7 @@ describe("Ashgate dressing", () => {
       expect(entranceBanner ? room === "entrance" : room === "vault" || room === "storage").toBe(true);
     }
     const lights = pieces.filter((piece) => piece.kind === "light");
-    expect(lights).toHaveLength(5);
+    expect(lights).toHaveLength(6);
     expect(lights.every((light) => light.y >= 1.4)).toBe(true);
     expect(pieces.filter((piece) => piece.id.startsWith("room-gate-")).map((piece) => piece.id).sort()).toEqual(
       ROOM_GATES.map((gate) => `room-gate-${gate.id}`).sort(),
@@ -58,8 +63,9 @@ describe("Ashgate dressing", () => {
     expect(path[0]).toEqual({ ix: 4, iz: 11 });
     expect(path.at(-1)).toEqual({ ix: 4, iz: 0 });
     expect(path.some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(true);
-    expect(path.some((cell) => cell.ix === 9 && cell.iz === 3)).toBe(true);
-    expect(path.some((cell) => cell.ix === 7 && cell.iz === 5)).toBe(true);
+    expect(path.some((cell) => cell.ix === ROOM_GATES[0].ix && cell.iz === ROOM_GATES[0].iz)).toBe(true);
+    expect(path.some((cell) => cell.ix === ROOM_GATES[2].ix && cell.iz === ROOM_GATES[2].iz)).toBe(true);
+    expect(path.some((cell) => cell.ix === RULES.skeletons[0].ix && cell.iz === RULES.skeletons[0].iz)).toBe(true);
     expect(path.some((cell) => cell.ix === 11 && cell.iz === 11)).toBe(false);
     expect(new Set(path.map((cell) => cell.ix)).size).toBeGreaterThan(2);
     expect(path.length).toBeGreaterThan(18);
@@ -74,8 +80,9 @@ describe("Ashgate dressing", () => {
     expect(Math.max(...xs)).toBe(11);
     expect(Math.min(...zs)).toBe(0);
     expect(Math.max(...zs)).toBe(11);
-    expect(has(0, 0) && has(11, 0) && has(0, 11) && has(11, 11)).toBe(true);
-    expect(has(4, 0) && has(6, 1) && has(9, 2)).toBe(true);
+    expect(has(0, 11) && has(11, 11)).toBe(true);
+    expect(has(0, 0) || has(11, 0)).toBe(false);
+    expect(has(4, 0)).toBe(true);
     expect(has(2, 0) || has(10, 0)).toBe(false);
     for (const gate of ROOM_GATES) {
       expect(has(gate.ix, gate.iz)).toBe(true);
@@ -84,8 +91,8 @@ describe("Ashgate dressing", () => {
       expect(has(gate.ix, gate.iz - 1)).toBe(true);
       expect(has(gate.ix, gate.iz + 1)).toBe(true);
     }
-    const foyer = cells.filter((cell) => cell.iz >= 10 && cell.ix >= 3 && cell.ix <= 5);
-    expect(foyer).toHaveLength(6);
+    const gateChamber = cells.filter((cell) => cell.iz >= 10 && cell.ix >= 3 && cell.ix <= 6);
+    expect(gateChamber).toHaveLength(8);
     for (const gate of ROOM_GATES) {
       const mesh = pieces.find((piece) => piece.id === `room-gate-${gate.id}`);
       expect(mesh?.x).toBe(gate.ix * CELL);
@@ -116,7 +123,10 @@ describe("Ashgate dressing", () => {
 
   it("sends a locked spike gate down the long bypass and stops a locked vault gate", () => {
     const around = findPath([], [], HERO_PROFILES.kara, ["spike"]);
+    const guard = RULES.skeletons[0];
     expect(around.some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(false);
+    expect(around.some((cell) => cell.ix === guard.ix && cell.iz === guard.iz)).toBe(true);
+    expect(around.some((cell) => cell.ix === 11 && cell.iz === 11)).toBe(false);
     expect(around.at(-1)).toEqual({ ix: 4, iz: 0 });
     expect(around.length).toBeGreaterThan(findPath([], [], HERO_PROFILES.kara).length);
     const stopped = findPath([], [], HERO_PROFILES.kara, ["vault"]);
