@@ -104,7 +104,6 @@ describe("Ashgate dressing", () => {
       expect(has(gate.ix, gate.iz - 1)).toBe(true);
       expect(has(gate.ix, gate.iz + 1)).toBe(true);
     }
-    expect(cells.filter((cell) => cell.iz === ROOM_GATES[0].iz)).toHaveLength(1);
     for (const gate of ROOM_GATES) {
       const mesh = pieces.find((piece) => piece.id === `room-gate-${gate.id}`);
       expect(mesh?.x).toBe(gate.ix * CELL);

@@ -8,7 +8,7 @@ function piece(partial: Omit<Piece, "y" | "rot"> & { y?: number; rot?: number })
   return { y: 0, rot: 0, ...partial };
 }
 
-function edgePiece(ix: number, iz: number, side: "n" | "s" | "e" | "w", fileName: string, label: string): Piece {
+function edgePiece(ix: number, iz: number, side: "n" | "s" | "e" | "w", fileName: string, label: string, cutaway = false): Piece {
   const x = ix * CELL + (side === "w" ? -2 : side === "e" ? 2 : 0);
   const z = iz * CELL + (side === "n" ? -2 : side === "s" ? 2 : 0);
   const rot = side === "w" ? Math.PI / 2 : side === "e" ? -Math.PI / 2 : side === "s" ? Math.PI : 0;
@@ -22,11 +22,11 @@ function edgePiece(ix: number, iz: number, side: "n" | "s" | "e" | "w", fileName
     rot,
     kind: "wall",
     label,
-    cutaway: false,
+    cutaway,
   });
 }
 
-function centerPiece(id: string, fileName: string, ix: number, iz: number, rot: number, label: string): Piece {
+function centerPiece(id: string, fileName: string, ix: number, iz: number, rot: number, label: string, cutaway = false): Piece {
   return piece({
     id,
     url: dungeon(fileName),
@@ -37,7 +37,7 @@ function centerPiece(id: string, fileName: string, ix: number, iz: number, rot: 
     rot,
     kind: "wall",
     label,
-    cutaway: false,
+    cutaway,
   });
 }
 
@@ -88,7 +88,7 @@ export function ashgatePieces(): Piece[] {
   }
   // One wall segment per solid cell, centered so a grate sits in the same line.
   // A turn uses two half segments so the corner joins without a second wall.
-  // The overhead camera shows every wall, so none of them cut away.
+  // Every stone wall stays up so the room outlines match the floor plan.
   const armRot = { e: 0, w: Math.PI, s: -Math.PI / 2, n: Math.PI / 2 } as const;
   const pillarAt = (ix: number, iz: number) => PILLARS.some((cell) => cell.ix === ix && cell.iz === iz);
   for (let ix = 0; ix <= HALL_W; ix++) {
@@ -127,20 +127,20 @@ export function ashgatePieces(): Piece[] {
     { id: "entrance-banner-left", file: "banner_red", x: 4 * CELL - 2.9, z: HALL_H * CELL + 2.7, label: "Entrance banner" },
     { id: "entrance-banner-right", file: "banner_red", x: 4 * CELL + 2.9, z: HALL_H * CELL + 2.7, label: "Entrance banner" },
     { id: "vault-chest", file: "chest_gold", x: 4 * CELL, z: -1.05, kind: "vault", label: "Treasure vault" },
-    { id: "vault-coins", file: "coin_stack_medium", x: CELL, z: 0.7, label: "Vault coins" },
-    { id: "bedroom-bed", file: "bed_decorated", x: 0.55, z: 5.1, rot: 0.15, label: "Bedroom bed" },
+    { id: "vault-coins", file: "coin_stack_medium", x: 2 * CELL, z: 0.7, label: "Vault coins" },
+    { id: "bedroom-bed", file: "bed_decorated", x: CELL, z: CELL, rot: 0.2, label: "Bedroom bed" },
     { id: "round-table", file: "table_medium", x: CELL, z: 4 * CELL, rot: 0.4, label: "Round table" },
-    { id: "store-table", file: "table_small", x: CELL, z: 10 * CELL, rot: 0.2, label: "Lower table" },
+    { id: "store-table", file: "table_small", x: CELL, z: 9 * CELL, rot: 0.2, label: "Lower table" },
     { id: "dining-table", file: "table_long", x: 10 * CELL, z: 10 * CELL, rot: Math.PI / 2, label: "Dining table" },
-    { id: "dining-chair-north", file: "chair", x: 10 * CELL, z: 10 * CELL - 1.85, rot: Math.PI, label: "Dining chair" },
-    { id: "dining-chair-south", file: "chair", x: 10 * CELL, z: 10 * CELL + 1.85, label: "Dining chair" },
-    { id: "store-barrel", file: "barrel_small", x: 0.55, z: 11 * CELL, rot: 0.4, label: "Store barrel" },
-    { id: "store-crates", file: "box_small", x: 0.7, z: 9 * CELL + 0.4, rot: 0.2, label: "Store crates" },
+    { id: "dining-chair-north", file: "chair", x: 10 * CELL, z: 10 * CELL - 1.7, rot: Math.PI, label: "Dining chair" },
+    { id: "dining-chair-south", file: "chair", x: 10 * CELL, z: 10 * CELL + 1.7, label: "Dining chair" },
+    { id: "store-barrel", file: "barrel_small", x: CELL, z: 11 * CELL, rot: 0.4, label: "Store barrel" },
+    { id: "store-crates", file: "box_small", x: 2 * CELL, z: 10 * CELL, rot: 0.2, label: "Store crates" },
     { id: "torch-vault", file: "torch_mounted", x: 2 * CELL, y: 1.65, z: -1.65, kind: "light", label: "Vault torch" },
     { id: "torch-store", file: "torch_mounted", x: -1.65, y: 1.65, z: 4 * CELL, rot: Math.PI / 2, kind: "light", label: "Parlor torch" },
     { id: "torch-gate-west", file: "torch_mounted", x: 3 * CELL, y: 1.65, z: HALL_H * CELL + 1.55, rot: Math.PI, kind: "light", label: "Gate torch" },
     { id: "torch-gate-east", file: "torch_mounted", x: 5 * CELL, y: 1.65, z: HALL_H * CELL + 1.55, rot: Math.PI, kind: "light", label: "Gate torch" },
-    { id: "torch-hall", file: "torch_mounted", x: 10 * CELL, y: 1.65, z: 9 * CELL - 1.2, rot: Math.PI, kind: "light", label: "Dining torch" },
+    { id: "torch-hall", file: "torch_mounted", x: 10 * CELL, y: 1.65, z: 9 * CELL - 1.55, rot: Math.PI, kind: "light", label: "Dining torch" },
     { id: "torch-rubble", file: "torch_mounted", x: 9 * CELL, y: 1.65, z: -1.65, kind: "light", label: "Rubble torch" },
   ];
   for (const prop of props) {

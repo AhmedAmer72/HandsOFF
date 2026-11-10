@@ -40,26 +40,26 @@ export const ROOM_GATES = [
 export type RoomGateId = (typeof ROOM_GATES)[number]["id"];
 
 /**
- * Ashgate copied from the overhead floor plan. Row 0 is north, column 0 is west.
- * `#` is wall, `P` is a pillar. Other letters are floors:
+ * Ashgate copied from the reference floor plan. Row 0 is north, column 0 is west.
+ * `#` is a stone wall, `P` is a pillar. Other letters are floors:
  * V bedroom vault, U its gate, R rubble, G and S small north rooms,
  * t round-table room, Q side chamber, K spike door, C court gate,
  * L lower furnished room, E entrance, W dining hall, N lower-right room.
- * `.` and `b` are stone corridor.
+ * `.` is stone corridor. The right-hand corridor and the room walls follow the plan.
  */
 export const HALL_PLAN = [
-  "VVVVV##RPRPR#GG.SS",
-  "VVV#U##RRRRR#GG.SS",
-  "VVV#...#RRRR###.##",
-  "######.#...####.##",
-  "ttt#............QQ",
-  "tttt...........#QQ",
-  "b###K#############",
-  "..................",
-  "####C#############",
-  "LLL#...WWWWWW#NNNN",
-  "LLL.##.WWWWWW.NNNN",
-  "LLL.EE.WWWWWW.NNNN",
+  "VVVVV##RPRR#GG.#SS",
+  "VVV#U##RPRR#GG.#SS",
+  "VVV#...RRRR###.#..",
+  "######.##.####.#.#",
+  "tttt...##..###.#QQ",
+  "ttttt####..##.#.QQ",
+  ".###K####..###.#..",
+  ".....#####.###.#..",
+  "####C#########.NNN",
+  "LLL#...#WWWW##.NNN",
+  "LLL###.#WWWW##.NNN",
+  "LLL.EE.WWWW..#.NNN",
 ] as const;
 
 export const HALL_W = HALL_PLAN[0].length - 1;
@@ -67,7 +67,6 @@ export const HALL_H = HALL_PLAN.length - 1;
 
 const FLOOR_BY_LETTER: Record<string, string> = {
   V: "floor_wood_large_dark",
-  t: "floor_wood_large_dark",
   L: "floor_wood_large_dark",
   W: "floor_wood_large",
   E: "floor_wood_large",

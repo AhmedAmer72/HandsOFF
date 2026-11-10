@@ -79,27 +79,27 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   renderer.setClearColor("#14100E");
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog("#1B1A22", 140, 320);
+  scene.fog = new THREE.Fog("#1B1A22", 60, 220);
   scene.add(new THREE.HemisphereLight("#ffe0bf", "#2a1c16", 0.72));
-  const hallFocus = new THREE.Vector3(8.5 * CELL, 0, 7.2 * CELL);
+  const hallFocus = new THREE.Vector3(8.5 * CELL, 0, 6.4 * CELL);
   const sun = new THREE.DirectionalLight("#d7e4ff", 0.55);
-  sun.position.set(hallFocus.x + 18, 40, hallFocus.z + 14);
+  sun.position.set(hallFocus.x + 16, 32, hallFocus.z + 12);
   sun.target.position.copy(hallFocus);
   scene.add(sun.target);
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 180;
-  sun.shadow.camera.left = -72;
-  sun.shadow.camera.right = 72;
-  sun.shadow.camera.top = 56;
-  sun.shadow.camera.bottom = -56;
+  sun.shadow.camera.far = 160;
+  sun.shadow.camera.left = -80;
+  sun.shadow.camera.right = 80;
+  sun.shadow.camera.top = 64;
+  sun.shadow.camera.bottom = -64;
   scene.add(sun);
 
-  const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 400);
+  const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 240);
   const focus = new THREE.Vector3(8, 0, 8);
   let yaw = 0;
-  let view = 50;
+  let view = 48;
   const pointer = new THREE.Vector2();
   const raycaster = new THREE.Raycaster();
   const selectables: THREE.Object3D[] = [];
@@ -244,14 +244,20 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   }
 
   function aimCamera() {
-    // Straight overhead. North (low z) stays at the top of the screen, matching the floor plan.
-    camera.up.set(Math.sin(yaw), 0, -Math.cos(yaw));
-    camera.position.set(focus.x, 90, focus.z);
+    const az = Math.PI / 4 + yaw;
+    const el = 35 * Math.PI / 180;
+    const dist = 48;
+    camera.up.set(0, 1, 0);
+    camera.position.set(
+      focus.x + Math.cos(az) * Math.cos(el) * dist,
+      2 + Math.sin(el) * dist,
+      focus.z + Math.sin(az) * Math.cos(el) * dist,
+    );
     const elapsed = Math.max(0, (performance.now() - shakeStarted) / 1000);
     const shake = shakeOffset(elapsed, shakeAmp, hooks.getReduceMotion?.() ?? false);
     camera.position.x += shake.x;
-    camera.position.z += shake.y;
-    camera.lookAt(focus.x, 0, focus.z);
+    camera.position.y += shake.y;
+    camera.lookAt(focus);
     camera.updateMatrixWorld();
   }
 
@@ -492,9 +498,9 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       placed.push({ id: trap.id, trapId: trap.trapId, mesh, x: trap.ix * CELL, z: trap.iz * CELL, spent: false });
     }
     const heroPosts: Record<HeroId, { x: number; z: number }> = {
-      kara: { x: 5 * CELL, z: 11 * CELL },
-      brann: { x: 3 * CELL, z: 11 * CELL },
-      ivo: { x: 6 * CELL, z: 11 * CELL },
+      kara: { x: 2 * CELL, z: 11 * CELL },
+      brann: { x: CELL, z: 11 * CELL },
+      ivo: { x: 17 * CELL, z: 10 * CELL },
     };
     for (const lead of HEROES) {
       const spot = heroPosts[lead.id];
@@ -824,7 +830,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
 
   function onWheel(event: WheelEvent) {
     event.preventDefault();
-    view = THREE.MathUtils.clamp(view + event.deltaY * 0.01, 16, 78);
+    view = THREE.MathUtils.clamp(view + event.deltaY * 0.01, 16, 64);
     resize();
   }
 
@@ -834,7 +840,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     if (event.key === "e") yaw = THREE.MathUtils.clamp(yaw + 0.08, -0.7, 0.7);
     if (event.key.toLowerCase() === "r") {
       yaw = 0;
-      view = 50;
+      view = 48;
       focus.copy(hallFocus);
       resize();
     }
@@ -1009,9 +1015,10 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     }
     const vault = hooks.getVault?.() ?? 1200;
     const fog = scene.fog as THREE.Fog;
-    fog.near = vault < 1200 * 0.25 ? 70 : 140;
-    const camSide = false;
-    // The camera looks straight down, so the old near-side wall cut stays off.
+    fog.near = vault < 1200 * 0.25 ? 28 : 70;
+    const camSide = camera.position.z > focus.z;
+    // Near-side interior walls can still cut away when a piece is marked. Ashgate's
+    // stone walls are not marked, so the floor-plan outlines stay visible.
     const cutZ = focus.z + CELL;
     const stamp = (camSide ? 1 : 0) * 100000 + Math.floor(cutZ);
     if (stamp !== cutawayStamp) {
