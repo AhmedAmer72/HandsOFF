@@ -79,27 +79,27 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   renderer.setClearColor("#14100E");
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog("#1B1A22", 60, 200);
+  scene.fog = new THREE.Fog("#1B1A22", 140, 320);
   scene.add(new THREE.HemisphereLight("#ffe0bf", "#2a1c16", 0.72));
-  const hallFocus = new THREE.Vector3(5.5 * CELL, 0, 5.5 * CELL);
+  const hallFocus = new THREE.Vector3(8.5 * CELL, 0, 7.2 * CELL);
   const sun = new THREE.DirectionalLight("#d7e4ff", 0.55);
-  sun.position.set(hallFocus.x + 16, 32, hallFocus.z + 12);
+  sun.position.set(hallFocus.x + 18, 40, hallFocus.z + 14);
   sun.target.position.copy(hallFocus);
   scene.add(sun.target);
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 120;
-  sun.shadow.camera.left = -56;
-  sun.shadow.camera.right = 56;
+  sun.shadow.camera.far = 180;
+  sun.shadow.camera.left = -72;
+  sun.shadow.camera.right = 72;
   sun.shadow.camera.top = 56;
   sun.shadow.camera.bottom = -56;
   scene.add(sun);
 
-  const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 240);
+  const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 400);
   const focus = new THREE.Vector3(8, 0, 8);
   let yaw = 0;
-  let view = 30;
+  let view = 50;
   const pointer = new THREE.Vector2();
   const raycaster = new THREE.Raycaster();
   const selectables: THREE.Object3D[] = [];
@@ -132,11 +132,11 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const keys = new Set<string>();
 
   const groundPick = new THREE.Mesh(
-    new THREE.PlaneGeometry(64, 64),
+    new THREE.PlaneGeometry(96, 72),
     new THREE.MeshBasicMaterial({ visible: false }),
   );
   groundPick.rotation.x = -Math.PI / 2;
-  groundPick.position.y = 0.02;
+  groundPick.position.set(hallFocus.x, 0.02, hallFocus.z);
   groundPick.userData.meta = {
     id: "ground",
     url: "",
@@ -244,19 +244,14 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   }
 
   function aimCamera() {
-    const az = Math.PI / 4 + yaw;
-    const el = 35 * Math.PI / 180;
-    const dist = 48;
-    camera.position.set(
-      focus.x + Math.cos(az) * Math.cos(el) * dist,
-      2 + Math.sin(el) * dist,
-      focus.z + Math.sin(az) * Math.cos(el) * dist,
-    );
+    // Straight overhead. North (low z) stays at the top of the screen, matching the floor plan.
+    camera.up.set(Math.sin(yaw), 0, -Math.cos(yaw));
+    camera.position.set(focus.x, 90, focus.z);
     const elapsed = Math.max(0, (performance.now() - shakeStarted) / 1000);
     const shake = shakeOffset(elapsed, shakeAmp, hooks.getReduceMotion?.() ?? false);
     camera.position.x += shake.x;
-    camera.position.y += shake.y;
-    camera.lookAt(focus);
+    camera.position.z += shake.y;
+    camera.lookAt(focus.x, 0, focus.z);
     camera.updateMatrixWorld();
   }
 
@@ -338,6 +333,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     "floor_dirt_large.gltf",
     "floor_tile_large_rocks.gltf",
     "floor_wood_large_dark.gltf",
+    "floor_wood_large.gltf",
     "wall.gltf",
     "wall_half.gltf",
     "pillar.gltf",
@@ -496,9 +492,9 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       placed.push({ id: trap.id, trapId: trap.trapId, mesh, x: trap.ix * CELL, z: trap.iz * CELL, spent: false });
     }
     const heroPosts: Record<HeroId, { x: number; z: number }> = {
-      kara: { x: 4 * CELL, z: 10 * CELL },
-      brann: { x: 3 * CELL, z: 10 * CELL },
-      ivo: { x: 5 * CELL, z: 10 * CELL },
+      kara: { x: 5 * CELL, z: 11 * CELL },
+      brann: { x: 3 * CELL, z: 11 * CELL },
+      ivo: { x: 6 * CELL, z: 11 * CELL },
     };
     for (const lead of HEROES) {
       const spot = heroPosts[lead.id];
@@ -828,7 +824,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
 
   function onWheel(event: WheelEvent) {
     event.preventDefault();
-    view = THREE.MathUtils.clamp(view + event.deltaY * 0.01, 10, 56);
+    view = THREE.MathUtils.clamp(view + event.deltaY * 0.01, 16, 78);
     resize();
   }
 
@@ -838,7 +834,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     if (event.key === "e") yaw = THREE.MathUtils.clamp(yaw + 0.08, -0.7, 0.7);
     if (event.key.toLowerCase() === "r") {
       yaw = 0;
-      view = 30;
+      view = 50;
       focus.copy(hallFocus);
       resize();
     }
@@ -1013,10 +1009,9 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     }
     const vault = hooks.getVault?.() ?? 1200;
     const fog = scene.fog as THREE.Fog;
-    fog.near = vault < 1200 * 0.25 ? 18 : 46;
-    const camSide = camera.position.z > focus.z;
-    // Hide interior walls on the near side of the hall. The spike door sits just
-    // south of the camera focus, so the cut starts a full tile closer than that.
+    fog.near = vault < 1200 * 0.25 ? 70 : 140;
+    const camSide = false;
+    // The camera looks straight down, so the old near-side wall cut stays off.
     const cutZ = focus.z + CELL;
     const stamp = (camSide ? 1 : 0) * 100000 + Math.floor(cutZ);
     if (stamp !== cutawayStamp) {
