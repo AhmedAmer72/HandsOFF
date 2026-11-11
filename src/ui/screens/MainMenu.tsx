@@ -63,7 +63,7 @@ export function MainMenu() {
 
       {wallet !== "closed" && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="wallet-title">
-          <ForgedFrame className="w-full max-w-md text-left">
+          <ForgedFrame variant="modal" className="w-full max-w-md text-left">
             <h2 id="wallet-title" className="font-display text-2xl text-gold">Connect Wallet</h2>
             <p className="mt-3 text-sm text-parchment/80" data-testid="wallet-status">
               {wallet === "prompt" && "No sign-in provider is configured on this build. Nothing has been linked. Close this and press Get Started to enter as a guest."}

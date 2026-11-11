@@ -1,11 +1,11 @@
 # Ashgate plate
 
-The interface is a set of struck plates: blackened steel for the hall and navigation, parchment ledgers for contracts and receipts, and stone tablets for the world-map list. Ornaments are original SVG marks. Prices, names, and counts stay real text.
+Frames, buttons, and indicators are the supplied SVG pack. `src/ui/pack` maps each file to a component. Prices, names, and counts stay real text. The marks in this folder remain for any screen that has not switched.
 
 ## Pieces
 
 - `marks.tsx` draws the coin, flame, cinder, trap, possess, pause, play, gear, shield, and wax-seal marks.
-- `frame.tsx` is `ForgedFrame`. Corners are fixed rivets. The edge is an inset stroke. The center is a flat fill, so a plate can grow without stretching the rivets. Variants are `steel`, `ledger`, and `tablet`.
+- `frame.tsx` is `ForgedFrame`. It delegates to `OrnatePanel`, which slices a pack frame with `border-image`. Variants are `steel`, `ledger`, `tablet`, `modal`, `compact`, `hero`, `tall`, and `tooltip`.
 - `controls.tsx` is the control set: `SealButton`, `RingButton`, `Medallion`, `Channel`, `TrapSeal`, `HeroPip`, `Notice`, and `Prompt`.
 - `src/ui/kit.tsx` keeps `Panel`, `Button`, `Receipt`, `Status`, `Field`, `Title`, and `Num`. `Panel` and `Receipt` render a frame. `Button` renders a seal. Screens that already imported the kit pick up the plates without a logic change.
 
@@ -13,7 +13,7 @@ Tokens live in `tailwind.config.js` and `src/styles.css`. The existing ink, gold
 
 ## Where it is used
 
-The dungeon HUD in `src/ui/App.tsx` keeps the same corners: medallions, trap seals, tier and vault channels, and iron rings. The contract board is a ledger, and a settled permit carries the wax seal. The landing photograph stays behind the hero. Get Started and Connect Wallet are seals. The shell is a steel rail. The world map stays a list of tablets. Market and workshop canvases stay; their sheets are plaques beside the stall.
+The dungeon HUD uses resource panels, trap cards, hero tabs, and circular pause, speed, and settings buttons. The contract board is a parchment panel, and a settled permit carries the pack wax seal. The landing photograph stays behind the hero. Get Started and Connect Wallet use the button frames. The shell uses tab frames and pack icons. The world map stays a list. Market and workshop canvases stay; their sheets open after you walk up and press E.
 
 Trap prices shown on the seals are the live economy values. The raid simulation, path costs, store actions, and the raid camera lock are unchanged.
 

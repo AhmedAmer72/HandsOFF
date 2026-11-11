@@ -1,0 +1,16 @@
+/* UNDERREALM SVG asset pack theme tokens */
+:root {
+  --ur-ink: #3A2A1A;
+  --ur-parchment: #E9D8B4;
+  --ur-stone: #2B2A33;
+  --ur-stone-light: #3E3C4A;
+  --ur-shadow: #14100E;
+  --ur-torch: #FF9A3C;
+  --ur-ember: #FF5A1F;
+  --ur-gold: #A87935;
+  --ur-gold-bright: #F2C14E;
+  --ur-bronze: #694426;
+  --ur-teal: #3FA7A0;
+  --ur-rust: #B5532E;
+  --ur-danger: #8E1B1B;
+}

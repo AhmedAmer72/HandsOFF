@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="72" height="72" viewBox="0 0 72 72" role="img"><style>
+:root{--ur-metal-hi:#E6C27A;--ur-gold:#A87935;--ur-bronze:#694426;--ur-gold2:#C69A52;--ur-metal-dark:#3B281B;--ur-surface-hi:#28242A;--ur-surface:#171519;--ur-surface-deep:#100F12;--ur-parchment:#E9D8B4;--ur-ink:#3A2A1A;}
+</style>
+<defs>
+  <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#E6C27A"/>
+    <stop offset="0.22" stop-color="#A87935"/>
+    <stop offset="0.48" stop-color="#694426"/>
+    <stop offset="0.72" stop-color="#C69A52"/>
+    <stop offset="1" stop-color="#3B281B"/>
+  </linearGradient>
+  <linearGradient id="metalThin" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#F1D89B"/>
+    <stop offset="0.5" stop-color="#94652F"/>
+    <stop offset="1" stop-color="#3A271A"/>
+  </linearGradient>
+  <linearGradient id="surface" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#28242A"/>
+    <stop offset="0.55" stop-color="#171519"/>
+    <stop offset="1" stop-color="#100F12"/>
+  </linearGradient>
+  <linearGradient id="goldGlow" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#FFE4A1"/>
+    <stop offset="0.5" stop-color="#D6A64E"/>
+    <stop offset="1" stop-color="#7D4D20"/>
+  </linearGradient>
+  <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="blur"/>
+    <feOffset dy="3" dx="0" result="off"/>
+    <feColorMatrix in="off" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .65 0" result="shadow"/>
+    <feMerge><feMergeNode in="shadow"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="softGlow" x="-80%" y="-80%" width="260%" height="260%">
+    <feGaussianBlur stdDeviation="2.2" result="b"/>
+    <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <pattern id="grain" width="24" height="24" patternUnits="userSpaceOnUse">
+    <circle cx="4" cy="6" r=".7" fill="#C6A36D" opacity=".12"/>
+    <circle cx="17" cy="14" r=".55" fill="#FFFFFF" opacity=".08"/>
+    <path d="M2 20l4-1M15 3l3 1" stroke="#000" stroke-width=".7" opacity=".18"/>
+  </pattern>
+</defs>
+<circle cx="36.0" cy="38.0" r="31.0" fill="#08080A" opacity=".8"/>
+<circle cx="36.0" cy="36.0" r="29.0" fill="url(#surface)" stroke="url(#metal)" stroke-width="4" filter="url(#shadow)"/>
+<circle cx="36.0" cy="36.0" r="22.0" fill="none" stroke="#E4C47F" stroke-width="1.3" opacity=".68"/>
+<circle cx="36.0" cy="36.0" r="17.0" fill="none" stroke="#08070A" stroke-width="2" opacity=".8"/>
+<path d="M 17.0 13 A 17.0 17.0 0 0 1 55.0 13" fill="none" stroke="#FFF0C9" stroke-width="2" opacity=".45"/>
+<circle cx="36.0" cy="8" r="2" fill="#F4D994"/><circle cx="36.0" cy="64" r="2" fill="#8D612F"/>
+</svg>

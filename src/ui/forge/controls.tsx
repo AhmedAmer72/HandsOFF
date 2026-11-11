@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { ProgressTrack } from "../pack/components";
 import "./forge.css";
 
 type Tone = "gold" | "ghost" | "ember";
@@ -9,8 +10,9 @@ export function SealButton({
   children,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: Tone }) {
+  const toneClass = tone === "ghost" ? "ur-btn-ghost" : tone === "ember" ? "ur-btn-ember" : "";
   return (
-    <button className={`seal seal-${tone} ${className}`} {...props}>
+    <button className={`ur-btn ${toneClass} ${className}`} {...props}>
       {children}
     </button>
   );
@@ -23,7 +25,7 @@ export function RingButton({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { pressed?: boolean }) {
   return (
-    <button className={`iron-ring ${pressed ? "is-on" : ""} ${className}`} {...props}>
+    <button type="button" className={`ur-ring ${pressed ? "is-on" : ""} ${className}`} {...props}>
       {children}
     </button>
   );
@@ -72,23 +74,20 @@ export function Channel({
   mark?: ReactNode;
   meter?: { now: number; max: number; label: string };
 }) {
-  const width = `${Math.max(0, Math.min(100, pct))}%`;
   return (
-    <div className="channel">
-      <div className="channel-head">
-        {mark}
-        <p className="channel-kicker">{kicker}</p>
-        {value != null && <span className="num font-display channel-value">{value}</span>}
-      </div>
-      <div
-        className="channel-track"
-        role={meter ? "meter" : undefined}
-        aria-label={meter?.label}
-        aria-valuenow={meter?.now}
-        aria-valuemin={meter ? 0 : undefined}
-        aria-valuemax={meter?.max}
-      >
-        <span className={`channel-fill ${hot ? "is-hot" : ""}`} style={{ width }} />
+    <div className="ur-panel ur-panel-compact">
+      <div className="ur-panel-body ur-panel-pad">
+        <div className="channel-head">
+          {mark}
+          <p className={`channel-kicker ${hot ? "text-blood" : ""}`}>{kicker}</p>
+          {value != null && <span className="num font-display channel-value">{value}</span>}
+        </div>
+        <ProgressTrack
+          pct={pct}
+          label={meter?.label}
+          now={meter?.now}
+          max={meter?.max}
+        />
       </div>
     </div>
   );
@@ -124,15 +123,18 @@ export function HeroPip({
   max,
   pressed,
   onClick,
+  icon,
 }: {
   name: string;
   hp: number;
   max: number;
   pressed: boolean;
   onClick: () => void;
+  icon?: ReactNode;
 }) {
   return (
-    <button type="button" className={`hero-pip ${pressed ? "is-on" : ""}`} aria-pressed={pressed} onClick={onClick}>
+    <button type="button" className={`ur-tab ${pressed ? "is-on" : ""}`} aria-pressed={pressed} onClick={onClick}>
+      {icon}
       <span>{name}</span>
       <span className="num">{hp}/{max}</span>
     </button>

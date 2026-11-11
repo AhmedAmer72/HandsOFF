@@ -1,7 +1,19 @@
 import type { ReactNode } from "react";
-import "./forge.css";
+import { OrnatePanel } from "../pack/components";
 
-type Variant = "steel" | "ledger" | "tablet";
+type Variant = "steel" | "ledger" | "tablet" | "modal" | "compact" | "hero" | "tall" | "square" | "tooltip";
+
+const FRAME = {
+  steel: "wide",
+  ledger: "parchment",
+  tablet: "wide",
+  modal: "modal",
+  compact: "compact",
+  hero: "hero",
+  tall: "tall",
+  square: "square",
+  tooltip: "tooltip",
+} as const;
 
 export function ForgedFrame({
   variant = "steel",
@@ -14,13 +26,5 @@ export function ForgedFrame({
   children: ReactNode;
   pad?: boolean;
 }) {
-  return (
-    <section className={`forged forged-${variant} ${className}`}>
-      <span className="forged-rivet forged-rivet-tl" aria-hidden="true" />
-      <span className="forged-rivet forged-rivet-tr" aria-hidden="true" />
-      <span className="forged-rivet forged-rivet-bl" aria-hidden="true" />
-      <span className="forged-rivet forged-rivet-br" aria-hidden="true" />
-      <div className={pad ? "forged-body" : "forged-body forged-body-tight"}>{children}</div>
-    </section>
-  );
+  return <OrnatePanel frame={FRAME[variant]} className={className} pad={pad}>{children}</OrnatePanel>;
 }

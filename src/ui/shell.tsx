@@ -1,13 +1,15 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import type { ScreenId } from "../game/content";
 import { setScreen } from "../game/store";
 import { sfx } from "../game/audio";
+import { GameIcon } from "./pack/components";
+import { ui } from "./pack/urls";
 
-const LINKS: { id: ScreenId; label: string; icon: ReactNode }[] = [
-  { id: "dungeon", label: "My Dungeon", icon: <path d="M4 20V9l8-5 8 5v11H4zm6 0v-6h4v6" /> },
-  { id: "map", label: "World Map", icon: <path d="M4 6l5-2 6 2 5-2v14l-5 2-6-2-5 2V6zm5 0v14m6-12v14" /> },
-  { id: "market", label: "Market", icon: <path d="M4 9h16l-2 11H6L4 9zm2-4h12v4H6V5z" /> },
-  { id: "workshop", label: "Workshop", icon: <path d="M4 18h16v2H4v-2zM7 16l5-8 2 2-5 8-2-2zm7-7 4 4-2 2-4-4 2-2z" /> },
+const LINKS: { id: ScreenId; label: string; icon: string }[] = [
+  { id: "dungeon", label: "My Dungeon", icon: ui.icon.gate },
+  { id: "map", label: "World Map", icon: ui.icon.dungeon },
+  { id: "market", label: "Market", icon: ui.icon.market },
+  { id: "workshop", label: "Workshop", icon: ui.icon.anvil },
 ];
 
 const MORE: { id: ScreenId; label: string }[] = [
@@ -50,7 +52,7 @@ export function Shell({ screen }: { screen: ScreenId }) {
               className={`nav-plate w-full ${current ? "is-on" : ""}`}
               onClick={() => go(link.id)}
             >
-              <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">{link.icon}</svg>
+              <GameIcon src={link.icon} />
               <span className="hidden md:inline">{link.label}</span>
             </button>
           );
@@ -59,7 +61,7 @@ export function Shell({ screen }: { screen: ScreenId }) {
       <div className="relative border-t border-bronze/40 p-2">
         <p className="mb-2 px-1 text-[10px] leading-snug text-parchment/70 md:hidden">Guest save on this device.</p>
         <button className={`nav-plate w-full ${open ? "is-on" : ""}`} aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((value) => !value)}>
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm-7 4h2m10 0h2M12 5v2m0 10v2" /></svg>
+          <GameIcon src={ui.icon.settings} />
           <span className="hidden md:inline">More</span>
         </button>
         {open && (

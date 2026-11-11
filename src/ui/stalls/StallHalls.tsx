@@ -18,6 +18,8 @@ import {
 } from "../../game/store";
 import { MARKET_SPOTS, WORKSHOP_SPOTS, mountPlace } from "../../three/places";
 import { Prompt } from "../forge/controls";
+import { GameIcon, ItemSlot } from "../pack/components";
+import { TRAP_ICON, ui } from "../pack/urls";
 import { Button, Panel, Title } from "../kit";
 
 function itemLabel(id: string) {
@@ -71,8 +73,11 @@ function StallHall({ place, title }: { place: "market" | "workshop"; title: stri
         <div className="absolute bottom-3 right-3 top-16 z-20 w-[min(24rem,calc(100%-1.5rem))] overflow-auto" data-testid={`${place}-panel`}>
           <Panel>
             <div className="flex items-start justify-between gap-3">
-              <Title>{spot?.label ?? "Stall"}</Title>
-              <Button tone="ghost" onClick={() => setOpen(null)}>Close</Button>
+              <span className="flex items-center gap-2">
+                <GameIcon src={place === "market" ? ui.icon.market : ui.icon.anvil} />
+                <Title>{spot?.label ?? "Stall"}</Title>
+              </span>
+              <Button tone="ghost" onClick={() => setOpen(null)}><GameIcon src={ui.icon.close} /> Close</Button>
             </div>
             {note && <p className="mt-2 text-sm text-gold" data-testid="stall-note">{note}</p>}
             {place === "market" && open !== "board" && open !== "exit" && (
@@ -144,7 +149,7 @@ function ListingSheet({ onNote }: { onNote: (text: string) => void }) {
       </label>
       {Object.entries(game.inventory).filter(([, qty]) => qty > 0).map(([id, qty]) => (
         <div key={id} className="flex flex-wrap items-center justify-between gap-2">
-          <span>{itemLabel(id)} × {qty}</span>
+          <span className="flex items-center gap-2"><ItemSlot><span className="num text-xs">{qty}</span></ItemSlot>{itemLabel(id)} × {qty}</span>
           <Button tone="ghost" onClick={() => onNote(listItem(id, price, "PLAY_GOLD").reason ?? "")}>List</Button>
         </div>
       ))}
@@ -168,7 +173,11 @@ function CraftSheet({ station, onNote }: { station: string; onNote: (text: strin
         const missing = needs.filter(([material, qty]) => (game.inventory[material] ?? 0) < qty);
         return (
           <div key={kind}>
-            <p className="font-display text-gold">{kind}</p>
+            <p className="flex items-center gap-2 font-display text-gold">
+              {(kind === "spike" || kind === "pit" || kind === "boulder") && <GameIcon src={TRAP_ICON[kind]} />}
+              {kind === "armor" && <GameIcon src={ui.icon.helmet} />}
+              {kind}
+            </p>
             <ul>
               {needs.map(([material, qty]) => {
                 const held = game.inventory[material] ?? 0;
@@ -181,7 +190,7 @@ function CraftSheet({ station, onNote }: { station: string; onNote: (text: strin
       })}
       {station === "forge" && (
         <div className="flex flex-wrap gap-2">
-          <Button tone="ghost" onClick={() => onNote(forgeKit().reason)}>Forge spike kit · 4 nails</Button>
+          <Button tone="ghost" onClick={() => onNote(forgeKit().reason)}><GameIcon src={ui.icon.spike} /> Forge spike kit · 4 nails</Button>
           <Button tone="ghost" onClick={() => onNote(buyUpgrade("vault-brace").reason)}>Vault brace · {RULES.vaultBraceCost}g</Button>
         </div>
       )}

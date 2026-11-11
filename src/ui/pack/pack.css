@@ -1,0 +1,289 @@
+/* Supplied pack tokens. The files in public/ui stay the artwork. */
+@import "/ui/underrealm-ui-theme.css";
+
+:root {
+  --ur-ink: #3a2a1a;
+  --ur-parchment: #e9d8b4;
+  --ur-stone: #2b2a33;
+  --ur-stone-light: #3e3c4a;
+  --ur-shadow: #14100e;
+  --ur-torch: #ff9a3c;
+  --ur-ember: #ff5a1f;
+  --ur-gold: #a87935;
+  --ur-gold-bright: #f2c14e;
+  --ur-bronze: #694426;
+  --ur-teal: #3fa7a0;
+  --ur-rust: #b5532e;
+  --ur-danger: #8e1b1b;
+}
+
+.ur-icon {
+  display: block;
+  width: 1.5rem;
+  height: 1.5rem;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.ur-panel {
+  position: relative;
+  color: var(--ur-parchment);
+  background: transparent;
+  border-style: solid;
+  border-width: 18px;
+  border-image-source: url("/ui/frames/panel-wide.svg");
+  border-image-slice: 42 fill;
+  border-image-width: 18px;
+  border-image-repeat: stretch;
+}
+
+.ur-panel-parchment {
+  color: var(--ur-ink);
+  border-image-source: url("/ui/frames/panel-parchment.svg");
+}
+
+.ur-panel-tall { border-image-source: url("/ui/frames/panel-tall.svg"); }
+.ur-panel-square { border-image-source: url("/ui/frames/panel-square.svg"); }
+.ur-panel-modal { border-image-source: url("/ui/frames/modal-frame.svg"); }
+.ur-panel-hero { border-image-source: url("/ui/frames/hero-card-frame.svg"); }
+
+.ur-panel-compact {
+  border-width: 12px;
+  border-image-source: url("/ui/frames/panel-compact.svg");
+  border-image-slice: 28 fill;
+  border-image-width: 12px;
+}
+
+.ur-panel-tooltip {
+  border-width: 14px;
+  border-image-source: url("/ui/frames/tooltip-frame.svg");
+  border-image-slice: 32 fill;
+  border-image-width: 14px;
+}
+
+.ur-panel-body { position: relative; z-index: 1; }
+.ur-panel-pad { padding: 0.2rem 0.35rem 0.35rem; }
+
+.ur-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 2.75rem;
+  padding: 0.15rem 0.7rem;
+  border-style: solid;
+  border-width: 10px 16px;
+  border-image-slice: 20 fill;
+  border-image-width: 10px 16px;
+  border-image-repeat: stretch;
+  border-image-source: url("/ui/controls/primary-button-frame.svg");
+  background: transparent;
+  color: var(--ur-gold-bright);
+  font-family: "Lilita One", "Baloo 2", cursive;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1), filter 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.ur-btn-ghost {
+  border-image-source: url("/ui/controls/secondary-button-frame.svg");
+  color: var(--ur-parchment);
+}
+
+.ur-btn-ember {
+  border-image-source: url("/ui/controls/danger-button-frame.svg");
+  color: var(--ur-parchment);
+}
+
+.ur-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.ur-btn:active:not(:disabled) { transform: translateY(1px); }
+.ur-btn:disabled { cursor: not-allowed; opacity: 0.45; }
+.ur-btn:focus-visible,
+.ur-ring:focus-visible,
+.ur-trap:focus-visible,
+.ur-tab:focus-visible {
+  outline: 2px solid var(--ur-gold-bright);
+  outline-offset: 2px;
+}
+
+.ur-ring {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  color: var(--ur-gold-bright);
+  background: url("/ui/controls/small-circular-button-frame.svg") center / 100% 100% no-repeat;
+  font-family: "Lilita One", "Baloo 2", cursive;
+  cursor: pointer;
+}
+
+.ur-ring.is-on {
+  background-image: url("/ui/controls/circular-button-frame.svg");
+  color: var(--ur-parchment);
+}
+
+.ur-ring .ur-icon { width: 1.35rem; height: 1.35rem; }
+
+.ur-resource {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: 8.6rem;
+  min-height: 3.15rem;
+  padding: 0.25rem 0.65rem 0.25rem 0.35rem;
+  color: var(--ur-parchment);
+  background: url("/ui/indicators/resource-panel.svg") center / 100% 100% no-repeat;
+}
+
+.ur-resource-icon { width: 1.7rem; height: 1.7rem; flex: none; }
+.ur-resource-copy { display: flex; min-width: 0; flex-direction: column; line-height: 1; }
+.ur-resource-value { font-size: 1.15rem; color: var(--ur-gold-bright); }
+.ur-resource-label {
+  margin-top: 0.15rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(233, 216, 180, 0.75);
+}
+.ur-resource-label.is-hot { color: #e07a72; }
+
+.ur-pips { display: flex; gap: 1px; margin-top: 0.15rem; }
+.ur-pips img { width: 0.62rem; height: 0.66rem; object-fit: contain; }
+
+.ur-progress {
+  position: relative;
+  height: 1.05rem;
+  container-type: inline-size;
+}
+.ur-progress-track,
+.ur-progress-fill {
+  display: block;
+  width: 100%;
+  height: 1.05rem;
+  object-fit: fill;
+  pointer-events: none;
+}
+.ur-progress-clip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.ur-progress-fill { width: 100cqi; max-width: none; }
+
+.ur-trap {
+  display: flex;
+  width: 4.35rem;
+  aspect-ratio: 160 / 190;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.05rem;
+  padding: 0.25rem 0.15rem 0.35rem;
+  border: 0;
+  color: var(--ur-parchment);
+  background: url("/ui/frames/trap-card-frame.svg") center / 100% 100% no-repeat;
+  cursor: pointer;
+}
+.ur-trap.is-on { filter: brightness(1.18); }
+.ur-trap:disabled { cursor: not-allowed; opacity: 0.45; }
+.ur-trap-icon { width: 46%; height: auto; margin-bottom: auto; margin-top: 12%; object-fit: contain; }
+.ur-trap-name { font-family: "Lilita One", "Baloo 2", cursive; font-size: 0.68rem; line-height: 1; }
+.ur-trap-cost { font-size: 0.58rem; color: var(--ur-gold-bright); }
+
+.ur-tab {
+  display: inline-flex;
+  min-height: 2.4rem;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.7rem;
+  border: 0;
+  color: var(--ur-parchment);
+  background: url("/ui/frames/tab-frame.svg") center / 100% 100% no-repeat;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.ur-tab.is-on { color: var(--ur-gold-bright); filter: brightness(1.2); }
+.ur-tab .ur-icon { width: 1.15rem; height: 1.15rem; }
+
+.ur-slot {
+  display: grid;
+  width: 3.25rem;
+  height: 3.25rem;
+  flex: none;
+  place-items: center;
+  padding: 0.45rem;
+  color: var(--ur-parchment);
+  background: url("/ui/frames/item-slot-frame.svg") center / 100% 100% no-repeat;
+  text-align: center;
+  line-height: 1.05;
+}
+.ur-slot .ur-icon { width: 1.4rem; height: 1.4rem; }
+
+.ur-badge {
+  display: inline-flex;
+  min-width: 5.6rem;
+  min-height: 1.7rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem 0.65rem;
+  color: var(--ur-parchment);
+  background: url("/ui/indicators/status-badge-frame.svg") center / 100% 100% no-repeat;
+  font-size: 0.72rem;
+}
+.ur-badge-live { color: var(--ur-gold-bright); }
+.ur-badge-danger { color: #e7a39a; }
+.ur-badge-mock { color: var(--ur-torch); }
+
+.ur-divider {
+  display: block;
+  width: min(100%, 22rem);
+  height: 1.15rem;
+  margin: 0.2rem 0 0.35rem;
+  object-fit: fill;
+  pointer-events: none;
+}
+
+.ur-wax { width: 3.25rem; height: 3.25rem; flex: none; object-fit: contain; }
+.ur-corner {
+  position: absolute;
+  top: -0.2rem;
+  right: -0.15rem;
+  width: 2.4rem;
+  height: 2.4rem;
+  pointer-events: none;
+}
+
+.ur-marker {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  flex: none;
+  place-items: center;
+  background: url("/ui/icons/dungeon-marker.svg") center / contain no-repeat;
+}
+.ur-marker span { font-size: 1.15rem; color: var(--ur-gold-bright); }
+
+@media (min-width: 640px) {
+  .ur-trap { width: 6.15rem; }
+  .ur-trap-name { font-size: 0.78rem; }
+  .ur-trap-cost { font-size: 0.68rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ur-btn,
+  .ur-trap,
+  .ur-ring,
+  .ur-tab { transition: none; }
+  .ur-btn:active:not(:disabled) { transform: none; }
+}
+
+.motion-reduce .ur-btn,
+.motion-reduce .ur-trap,
+.motion-reduce .ur-ring,
+.motion-reduce .ur-tab { transition: none; }
+
+.motion-reduce .ur-btn:active:not(:disabled) { transform: none; }

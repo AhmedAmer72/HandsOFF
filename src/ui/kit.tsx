@@ -1,8 +1,11 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { SealButton } from "./forge/controls";
 import { ForgedFrame } from "./forge/frame";
+import { StatusBadge } from "./pack/components";
 
-export function Panel({ children, className = "", variant = "steel" }: { children: ReactNode; className?: string; variant?: "steel" | "ledger" | "tablet" }) {
+type PanelVariant = "steel" | "ledger" | "tablet" | "modal" | "compact" | "hero" | "tall" | "square" | "tooltip";
+
+export function Panel({ children, className = "", variant = "steel" }: { children: ReactNode; className?: string; variant?: PanelVariant }) {
   return <ForgedFrame variant={variant} className={className}>{children}</ForgedFrame>;
 }
 
@@ -27,14 +30,7 @@ export function Chip({ children, hot = false }: { children: ReactNode; hot?: boo
 }
 
 export function Status({ children, tone = "quiet" }: { children: ReactNode; tone?: "quiet" | "live" | "danger" | "mock" }) {
-  const toneClass = tone === "danger"
-    ? "border-blood text-blood"
-    : tone === "live"
-      ? "border-gold text-gold"
-      : tone === "mock"
-        ? "border-ember text-ember"
-        : "border-bronze text-parchment";
-  return <span className={`inline-flex min-h-8 items-center border px-3 text-xs ${toneClass}`} style={{ clipPath: "polygon(7px 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 7px 100%, 0 50%)" }}>{children}</span>;
+  return <StatusBadge tone={tone}>{children}</StatusBadge>;
 }
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
