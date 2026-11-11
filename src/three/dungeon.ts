@@ -101,7 +101,10 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 420);
   const focus = new THREE.Vector3(8, 0, 8);
   let yaw = 0;
-  let view = 68;
+  const HALL_VIEW = 68;
+  const RAIDER_VIEW = 4.5;
+  let view = HALL_VIEW;
+  let releaseZoom: gsap.core.Tween | null = null;
   const pointer = new THREE.Vector2();
   const raycaster = new THREE.Raycaster();
   const selectables: THREE.Object3D[] = [];
@@ -179,6 +182,9 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const livingCoins: THREE.Object3D[] = [];
   const livingWalls: { mesh: THREE.Object3D; z: number }[] = [];
   const cutawayBatches: { mesh: THREE.InstancedMesh; slots: { matrix: THREE.Matrix4; z: number }[] }[] = [];
+  const raidWallBatches: { mesh: THREE.InstancedMesh; slots: { matrix: THREE.Matrix4; x: number; z: number }[] }[] = [];
+  const raidLooseWalls: { obj: THREE.Object3D; x: number; z: number }[] = [];
+  let raidCutKey = "";
   let cutawayStamp = Number.NaN;
   const floatPool: { sprite: THREE.Sprite; life: number }[] = [];
   const coinBurst = new THREE.Points(
@@ -259,7 +265,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     const shake = shakeOffset(elapsed, shakeAmp, hooks.getReduceMotion?.() ?? false);
     camera.position.x += shake.x;
     camera.position.y += shake.y;
-    camera.lookAt(focus);
+    camera.lookAt(focus.x, scripted ? 1.15 : focus.y, focus.z);
     camera.updateMatrixWorld();
   }
 
@@ -381,14 +387,16 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     mesh.receiveShadow = true;
     mesh.castShadow = entries[0]?.file === "pillar.gltf";
     mesh.frustumCulled = false;
-    const slots: { matrix: THREE.Matrix4; z: number }[] = [];
+    const slots: { matrix: THREE.Matrix4; x: number; z: number }[] = [];
     entries.forEach((entry, index) => {
       const matrix = placeMatrix(entry, template.local);
       mesh.setMatrixAt(index, matrix);
-      slots.push({ matrix, z: entry.z });
+      slots.push({ matrix, x: entry.x, z: entry.z });
     });
     mesh.instanceMatrix.needsUpdate = true;
     scene.add(mesh);
+    const occludes = entries[0]?.file === "wall.gltf" || entries[0]?.file === "wall_half.gltf" || entries[0]?.file === "pillar.gltf";
+    if (occludes && !cutaway) raidWallBatches.push({ mesh, slots });
     if (entries[0]?.kind === "floor") {
       mesh.userData.meta = entries[0];
       floors.push(mesh);
@@ -404,6 +412,9 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     selectables.length = 0;
     floors.length = 0;
     cutawayBatches.length = 0;
+    raidWallBatches.length = 0;
+    raidLooseWalls.length = 0;
+    raidCutKey = "";
     cutawayStamp = Number.NaN;
     selectables.push(groundPick);
     floors.push(groundPick);
@@ -463,6 +474,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
           if (entry.id === "anvil") mesh.userData.action = "craft";
           if (entry.kind === "vault") mesh.userData.action = "brace";
           if (entry.kind === "floor") floors.push(mesh);
+          if (entry.kind === "wall") raidLooseWalls.push({ obj: mesh, x: entry.x, z: entry.z });
           if (entry.kind === "light") {
             const low = hooks.getQuality() === "low";
             const vaultLight = entry.id === "torch-vault";
@@ -803,6 +815,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   function onPointerMove(event: PointerEvent) {
     const pan = canvas.dataset.pan;
     if (pan && (event.buttons === 2 || event.shiftKey)) {
+      if (scripted) return;
       const [sx, sy] = pan.split(",").map(Number);
       focus.x -= (event.clientX - sx) * 0.03;
       focus.z -= (event.clientY - sy) * 0.03;
@@ -836,6 +849,8 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
 
   function onWheel(event: WheelEvent) {
     event.preventDefault();
+    if (scripted) return;
+    releaseZoom?.kill();
     view = THREE.MathUtils.clamp(view + event.deltaY * 0.02, 36, 110);
     resize();
   }
@@ -844,9 +859,11 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     keys.add(event.key.toLowerCase());
     if (event.key === "q") yaw = THREE.MathUtils.clamp(yaw - 0.08, -0.7, 0.7);
     if (event.key === "e") yaw = THREE.MathUtils.clamp(yaw + 0.08, -0.7, 0.7);
-    if (event.key.toLowerCase() === "r") {
+    if (event.key.toLowerCase() === "r" && !scripted) {
+      releaseZoom?.kill();
+      gsap.killTweensOf(focus);
       yaw = 0;
-      view = 68;
+      view = HALL_VIEW;
       focus.copy(hallFocus);
       resize();
     }
@@ -999,14 +1016,45 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     if (hooks.diaryChoice() === "escaped") releaseJournal();
   }
 
+  function syncRaidWalls() {
+    const key = scripted ? `${Math.round(focus.x)}:${Math.round(focus.z)}:${yaw.toFixed(2)}` : "open";
+    if (key === raidCutKey) return;
+    raidCutKey = key;
+    const az = Math.PI / 4 + yaw;
+    const towardX = Math.cos(az);
+    const towardZ = Math.sin(az);
+    const reach = CELL * 4;
+    const blocksRaider = (x: number, z: number) => {
+      if (!scripted) return false;
+      const dx = x - focus.x;
+      const dz = z - focus.z;
+      if (dx * dx + dz * dz > reach * reach) return false;
+      return dx * towardX + dz * towardZ > 0.35;
+    };
+    for (const batch of raidWallBatches) {
+      let count = 0;
+      for (const slot of batch.slots) {
+        if (blocksRaider(slot.x, slot.z)) continue;
+        batch.mesh.setMatrixAt(count, slot.matrix);
+        count += 1;
+      }
+      batch.mesh.count = count;
+      batch.mesh.visible = count > 0;
+      batch.mesh.instanceMatrix.needsUpdate = true;
+    }
+    for (const wall of raidLooseWalls) wall.obj.visible = !blocksRaider(wall.x, wall.z);
+  }
+
   function frame(now: number) {
     if (!running) return;
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    if (keys.has("w")) focus.z -= 6 * dt;
-    if (keys.has("s")) focus.z += 6 * dt;
-    if (keys.has("a")) focus.x -= 6 * dt;
-    if (keys.has("d")) focus.x += 6 * dt;
+    if (!scripted) {
+      if (keys.has("w")) focus.z -= 6 * dt;
+      if (keys.has("s")) focus.z += 6 * dt;
+      if (keys.has("a")) focus.x -= 6 * dt;
+      if (keys.has("d")) focus.x += 6 * dt;
+    }
     const calm = hooks.getReduceMotion?.() ?? false;
     const stopped = now < hitStopUntil;
     const slow = now < slowUntil;
@@ -1071,10 +1119,11 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     }
     movers.length = 0;
     movers.push(...pending);
-    if (scripted && hero) {
-      focus.x += (hero.root.position.x - focus.x) * (1 - Math.exp(-4 * dt));
-      focus.z += (hero.root.position.z - focus.z) * (1 - Math.exp(-4 * dt));
+    if (scripted && hero?.root.visible) {
+      focus.x = hero.root.position.x;
+      focus.z = hero.root.position.z;
     }
+    syncRaidWalls();
     stepActors(motionDt);
     aimCamera();
     renderer.render(scene, camera);
@@ -1123,7 +1172,6 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     ready,
     resize,
     async playRoute(steps: VisualStep[]) {
-      scripted = true;
       aggro = false;
       const punch = (kind: "hit" | "kill" | "trap" | "boulder") => {
         if (hooks.getReduceMotion?.()) return;
@@ -1171,6 +1219,15 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       hero = actors.find((actor) => actor.family === "hero" && actor.id === hooks.getHero()) ?? hero;
       if (hero) hero.root.visible = true;
       if (hero && steps[0]) hero.root.position.set(steps[0].x, 0, steps[0].z);
+      if (hero) {
+        releaseZoom?.kill();
+        gsap.killTweensOf(focus);
+        focus.set(hero.root.position.x, 0, hero.root.position.z);
+        view = RAIDER_VIEW;
+        resize();
+      }
+      scripted = true;
+      syncRaidWalls();
       const locked = new Set(hooks.getClosedGates());
       for (const gate of roomGates) {
         if (!locked.has(gate.id)) gate.mesh.rotation.y = gate.shut;
@@ -1242,6 +1299,26 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
         }
       }
       scripted = false;
+      syncRaidWalls();
+      gsap.killTweensOf(focus);
+      releaseZoom?.kill();
+      if (hooks.getReduceMotion?.()) {
+        view = HALL_VIEW;
+        focus.copy(hallFocus);
+        resize();
+      } else {
+        gsap.to(focus, { x: hallFocus.x, z: hallFocus.z, duration: 0.7, ease: "power2.inOut", overwrite: "auto" });
+        const zoom = { value: view };
+        releaseZoom = gsap.to(zoom, {
+          value: HALL_VIEW,
+          duration: 0.7,
+          ease: "power2.inOut",
+          onUpdate: () => {
+            view = zoom.value;
+            resize();
+          },
+        });
+      }
       for (const gate of roomGates) gate.mesh.rotation.y = gate.shut;
       if (hero) {
         play(hero, "idle");
