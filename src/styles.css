@@ -194,12 +194,12 @@ button:active:not(:disabled) {
 .control {
   width: 100%;
   min-height: 2.75rem;
-  border-radius: 0.75rem;
-  border: 1px solid rgba(242, 193, 78, 0.35);
-  background: #14100e;
+  border: 1px solid rgba(140, 98, 57, 0.75);
+  background: #0e0c0b;
   color: #e9d8b4;
   padding: 0.45rem 0.75rem;
   font-family: Fredoka, "Baloo 2", sans-serif;
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px);
 }
 
 .control:focus {

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { enterDungeon, useGame } from "../../game/store";
 import { sfx } from "../../game/audio";
 import { ParallaxComponent } from "../../components/ui/parallax-scrolling";
+import { ForgedFrame } from "../forge/frame";
+import { Button } from "../kit";
 
 type WalletStatus = "closed" | "prompt" | "rejected" | "failed";
 
@@ -61,7 +63,7 @@ export function MainMenu() {
 
       {wallet !== "closed" && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="wallet-title">
-          <div className="w-full max-w-md rounded-3xl border border-gold/30 bg-ink p-6 text-left shadow-[0_18px_40px_rgba(0,0,0,0.45)]">
+          <ForgedFrame className="w-full max-w-md text-left">
             <h2 id="wallet-title" className="font-display text-2xl text-gold">Connect Wallet</h2>
             <p className="mt-3 text-sm text-parchment/80" data-testid="wallet-status">
               {wallet === "prompt" && "No sign-in provider is configured on this build. Nothing has been linked. Close this and press Get Started to enter as a guest."}
@@ -69,10 +71,10 @@ export function MainMenu() {
               {wallet === "rejected" && "Connection cancelled. Nothing was connected. The entrance is unchanged."}
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
-              {wallet === "prompt" && <button className="min-h-11 rounded-full bg-gold px-5 text-ink" onClick={() => setWallet("failed")}>Try anyway</button>}
-              <button className="min-h-11 rounded-full border border-gold/40 px-5" onClick={() => setWallet(wallet === "prompt" ? "rejected" : "closed")}>{wallet === "prompt" ? "Cancel" : "Close"}</button>
+              {wallet === "prompt" && <Button onClick={() => setWallet("failed")}>Try anyway</Button>}
+              <Button tone="ghost" onClick={() => setWallet(wallet === "prompt" ? "rejected" : "closed")}>{wallet === "prompt" ? "Cancel" : "Close"}</Button>
             </div>
-          </div>
+          </ForgedFrame>
         </div>
       )}
 
@@ -107,11 +109,13 @@ export function MainMenu() {
       <section id="page" className="mx-auto flex min-h-[100svh] max-w-6xl flex-col justify-center px-6 py-20 md:px-10">
         <h2 className="max-w-[14ch] font-display text-5xl leading-none text-gold md:text-7xl">Burn it, or let it land.</h2>
         <p className="mt-6 max-w-[62ch] text-parchment/80">When a hero falls, the purse bursts, salvage drops, and a golden diary page flies toward you.</p>
-        <ol className="mt-12 grid gap-8 md:grid-cols-3">
+        <ol className="mt-12 grid gap-4 md:grid-cols-3">
           {ACTS.map((act) => (
             <li key={act.name}>
-              <h3 className="font-display text-2xl text-parchment">{act.name}</h3>
-              <p className="mt-2 text-sm text-parchment/75">{act.text}</p>
+              <ForgedFrame>
+                <h3 className="font-display text-2xl text-parchment">{act.name}</h3>
+                <p className="mt-2 text-sm text-parchment/75">{act.text}</p>
+              </ForgedFrame>
             </li>
           ))}
         </ol>
@@ -121,10 +125,10 @@ export function MainMenu() {
         <div className="mx-auto flex min-h-[100svh] max-w-6xl flex-col justify-center px-6 py-20 md:px-10">
           <h2 className="font-display text-4xl text-gold md:text-5xl">Three stalls, one loop</h2>
           <p className="mt-4 max-w-[62ch] text-parchment/75">Salvage reaches the stalls. Stock changes. Prices move. The next raid is not a copy of the last.</p>
-          <div className="mt-12 grid gap-10 md:grid-cols-3">
-            <article><h3 className="font-display text-4xl text-parchment">Mira</h3><p className="mt-2 text-sm text-parchment/70">Forgemaster. Buys salvage for gold and sells the materials the recipes ask for.</p></article>
-            <article><h3 className="font-display text-4xl text-parchment">Orrin</h3><p className="mt-2 text-sm text-parchment/70">Rumour broker. Lists a landed page once. A buy consumes it.</p></article>
-            <article><h3 className="font-display text-4xl text-parchment">Tallow</h3><p className="mt-2 text-sm text-parchment/70">Quartermaster. Sells potions, armor, and boots.</p></article>
+          <div className="mt-12 grid gap-4 md:grid-cols-3">
+            <ForgedFrame variant="tablet"><h3 className="font-display text-4xl text-parchment">Mira</h3><p className="mt-2 text-sm text-parchment/70">Forgemaster. Buys salvage for gold and sells the materials the recipes ask for.</p></ForgedFrame>
+            <ForgedFrame variant="tablet"><h3 className="font-display text-4xl text-parchment">Orrin</h3><p className="mt-2 text-sm text-parchment/70">Rumour broker. Lists a landed page once. A buy consumes it.</p></ForgedFrame>
+            <ForgedFrame variant="tablet"><h3 className="font-display text-4xl text-parchment">Tallow</h3><p className="mt-2 text-sm text-parchment/70">Quartermaster. Sells potions, armor, and boots.</p></ForgedFrame>
           </div>
         </div>
       </section>
@@ -140,8 +144,8 @@ export function MainMenu() {
           <h2 className="font-display text-5xl text-gold md:text-6xl">Your dungeon is waiting.</h2>
           <p className="mt-4 max-w-[48ch] text-parchment/75">Build the defenses. Keep the rumours. Make the next raid count.</p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <button className="min-h-11 rounded-full bg-gold px-8 font-display text-ink" onClick={start}>Get Started</button>
-            <button className="min-h-11 rounded-full border border-gold/50 px-8 text-gold" onClick={connect}>Connect Wallet</button>
+            <Button onClick={start}>Get Started</Button>
+            <Button tone="ghost" onClick={connect}>Connect Wallet</Button>
           </div>
           <p className="mt-16 text-xs uppercase tracking-[0.16em] text-parchment/40">Guest play on this device · KayKit · 2026</p>
         </div>

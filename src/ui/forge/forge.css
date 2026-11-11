@@ -1,0 +1,463 @@
+.forged {
+  position: relative;
+  color: #e9d8b4;
+  background:
+    linear-gradient(180deg, rgba(242, 193, 78, 0.08), transparent 22%),
+    linear-gradient(180deg, #2a2622 0%, #1a1714 42%, #12100e 100%);
+  clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px), 0 14px);
+  box-shadow: inset 0 0 0 1px rgba(140, 98, 57, 0.85), inset 0 1px 0 rgba(242, 193, 78, 0.28);
+}
+
+.forged-ledger {
+  color: #3a2a1a;
+  background:
+    repeating-linear-gradient(180deg, transparent 0 1.65rem, rgba(140, 98, 57, 0.16) 1.65rem 1.7rem),
+    linear-gradient(180deg, #f3e6c8, #e4d0a4);
+  box-shadow: inset 0 0 0 1px #8c6239, inset 0 0 0 6px rgba(26, 23, 20, 0.08);
+}
+
+.forged-tablet {
+  background:
+    linear-gradient(180deg, rgba(242, 193, 78, 0.05), transparent 30%),
+    linear-gradient(180deg, #3e3c4a, #2b2a33 40%, #1a1714);
+}
+
+.forged-body {
+  position: relative;
+  z-index: 1;
+  padding: 1rem 1.15rem 1.1rem;
+}
+
+.forged-body-tight {
+  padding: 0.65rem 0.8rem;
+}
+
+.forged-rivet {
+  position: absolute;
+  z-index: 2;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #f2c14e, #8c6239 58%, #1a1714 78%);
+  box-shadow: inset 0 -1px 0 #3a2a1a;
+  pointer-events: none;
+}
+
+.forged-rivet-tl { top: 12px; left: 12px; }
+.forged-rivet-tr { top: 12px; right: 12px; }
+.forged-rivet-bl { bottom: 12px; left: 12px; }
+.forged-rivet-br { bottom: 12px; right: 12px; }
+
+.seal {
+  position: relative;
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 1rem;
+  font-family: "Lilita One", "Baloo 2", cursive;
+  letter-spacing: 0.04em;
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px);
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1), filter 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.seal-gold {
+  color: #3a2a1a;
+  background: linear-gradient(180deg, #f6d56a, #f2c14e 45%, #c8922a);
+  box-shadow: inset 0 -2px 0 rgba(58, 42, 26, 0.45);
+}
+
+.seal-ember {
+  color: #3a2a1a;
+  background: linear-gradient(180deg, #ffb066, #ff5a1f 50%, #c43b10);
+  box-shadow: inset 0 -2px 0 rgba(58, 42, 26, 0.45);
+}
+
+.seal-ghost {
+  color: #e9d8b4;
+  background: linear-gradient(180deg, #2a2622, #1a1714);
+  box-shadow: inset 0 0 0 1px rgba(140, 98, 57, 0.9);
+}
+
+.seal:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.seal:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.seal:disabled,
+.trap-seal:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.forged-ledger .seal-ghost {
+  color: #3a2a1a;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px #8c6239;
+}
+
+.iron-ring {
+  display: grid;
+  height: 3rem;
+  width: 3rem;
+  place-items: center;
+  border-radius: 50%;
+  color: #f2c14e;
+  background:
+    radial-gradient(circle at 50% 45%, #2a2622 0 58%, transparent 59%),
+    radial-gradient(circle at 50% 40%, #d7b15a, #8c6239 46%, #1a1714 70%);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+  font-family: "Lilita One", "Baloo 2", cursive;
+}
+
+.iron-ring.is-on {
+  color: #3a2a1a;
+  background:
+    radial-gradient(circle at 50% 45%, #f2c14e 0 58%, transparent 59%),
+    radial-gradient(circle at 50% 40%, #f6d56a, #8c6239 55%, #1a1714 72%);
+}
+
+.medallion {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 3rem;
+  padding: 0.2rem 0.85rem 0.2rem 0.2rem;
+  color: #e9d8b4;
+  background: linear-gradient(180deg, #241f1b, #14110f);
+  clip-path: polygon(16px 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 16px 100%, 0 50%);
+  box-shadow: inset 0 0 0 1px rgba(140, 98, 57, 0.75);
+}
+
+.medallion-mark {
+  display: grid;
+  height: 2.4rem;
+  width: 2.4rem;
+  place-items: center;
+  border-radius: 50%;
+  color: #3a2a1a;
+}
+
+.medallion-mark svg {
+  height: 1.35rem;
+  width: 1.35rem;
+}
+
+.medallion-gold .medallion-mark { background: radial-gradient(circle at 35% 35%, #f6d56a, #c8922a); }
+.medallion-ember .medallion-mark { background: radial-gradient(circle at 35% 35%, #ffb066, #ff5a1f); }
+.medallion-blood .medallion-mark { background: radial-gradient(circle at 35% 35%, #c44747, #8e1b1b); color: #e9d8b4; }
+
+.medallion-copy {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+}
+
+.medallion-value {
+  font-size: 1.15rem;
+  color: #f2c14e;
+}
+
+.medallion-ember .medallion-value,
+.medallion-blood .medallion-value {
+  color: #e9d8b4;
+}
+
+.medallion-label {
+  margin-top: 0.2rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(233, 216, 180, 0.7);
+}
+
+.medallion-label.is-hot {
+  color: #c44747;
+}
+
+.channel {
+  min-width: 13rem;
+  padding: 0.55rem 0.75rem 0.65rem;
+  background: linear-gradient(180deg, #241f1b, #14110f);
+  clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 10px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px), 0 10px);
+  box-shadow: inset 0 0 0 1px rgba(140, 98, 57, 0.7);
+}
+
+.channel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.channel-head svg {
+  height: 1.1rem;
+  width: 1.1rem;
+  color: #f2c14e;
+}
+
+.channel-kicker {
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(233, 216, 180, 0.7);
+}
+
+.channel-value {
+  margin-left: auto;
+  font-size: 1.6rem;
+  line-height: 1;
+  color: #f2c14e;
+}
+
+.channel-track {
+  margin-top: 0.45rem;
+  height: 0.55rem;
+  overflow: hidden;
+  background: #0e0c0b;
+  box-shadow: inset 0 0 0 1px rgba(140, 98, 57, 0.45);
+}
+
+.channel-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #8c6239, #f2c14e);
+}
+
+.channel-fill.is-hot {
+  background: #8e1b1b;
+}
+
+.trap-seal {
+  display: flex;
+  width: 4.6rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.35rem 0.2rem 0.4rem;
+  color: #e9d8b4;
+  background: linear-gradient(180deg, #2a2622, #14110f);
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px);
+  box-shadow: inset 0 0 0 1px rgba(140, 98, 57, 0.55);
+}
+
+.trap-seal.is-on {
+  color: #f2c14e;
+  box-shadow: inset 0 0 0 2px #f2c14e;
+  background: linear-gradient(180deg, #3a3124, #1a1714);
+}
+
+.trap-seal-art {
+  display: grid;
+  height: 2.6rem;
+  width: 2.6rem;
+  place-items: center;
+}
+
+.trap-seal-art img,
+.trap-seal-art svg {
+  height: 2.4rem;
+  width: 2.4rem;
+  object-fit: contain;
+}
+
+.trap-seal-name {
+  font-family: "Lilita One", "Baloo 2", cursive;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.trap-seal-cost {
+  font-size: 0.62rem;
+  color: #f2c14e;
+}
+
+.hero-pip {
+  display: inline-flex;
+  min-height: 2.1rem;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0.7rem;
+  font-size: 0.75rem;
+  color: #e9d8b4;
+  background: #14110f;
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 8px 100%, 0 50%);
+  box-shadow: inset 0 0 0 1px rgba(140, 98, 57, 0.65);
+}
+
+.hero-pip.is-on {
+  color: #3a2a1a;
+  background: #f2c14e;
+}
+
+.forge-notice {
+  max-width: 28rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: rgba(233, 216, 180, 0.88);
+  background: rgba(20, 16, 14, 0.82);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  box-shadow: inset 3px 0 0 #8c6239;
+}
+
+.forge-notice-gold {
+  color: #f2c14e;
+}
+
+.forge-prompt {
+  max-width: 18rem;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.875rem;
+  color: #e9d8b4;
+  background: rgba(20, 16, 14, 0.88);
+  clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 10px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px), 0 10px);
+  box-shadow: inset 0 0 0 1px rgba(140, 98, 57, 0.7);
+}
+
+.tablet-row {
+  display: flex;
+  min-height: 5.5rem;
+  width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  color: #e9d8b4;
+  background: linear-gradient(180deg, #2b2a33, #1a1714);
+  clip-path: polygon(12px 0, calc(100% - 12px) 0, 100% 12px, 100% calc(100% - 12px), calc(100% - 12px) 100%, 12px 100%, 0 calc(100% - 12px), 0 12px);
+  box-shadow: inset 0 0 0 1px rgba(140, 98, 57, 0.55);
+}
+
+.tablet-row.is-on,
+.tablet-row:hover {
+  box-shadow: inset 0 0 0 1px #f2c14e;
+}
+
+.event-plate {
+  padding: 0.55rem 0.8rem;
+  color: #e9d8b4;
+  background: linear-gradient(180deg, #2a2622, #1a1714);
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px);
+  box-shadow: inset 0 0 0 1px rgba(140, 98, 57, 0.45);
+}
+
+.event-plate.is-on {
+  box-shadow: inset 0 0 0 1px #f2c14e;
+}
+
+.plate-menu {
+  position: absolute;
+  z-index: 40;
+  width: 12.5rem;
+  padding: 0.4rem;
+  background: linear-gradient(180deg, #2a2622, #14110f);
+  clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 10px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px), 0 10px);
+  box-shadow: inset 0 0 0 1px rgba(140, 98, 57, 0.8), 0 16px 32px rgba(0, 0, 0, 0.45);
+}
+
+.plate-menu button {
+  display: block;
+  min-height: 2.75rem;
+  width: 100%;
+  padding: 0 0.7rem;
+  text-align: left;
+  font-size: 0.875rem;
+  color: #e9d8b4;
+}
+
+.plate-menu button:hover {
+  color: #f2c14e;
+}
+
+.nav-plate {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0 0.6rem;
+  text-align: left;
+  font-family: "Lilita One", "Baloo 2", cursive;
+  letter-spacing: 0.04em;
+  color: rgba(233, 216, 180, 0.8);
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px);
+}
+
+.nav-plate.is-on {
+  color: #3a2a1a;
+  background: linear-gradient(180deg, #f6d56a, #c8922a);
+}
+
+.nav-plate:hover:not(.is-on) {
+  color: #f2c14e;
+  background: #1a1714;
+}
+
+.wax-seal {
+  width: 3.25rem;
+  height: 3.25rem;
+  flex: none;
+}
+
+.ledger-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .nav-plate {
+    justify-content: flex-start;
+    padding: 0 0.75rem;
+  }
+
+  .tablet-row {
+    flex-wrap: nowrap;
+  }
+}
+
+@media (max-width: 720px) {
+  .channel {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .hud-meters {
+    bottom: 5.75rem !important;
+    left: 0.75rem !important;
+    width: calc(100% - 1.5rem) !important;
+    max-width: 16rem !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seal,
+  .iron-ring,
+  .trap-seal,
+  .hero-pip,
+  .nav-plate,
+  .tablet-row {
+    transition: none;
+  }
+
+  .seal:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+.motion-reduce .seal,
+.motion-reduce .iron-ring,
+.motion-reduce .trap-seal,
+.motion-reduce .vault-tick {
+  animation: none;
+  transition: none;
+}
+
+.motion-reduce .seal:active:not(:disabled) {
+  transform: none;
+}

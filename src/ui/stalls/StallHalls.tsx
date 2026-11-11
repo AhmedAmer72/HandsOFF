@@ -17,6 +17,7 @@ import {
   useGame,
 } from "../../game/store";
 import { MARKET_SPOTS, WORKSHOP_SPOTS, mountPlace } from "../../three/places";
+import { Prompt } from "../forge/controls";
 import { Button, Panel, Title } from "../kit";
 
 function itemLabel(id: string) {
@@ -64,10 +65,10 @@ function StallHall({ place, title }: { place: "market" | "workshop"; title: stri
       <canvas ref={canvasRef} data-testid={`${place}-hall`} className="view h-full min-h-[70vh] w-full" />
       <div className="pointer-events-none absolute left-3 top-3">
         <p className="font-display text-2xl text-gold">{title}</p>
-        {!open && <p className="mt-2 max-w-xs rounded-2xl bg-ink/80 px-3 py-2 text-sm" data-testid={spot ? "interact-prompt" : "place-controls"}>{spot ? spot.prompt : "WASD moves. Q and C turn. E talks when you are close. R resets the view."}</p>}
+        {!open && <Prompt className="mt-2" testId={spot ? "interact-prompt" : "place-controls"}>{spot ? spot.prompt : "WASD moves. Q and C turn. E talks when you are close. R resets the view."}</Prompt>}
       </div>
       {open && (
-        <div className="absolute inset-x-0 bottom-0 z-20 max-h-[70%] overflow-auto p-3" data-testid={`${place}-panel`}>
+        <div className="absolute bottom-3 right-3 top-16 z-20 w-[min(24rem,calc(100%-1.5rem))] overflow-auto" data-testid={`${place}-panel`}>
           <Panel>
             <div className="flex items-start justify-between gap-3">
               <Title>{spot?.label ?? "Stall"}</Title>
@@ -139,7 +140,7 @@ function ListingSheet({ onNote }: { onNote: (text: string) => void }) {
       ))}
       {open.length === 0 && <p>No listings.</p>}
       <label className="block">Gold ask
-        <input className="ml-2 w-20 rounded-xl bg-black/40 px-2 py-1" type="number" min={1} value={price} onChange={(event) => setPrice(Number(event.target.value))} />
+        <input className="control ml-2 w-24" type="number" min={1} value={price} onChange={(event) => setPrice(Number(event.target.value))} />
       </label>
       {Object.entries(game.inventory).filter(([, qty]) => qty > 0).map(([id, qty]) => (
         <div key={id} className="flex flex-wrap items-center justify-between gap-2">
