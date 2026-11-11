@@ -83,7 +83,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog("#1B1A22", 140, 380);
   scene.add(new THREE.HemisphereLight("#ffe0bf", "#2a1c16", 0.72));
-  const hallFocus = new THREE.Vector3(15.5 * CELL, 0, 12.2 * CELL);
+  const hallFocus = new THREE.Vector3(15.5 * CELL, 0, 15 * CELL);
   const sun = new THREE.DirectionalLight("#d7e4ff", 0.55);
   sun.position.set(hallFocus.x + 24, 40, hallFocus.z + 18);
   sun.target.position.copy(hallFocus);

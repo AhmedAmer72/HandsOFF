@@ -73,7 +73,6 @@ describe("raid", () => {
     const result = simulateRaid({ day: 2, seed: 3, hero: kara({ hp: 64, maxHp: 64 }), traps: [], tutorial: false });
     const names = result.report.events.filter((event) => event.type === "gate").map((event) => event.text);
     expect(names).toEqual([
-      "Kara lifts the Court gate.",
       "Kara lifts the Spike gate.",
       "Kara lifts the Vault gate.",
     ]);

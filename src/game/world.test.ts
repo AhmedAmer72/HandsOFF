@@ -43,8 +43,8 @@ describe("Ashgate dressing", () => {
     const rooms: Record<string, string> = {
       "crypt-sarcophagus-a": "crypt",
       "crypt-sarcophagus-b": "crypt",
-      "entrance-banner-left": "entrance",
-      "entrance-banner-right": "entrance",
+      "entrance-banner-left": "approach",
+      "entrance-banner-right": "approach",
       "library-shelf": "library",
       "library-shelf-east": "library",
       "prison-bars-a": "prison",
@@ -98,7 +98,7 @@ describe("Ashgate dressing", () => {
         queue.push(next);
       }
     }
-    for (const name of ["library", "vault", "crypt", "hall", "entrance", "prison", "arena"]) {
+    for (const name of ["library", "vault", "crypt", "hall", "entrance", "approach", "prison", "arena"]) {
       expect(walkableCells().some((cell) => roomName(cell.ix, cell.iz) === name && seen.has(`${cell.ix},${cell.iz}`))).toBe(true);
     }
     expect(isWalkable(12, 11)).toBe(false);
@@ -106,7 +106,7 @@ describe("Ashgate dressing", () => {
     expect(isWalkable(27, 14)).toBe(false);
   });
 
-  it("bends the short path through the court, the spike door, and the vault door", () => {
+  it("starts at the south gate and bends through the spike door and the vault door", () => {
     const path = findPath([], [], HERO_PROFILES.kara);
     const warrior = RULES.skeletons[1];
     const spike = RULES.spikeTutorialCell;
@@ -114,8 +114,8 @@ describe("Ashgate dressing", () => {
     expect(path.at(-1)).toEqual({ ix: RULES.grid.vault.ix, iz: RULES.grid.vault.iz });
     expect(path.some((cell) => cell.ix === spike.ix && cell.iz === spike.iz)).toBe(true);
     const at = (ix: number, iz: number) => path.findIndex((cell) => cell.ix === ix && cell.iz === iz);
-    expect(at(ROOM_GATES[0].ix, ROOM_GATES[0].iz)).toBeGreaterThanOrEqual(0);
-    expect(at(ROOM_GATES[0].ix, ROOM_GATES[0].iz)).toBeLessThan(at(spike.ix, spike.iz));
+    expect(at(16, 23)).toBeGreaterThan(0);
+    expect(at(16, 23)).toBeLessThan(at(spike.ix, spike.iz));
     expect(at(spike.ix, spike.iz)).toBeLessThan(at(ROOM_GATES[2].ix, ROOM_GATES[2].iz));
     expect(path.some((cell) => cell.ix === RULES.skeletons[0].ix && cell.iz === RULES.skeletons[0].iz)).toBe(true);
     expect(path.some((cell) => cell.ix === warrior.ix && cell.iz === warrior.iz)).toBe(false);

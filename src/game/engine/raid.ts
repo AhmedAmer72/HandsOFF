@@ -43,7 +43,7 @@ export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "deci
     events.push({ ...event, tick: tick++, heroHp: hero.hp });
   };
 
-  push({ type: "enter", text: `${profile.name} enters Ashgate through the south court.`, ix: path[0]?.ix, iz: path[0]?.iz });
+  push({ type: "enter", text: `${profile.name} enters Ashgate through the south gate.`, ix: path[0]?.ix, iz: path[0]?.iz });
   const lifted = new Set<string>();
 
   for (const cell of path) {

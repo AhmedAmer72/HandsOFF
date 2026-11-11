@@ -3,11 +3,11 @@ import { DOORS, FLOORS, WALLS } from "./config/ashgateLayout";
 import {
   PILLARS,
   ROOM_GATES,
-  RULES,
   cellKey,
   floorName,
   gateCells,
   hasFloor,
+  isEntranceTile,
   roomName,
   walkableCells,
   type Cell,
@@ -38,7 +38,7 @@ function edgePiece(ix: number, iz: number, side: "n" | "s" | "e" | "w", fileName
 }
 
 function floorLabel(file: string, ix: number, iz: number) {
-  if (ix === RULES.grid.entrance.ix && iz === RULES.grid.entrance.iz) return "Wood threshold";
+  if (isEntranceTile(ix, iz)) return "Gate threshold";
   if (file.startsWith("floor_wood")) return "Wood floor";
   if (file.includes("rocks")) return "Rubble floor";
   if (file.includes("dirt")) return "Dirt floor";
@@ -94,9 +94,9 @@ export function ashgatePieces(): Piece[] {
       label: "Stone pillar",
     }));
   }
-  const props: Array<{ id: string; file: string; ix: number; iz: number; y?: number; rot?: number; kind?: Piece["kind"]; label: string }> = [
-    { id: "entrance-banner-left", file: "banner_red", ix: 2, iz: 16, label: "Entrance banner" },
-    { id: "entrance-banner-right", file: "banner_red", ix: 2, iz: 19, rot: 0.2, label: "Entrance banner" },
+  const props: Array<{ id: string; file: string; ix: number; iz: number; ox?: number; oz?: number; y?: number; rot?: number; kind?: Piece["kind"]; label: string }> = [
+    { id: "entrance-banner-left", file: "banner_red", ix: 15, iz: 27, ox: -0.55, oz: 0.55, rot: -Math.PI / 6, label: "Entrance banner" },
+    { id: "entrance-banner-right", file: "banner_red", ix: 16, iz: 27, ox: 0.55, oz: 0.55, rot: -Math.PI / 6, label: "Entrance banner" },
     { id: "library-shelf", file: "shelf_large", ix: 3, iz: 4, rot: Math.PI / 2, label: "Library shelf" },
     { id: "library-shelf-east", file: "shelf_large", ix: 7, iz: 7, rot: -Math.PI / 2, label: "Library shelf" },
     { id: "shrine-altar", file: "pillar_decorated", ix: 5, iz: 5, label: "Shrine altar" },
@@ -121,8 +121,8 @@ export function ashgatePieces(): Piece[] {
       url: dungeon(prop.file),
       file: `${prop.file}.gltf`,
       pack: "dungeon-remastered",
-      x: prop.ix * CELL,
-      z: prop.iz * CELL,
+      x: prop.ix * CELL + (prop.ox ?? 0),
+      z: prop.iz * CELL + (prop.oz ?? 0),
       y: prop.y ?? 0,
       rot: prop.rot ?? 0,
       kind: prop.kind ?? "prop",

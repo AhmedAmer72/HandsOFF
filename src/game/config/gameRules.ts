@@ -11,7 +11,7 @@ export const RULES = {
   /** No approved numeric design sheet was in the repo. Values here are the only copy the game reads. */
   assumption:
     "Trap costs, hero stats, prices, and the burn cost are conservative defaults chosen for this build because the repository had no separate economy rules document.",
-  grid: { entrance: { ix: 4, iz: 20 }, vault: { ix: 25, iz: 5 } },
+  grid: { entrance: { ix: 15, iz: 26 }, vault: { ix: 25, iz: 5 } },
   skeletons: [
     { id: "guard", ix: 20, iz: 8, hp: 36, attack: 11, name: "Dungeon Guard" },
     { id: "warrior", ix: 26, iz: 15, hp: 48, attack: 14, name: "Skeleton Warrior" },
@@ -64,10 +64,10 @@ export function gateCovers(gate: RoomGate, ix: number, iz: number) {
   return gateCells(gate).some((cell) => cell.ix === ix && cell.iz === iz);
 }
 
-/** South threshold of the exterior gate. Both tiles stay clear. The path starts on the west one. */
+/** South mouth of the approach corridor. Both tiles stay clear. The path starts on the west one. */
 export const ENTRANCE_TILES: readonly Cell[] = [
-  { ix: 4, iz: 20 },
-  { ix: 5, iz: 20 },
+  { ix: 15, iz: 26 },
+  { ix: 16, iz: 26 },
 ];
 
 export function isEntranceTile(ix: number, iz: number) {
@@ -92,6 +92,7 @@ const ROOMS: readonly { name: string; floor: string; x1: number; y1: number; x2:
   { name: "entrance", floor: "floor_wood_large", x1: 2, y1: 15, x2: 7, y2: 20 },
   { name: "prison", floor: "floor_dirt_large", x1: 23, y1: 13, x2: 29, y2: 19 },
   { name: "arena", floor: "floor_tile_large_rocks", x1: 11, y1: 19, x2: 19, y2: 22 },
+  { name: "approach", floor: "floor_tile_large_rocks", x1: 15, y1: 23, x2: 16, y2: 27 },
 ];
 
 export const PILLARS: readonly Cell[] = COLUMNS.map(([ix, iz]) => ({ ix, iz }));

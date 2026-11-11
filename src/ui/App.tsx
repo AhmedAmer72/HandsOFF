@@ -60,10 +60,10 @@ import { Button, CHRONICLE, chronicleKind, Panel, Receipt } from "./kit";
 
 const TUTORIAL = [
   `The way to the vault bends through gates. Choose Spike and click tile ${RULES.spikeTutorialCell.ix}, ${RULES.spikeTutorialCell.iz}.`,
-  "Click the south doorway. The chosen hero walks in.",
+  "Press Begin the raid. The hero walks in from the south gate.",
   "Click the flying page to burn it, or let the moment pass.",
   "Orrin keeps a landed page. Buy it back at his stall in the Market.",
-  "Click the south doorway again. A hero who bought the rumour walks around the spike.",
+  "Press Begin the raid again. A hero who bought the rumour walks around the spike.",
   "Supply iron or buy a phial from the stalls in the Market.",
   "Chapter 7. The vault brace is in the workshop. After that, the next day is yours.",
 ];
@@ -119,6 +119,7 @@ function DungeonScreen() {
   const [paused, setPaused] = useState(false);
   const [rate, setRate] = useState<1 | 2>(1);
   const [gearOpen, setGearOpen] = useState(false);
+  const [raidNote, setRaidNote] = useState("");
   const paceRef = useRef({ paused: false, rate: 1 as 1 | 2 });
   paceRef.current = { paused, rate };
   const hooks = useRef(game);
@@ -314,6 +315,28 @@ function DungeonScreen() {
             ? `The page is in the air. Burn costs ${RAID.cinder.burnCost} cinder${game.cinder < RAID.cinder.burnCost ? ", and you do not have enough" : ""}. Waiting lets it land as a rumour. ${seconds}s.`
             : hint}
         </Notice>
+        {game.phase === "prep" && !walking && (
+          <ForgedFrame variant="tooltip" className="pointer-events-auto max-w-xs">
+            <p className="font-display text-lg text-gold">South gate</p>
+            <p className="text-sm text-parchment/80">The hero starts beside the banners and walks the corridor.</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button onClick={() => {
+                const result = startRaid();
+                setRaidNote(result.ok ? "" : result.reason);
+                if (result.ok) sfx.ui();
+              }}>Begin the raid</Button>
+            </div>
+            {raidNote && (
+              <>
+                <p className="mt-2 text-sm text-gold">{raidNote}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button tone="ghost" onClick={() => void fundRaidOffer().then((result) => setRaidNote(result.reason))}>Fund offer</Button>
+                  <Button tone="ghost" onClick={() => void acceptRaidOffer().then((result) => setRaidNote(result.reason))}>Accept offer</Button>
+                </div>
+              </>
+            )}
+          </ForgedFrame>
+        )}
         {toast && <Notice tone="gold">{toast}</Notice>}
         <p className="pointer-events-none text-[10px] uppercase tracking-[0.14em] text-parchment/75">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
       </div>
