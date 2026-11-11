@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { RULES } from "../config/gameRules";
 
 const mem = new Map<string, string>();
 Object.defineProperty(globalThis, "localStorage", {
@@ -29,7 +30,7 @@ describe("live raid rules", () => {
   it("charges 30 gold for the hall spike and bleeds the vault", async () => {
     expect(getState().cinder).toBe(3);
     expect(getState().vault).toBe(1200);
-    const placed = placeTrap("spike", 4, 6);
+    const placed = placeTrap("spike", RULES.spikeTutorialCell.ix, RULES.spikeTutorialCell.iz);
     expect(placed.ok).toBe(true);
     expect(getState().gold).toBe(110);
     await raid();
@@ -41,7 +42,7 @@ describe("live raid rules", () => {
   });
 
   it("burns the page for 2 cinder and does not list a rumour", async () => {
-    placeTrap("spike", 4, 6);
+    placeTrap("spike", RULES.spikeTutorialCell.ix, RULES.spikeTutorialCell.iz);
     await raid();
     markDiary();
     const burned = resolvePage("burn");
@@ -52,7 +53,7 @@ describe("live raid rules", () => {
   });
 
   it("lets a landed page teach only the hero who buys it", async () => {
-    placeTrap("spike", 4, 6);
+    placeTrap("spike", RULES.spikeTutorialCell.ix, RULES.spikeTutorialCell.iz);
     await raid();
     markDiary();
     resolvePage("escape");

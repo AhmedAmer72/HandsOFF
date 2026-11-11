@@ -17,7 +17,7 @@ export interface TrapDefinition {
 export const TRAP_DEFINITIONS: Record<TrapId, TrapDefinition> = {
   spike: {
     id: "spike",
-    name: "Spike Trap",
+    name: "Spike",
     cost: RAID.traps.spike,
     damage: 24,
     model: dungeon("floor_tile_big_spikes"),
@@ -26,7 +26,7 @@ export const TRAP_DEFINITIONS: Record<TrapId, TrapDefinition> = {
   },
   pit: {
     id: "pit",
-    name: "Pit Trap",
+    name: "Pit",
     cost: RAID.traps.pit,
     damage: 30,
     model: dungeon("floor_tile_big_grate_open"),
@@ -35,7 +35,7 @@ export const TRAP_DEFINITIONS: Record<TrapId, TrapDefinition> = {
   },
   boulder: {
     id: "boulder",
-    name: "Rolling Cask",
+    name: "Boulder",
     cost: RAID.traps.boulder,
     damage: 20,
     model: dungeon("barrel_large"),
@@ -44,7 +44,7 @@ export const TRAP_DEFINITIONS: Record<TrapId, TrapDefinition> = {
   },
   bait: {
     id: "bait",
-    name: "Bait Plate",
+    name: "Bait",
     cost: RAID.bait,
     damage: 0,
     model: dungeon("plate_food_A"),

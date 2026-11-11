@@ -1,4 +1,4 @@
-import { ROOM_GATES, RULES, cellKey, isWalkable, type Cell } from "../config/gameRules";
+import { ROOM_GATES, RULES, cellKey, gateCovers, isWalkable, type Cell } from "../config/gameRules";
 import type { HeroProfile } from "../config/heroProfiles";
 import { TRAP_DEFINITIONS, type TrapId } from "../config/trapDefinitions";
 import type { Fact } from "./types";
@@ -31,15 +31,17 @@ export function routeCost(cell: Cell, traps: PlacedTrap[], facts: Fact[], profil
   const level = known.map((fact) => fact.memory ?? "warned");
   if (trap.trapId === "bait" && known.length === 0) return Math.max(0.2, 1 - profile.greed / 10);
   const baited = traps.some((entry) => entry.trapId === "bait");
-  if (rule.damage > 0 && level.some((entry) => entry === "dodged") && !level.some((entry) => entry === "warned") && baited && profile.greed >= 6) return 1.4;
+  // A warned or dodged tile costs enough to leave it. This floor has a free tile beside
+  // every step, so any cost above 1 would also sidestep a trap the hero has not been warned about.
+  // Unknown and observed tiles stay on the shortest walk. Bait lets a greedy hero treat a dodge as an ordinary tile again.
+  if (rule.damage > 0 && level.some((entry) => entry === "dodged") && !level.some((entry) => entry === "warned") && baited && profile.greed >= 6) return 1;
   if (rule.damage > 0 && level.some((entry) => entry === "warned" || entry === "dodged")) return 12 + profile.caution * profile.riskAversion;
-  if (rule.damage > 0 && level.some((entry) => entry === "observed")) return 1.5;
   if (level.some((entry) => entry === "countered")) return 1;
-  return 1 + profile.caution * 0.1;
+  return 1;
 }
 
 function gateBlocks(cell: Cell, closedGateIds: readonly string[]) {
-  return ROOM_GATES.some((gate) => closedGateIds.includes(gate.id) && gate.ix === cell.ix && gate.iz === cell.iz);
+  return ROOM_GATES.some((gate) => closedGateIds.includes(gate.id) && gateCovers(gate, cell.ix, cell.iz));
 }
 
 function reconstruct(parent: Map<string, string>, cells: Map<string, Cell>, from: string) {

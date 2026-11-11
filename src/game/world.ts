@@ -1,5 +1,17 @@
 import { dungeon } from "./content";
-import { HALL_H, HALL_W, PILLARS, ROOM_GATES, RULES, cellKey, floorName, roomName, walkableCells, type Cell } from "./config/gameRules";
+import { DOORS, FLOORS, WALLS } from "./config/ashgateLayout";
+import {
+  PILLARS,
+  ROOM_GATES,
+  RULES,
+  cellKey,
+  floorName,
+  gateCells,
+  hasFloor,
+  roomName,
+  walkableCells,
+  type Cell,
+} from "./config/gameRules";
 import type { Piece } from "./content";
 
 const CELL = 4;
@@ -8,7 +20,7 @@ function piece(partial: Omit<Piece, "y" | "rot"> & { y?: number; rot?: number })
   return { y: 0, rot: 0, ...partial };
 }
 
-function edgePiece(ix: number, iz: number, side: "n" | "s" | "e" | "w", fileName: string, label: string, cutaway = false): Piece {
+function edgePiece(ix: number, iz: number, side: "n" | "s" | "e" | "w", fileName: string, label: string): Piece {
   const x = ix * CELL + (side === "w" ? -2 : side === "e" ? 2 : 0);
   const z = iz * CELL + (side === "n" ? -2 : side === "s" ? 2 : 0);
   const rot = side === "w" ? Math.PI / 2 : side === "e" ? -Math.PI / 2 : side === "s" ? Math.PI : 0;
@@ -22,22 +34,6 @@ function edgePiece(ix: number, iz: number, side: "n" | "s" | "e" | "w", fileName
     rot,
     kind: "wall",
     label,
-    cutaway,
-  });
-}
-
-function centerPiece(id: string, fileName: string, ix: number, iz: number, rot: number, label: string, cutaway = false): Piece {
-  return piece({
-    id,
-    url: dungeon(fileName),
-    file: `${fileName}.gltf`,
-    pack: "dungeon-remastered",
-    x: ix * CELL,
-    z: iz * CELL,
-    rot,
-    kind: "wall",
-    label,
-    cutaway,
   });
 }
 
@@ -49,99 +45,75 @@ function floorLabel(file: string, ix: number, iz: number) {
   return "Stone floor";
 }
 
-/** Floors and walls for the blueprint hall, plus the dressed rooms. */
+/** Place a blueprint edge on the floor tile that owns it. */
+function wallOnFloor(orientation: "h" | "v", fixed: number, along: number, fileName: string, label: string): Piece {
+  if (orientation === "h") {
+    const ix = along;
+    const iz = hasFloor(ix, fixed) ? fixed : fixed - 1;
+    const side = hasFloor(ix, fixed) ? "n" : "s";
+    return edgePiece(ix, iz, side, fileName, label);
+  }
+  const iz = along;
+  const ix = hasFloor(fixed, iz) ? fixed : fixed - 1;
+  const side = hasFloor(fixed, iz) ? "w" : "e";
+  return edgePiece(ix, iz, side, fileName, label);
+}
+
+/** Floors, the blueprint wall segments, and the dressed rooms. */
 export function ashgatePieces(): Piece[] {
-  const open = new Set(walkableCells().map((cell) => cellKey(cell.ix, cell.iz)));
-  const inside = (ix: number, iz: number) => ix >= 0 && ix <= HALL_W && iz >= 0 && iz <= HALL_H;
-  const blocked = (ix: number, iz: number) => inside(ix, iz) && !open.has(cellKey(ix, iz));
   const out: Piece[] = [];
-  const seen = new Set<string>();
-  const addWall = (ix: number, iz: number, side: "n" | "s" | "e" | "w", fileName: string, label: string) => {
-    const id = `wall-${side}-${ix}-${iz}`;
-    if (seen.has(id)) return;
-    seen.add(id);
-    out.push(edgePiece(ix, iz, side, fileName, label));
-  };
-  for (let ix = 0; ix <= HALL_W; ix++) {
-    for (let iz = 0; iz <= HALL_H; iz++) {
-      const file = floorName(ix, iz);
-      out.push(piece({
-        id: `floor-${ix}-${iz}`,
-        url: dungeon(file),
-        file: `${file}.gltf`,
-        pack: "dungeon-remastered",
-        x: ix * CELL,
-        z: iz * CELL,
-        kind: "floor",
-        label: floorLabel(file, ix, iz),
-      }));
-    }
+  for (const [ix, iz] of FLOORS) {
+    const file = floorName(ix, iz);
+    out.push(piece({
+      id: `floor-${ix}-${iz}`,
+      url: dungeon(file),
+      file: `${file}.gltf`,
+      pack: "dungeon-remastered",
+      x: ix * CELL,
+      z: iz * CELL,
+      kind: "floor",
+      label: floorLabel(file, ix, iz),
+    }));
   }
-  for (let ix = 0; ix <= HALL_W; ix++) {
-    const door = ix === RULES.grid.entrance.ix;
-    addWall(ix, HALL_H, "s", door ? "wall_doorway" : "wall", door ? "Entrance gate" : "Wall");
-    addWall(ix, 0, "n", "wall", "Wall");
+  for (const [orientation, fixed, along] of WALLS) {
+    out.push(wallOnFloor(orientation, fixed, along, "wall", "Wall"));
   }
-  for (let iz = 0; iz <= HALL_H; iz++) {
-    addWall(0, iz, "w", "wall", "Wall");
-    addWall(HALL_W, iz, "e", "wall", "Wall");
+  for (const [id, orientation, fixed, along] of DOORS) {
+    if (id !== "D1") continue;
+    out.push(wallOnFloor(orientation, fixed, along, "wall_doorway", "Entrance gate"));
   }
-  // One wall segment per solid cell, centered so a grate sits in the same line.
-  // A turn uses two half segments so the corner joins without a second wall.
-  // Every stone wall stays up so the room outlines match the floor plan.
-  const armRot = { e: 0, w: Math.PI, s: -Math.PI / 2, n: Math.PI / 2 } as const;
-  const pillarAt = (ix: number, iz: number) => PILLARS.some((cell) => cell.ix === ix && cell.iz === iz);
-  for (let ix = 0; ix <= HALL_W; ix++) {
-    for (let iz = 0; iz <= HALL_H; iz++) {
-      if (!blocked(ix, iz)) continue;
-      const sides = ["n", "s", "e", "w"] as const;
-      const step = (side: (typeof sides)[number]) => ({
-        dx: side === "e" ? 1 : side === "w" ? -1 : 0,
-        dz: side === "s" ? 1 : side === "n" ? -1 : 0,
-      });
-      const solid = sides.filter((side) => {
-        const { dx, dz } = step(side);
-        return blocked(ix + dx, iz + dz);
-      });
-      const gateSide = sides.filter((side) => {
-        const { dx, dz } = step(side);
-        return ROOM_GATES.some((gate) => gate.ix === ix + dx && gate.iz === iz + dz);
-      });
-      if (pillarAt(ix, iz)) {
-        out.push(centerPiece(`pillar-${ix}-${iz}`, "pillar", ix, iz, 0, "Stone pillar"));
-        for (const side of solid) out.push(centerPiece(`wall-arm-${side}-${ix}-${iz}`, "wall_half", ix, iz, armRot[side], "Wall"));
-        continue;
-      }
-      const horizontal = solid.some((side) => side === "e" || side === "w") || gateSide.some((side) => side === "e" || side === "w");
-      const vertical = solid.some((side) => side === "n" || side === "s");
-      if (horizontal && vertical) {
-        const arms = new Set([...solid, ...gateSide]);
-        for (const side of arms) out.push(centerPiece(`wall-arm-${side}-${ix}-${iz}`, "wall_half", ix, iz, armRot[side], "Wall"));
-      } else {
-        out.push(centerPiece(`wall-run-${ix}-${iz}`, "wall", ix, iz, horizontal ? Math.PI : Math.PI / 2, "Wall"));
-      }
-    }
+  for (const column of PILLARS) {
+    out.push(piece({
+      id: `pillar-${column.ix}-${column.iz}`,
+      url: dungeon("pillar"),
+      file: "pillar.gltf",
+      pack: "dungeon-remastered",
+      x: column.ix * CELL,
+      z: column.iz * CELL,
+      kind: "wall",
+      label: "Stone pillar",
+    }));
   }
-  // Furniture sits against walls or in side rooms, off the route to the vault.
-  const props: Array<{ id: string; file: string; x: number; z: number; y?: number; rot?: number; kind?: Piece["kind"]; label: string }> = [
-    { id: "entrance-banner-left", file: "banner_red", x: 4 * CELL - 2.9, z: HALL_H * CELL + 2.7, label: "Entrance banner" },
-    { id: "entrance-banner-right", file: "banner_red", x: 4 * CELL + 2.9, z: HALL_H * CELL + 2.7, label: "Entrance banner" },
-    { id: "vault-chest", file: "chest_gold", x: 4 * CELL, z: -1.05, kind: "vault", label: "Treasure vault" },
-    { id: "vault-coins", file: "coin_stack_medium", x: 2 * CELL, z: 0.7, label: "Vault coins" },
-    { id: "bedroom-bed", file: "bed_decorated", x: CELL, z: CELL, rot: 0.2, label: "Bedroom bed" },
-    { id: "round-table", file: "table_medium", x: CELL, z: 4 * CELL, rot: 0.4, label: "Round table" },
-    { id: "store-table", file: "table_small", x: CELL, z: 9 * CELL, rot: 0.2, label: "Lower table" },
-    { id: "dining-table", file: "table_long", x: 10 * CELL, z: 10 * CELL, rot: Math.PI / 2, label: "Dining table" },
-    { id: "dining-chair-north", file: "chair", x: 10 * CELL, z: 10 * CELL - 1.7, rot: Math.PI, label: "Dining chair" },
-    { id: "dining-chair-south", file: "chair", x: 10 * CELL, z: 10 * CELL + 1.7, label: "Dining chair" },
-    { id: "store-barrel", file: "barrel_small", x: CELL, z: 11 * CELL, rot: 0.4, label: "Store barrel" },
-    { id: "store-crates", file: "box_small", x: 2 * CELL, z: 10 * CELL, rot: 0.2, label: "Store crates" },
-    { id: "torch-vault", file: "torch_mounted", x: 2 * CELL, y: 1.65, z: -1.65, kind: "light", label: "Vault torch" },
-    { id: "torch-store", file: "torch_mounted", x: -1.65, y: 1.65, z: 4 * CELL, rot: Math.PI / 2, kind: "light", label: "Parlor torch" },
-    { id: "torch-gate-west", file: "torch_mounted", x: 3 * CELL, y: 1.65, z: HALL_H * CELL + 1.55, rot: Math.PI, kind: "light", label: "Gate torch" },
-    { id: "torch-gate-east", file: "torch_mounted", x: 5 * CELL, y: 1.65, z: HALL_H * CELL + 1.55, rot: Math.PI, kind: "light", label: "Gate torch" },
-    { id: "torch-hall", file: "torch_mounted", x: 10 * CELL, y: 1.65, z: 9 * CELL - 1.55, rot: Math.PI, kind: "light", label: "Dining torch" },
-    { id: "torch-rubble", file: "torch_mounted", x: 9 * CELL, y: 1.65, z: -1.65, kind: "light", label: "Rubble torch" },
+  const props: Array<{ id: string; file: string; ix: number; iz: number; y?: number; rot?: number; kind?: Piece["kind"]; label: string }> = [
+    { id: "entrance-banner-left", file: "banner_red", ix: 2, iz: 16, label: "Entrance banner" },
+    { id: "entrance-banner-right", file: "banner_red", ix: 2, iz: 19, rot: 0.2, label: "Entrance banner" },
+    { id: "library-shelf", file: "shelf_large", ix: 3, iz: 4, rot: Math.PI / 2, label: "Library shelf" },
+    { id: "library-shelf-east", file: "shelf_large", ix: 7, iz: 7, rot: -Math.PI / 2, label: "Library shelf" },
+    { id: "shrine-altar", file: "pillar_decorated", ix: 5, iz: 5, label: "Shrine altar" },
+    { id: "crypt-sarcophagus-a", file: "box_large", ix: 4, iz: 11, rot: 0.2, label: "Sarcophagus" },
+    { id: "crypt-sarcophagus-b", file: "box_large", ix: 6, iz: 12, rot: 1.2, label: "Sarcophagus" },
+    { id: "prison-bars-a", file: "wall_gated", ix: 27, iz: 14, rot: Math.PI / 2, label: "Prison bars" },
+    { id: "prison-bars-b", file: "wall_gated", ix: 28, iz: 14, rot: Math.PI / 2, label: "Prison bars" },
+    { id: "prison-bars-c", file: "wall_gated", ix: 27, iz: 16, rot: Math.PI / 2, label: "Prison bars" },
+    { id: "prison-bars-d", file: "wall_gated", ix: 28, iz: 16, rot: Math.PI / 2, label: "Prison bars" },
+    { id: "vault-chest", file: "chest_gold", ix: 25, iz: 5, kind: "vault", label: "Treasure vault" },
+    { id: "vault-coins", file: "coin_stack_medium", ix: 27, iz: 5, label: "Vault coins" },
+    { id: "torch-library", file: "torch_mounted", ix: 5, iz: 3, y: 1.65, kind: "light", label: "Library torch" },
+    { id: "torch-vault", file: "torch_mounted", ix: 23, iz: 3, y: 1.65, kind: "light", label: "Vault torch" },
+    { id: "torch-crypt", file: "torch_mounted", ix: 3, iz: 10, y: 1.65, rot: Math.PI / 2, kind: "light", label: "Crypt torch" },
+    { id: "torch-hall", file: "torch_mounted", ix: 14, iz: 9, y: 1.65, rot: Math.PI, kind: "light", label: "Hall torch" },
+    { id: "torch-gate", file: "torch_mounted", ix: 3, iz: 20, y: 1.65, rot: Math.PI, kind: "light", label: "Gate torch" },
+    { id: "torch-prison", file: "torch_mounted", ix: 24, iz: 18, y: 1.65, rot: -Math.PI / 2, kind: "light", label: "Prison torch" },
   ];
   for (const prop of props) {
     out.push(piece({
@@ -149,8 +121,8 @@ export function ashgatePieces(): Piece[] {
       url: dungeon(prop.file),
       file: `${prop.file}.gltf`,
       pack: "dungeon-remastered",
-      x: prop.x,
-      z: prop.z,
+      x: prop.ix * CELL,
+      z: prop.iz * CELL,
       y: prop.y ?? 0,
       rot: prop.rot ?? 0,
       kind: prop.kind ?? "prop",
@@ -158,17 +130,20 @@ export function ashgatePieces(): Piece[] {
     }));
   }
   for (const gate of ROOM_GATES) {
-    out.push(piece({
-      id: `room-gate-${gate.id}`,
-      url: dungeon("wall_gated"),
-      file: "wall_gated.gltf",
-      pack: "dungeon-remastered",
-      x: gate.ix * CELL,
-      z: gate.iz * CELL,
-      rot: gate.rot,
-      kind: "wall",
-      label: gate.name,
-    }));
+    for (const cell of gateCells(gate)) {
+      const primary = cell.ix === gate.ix && cell.iz === gate.iz;
+      out.push(piece({
+        id: primary ? `room-gate-${gate.id}` : `room-gate-${gate.id}-${cell.ix}-${cell.iz}`,
+        url: dungeon("wall_gated"),
+        file: "wall_gated.gltf",
+        pack: "dungeon-remastered",
+        x: cell.ix * CELL + gate.ox,
+        z: cell.iz * CELL + gate.oz,
+        rot: gate.rot,
+        kind: "wall",
+        label: gate.name,
+      }));
+    }
   }
   return out;
 }

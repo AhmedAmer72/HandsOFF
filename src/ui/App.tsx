@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { goodsRule } from "../game/config/economyRules";
+import { RULES } from "../game/config/gameRules";
 import { GOODS as RULE_GOODS, RAID } from "../../rules/economy";
 import { HERO_PROFILES } from "../game/config/heroProfiles";
 import { TRAP_DEFINITIONS, TRAP_IDS } from "../game/config/trapDefinitions";
@@ -55,7 +56,7 @@ import { Shell } from "./shell";
 import { Button, CHRONICLE, chronicleKind, Num, Panel, Receipt } from "./kit";
 
 const TUTORIAL = [
-  "The way to the vault bends through gates. Choose Spike Trap and click tile 4, 6.",
+  `The way to the vault bends through gates. Choose Spike and click tile ${RULES.spikeTutorialCell.ix}, ${RULES.spikeTutorialCell.iz}.`,
   "Click the south doorway. The chosen hero walks in.",
   "Click the flying page to burn it, or let the moment pass.",
   "Orrin keeps a landed page. Buy it back at his stall in the Market.",
@@ -68,7 +69,7 @@ export function App() {
   const game = useGame();
   return (
     <div className="flex h-full min-h-screen bg-ink font-body text-parchment">
-      {game.screen !== "menu" && <Shell screen={game.screen} />}
+      {game.screen !== "menu" && game.screen !== "dungeon" && game.screen !== "home" && <Shell screen={game.screen} />}
       <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         {game.screen === "menu" && <MainMenu />}
         {(game.screen === "dungeon" || game.screen === "home") && <DungeonScreen />}
@@ -96,7 +97,7 @@ function DungeonScreen() {
   const game = useGame();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [seconds, setSeconds] = useState<number>(RAID.pageFlightSec);
-  const [hint, setHint] = useState("Choose a trap on the bar. It follows the cursor until you click a tile.");
+  const [hint, setHint] = useState("Choose a trap. It follows the cursor until you click a tile.");
   const [trapIcons, setTrapIcons] = useState<Partial<Record<(typeof TRAP_IDS)[number], string>>>({});
   const [openHero, setOpenHero] = useState<"kara" | "brann" | "ivo" | null>(null);
   const [feed, setFeed] = useState("All");
@@ -122,6 +123,11 @@ function DungeonScreen() {
   }, []);
   const [toast, setToast] = useState("");
   const [walking, setWalking] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [rate, setRate] = useState<1 | 2>(1);
+  const [gearOpen, setGearOpen] = useState(false);
+  const paceRef = useRef({ paused: false, rate: 1 as 1 | 2 });
+  paceRef.current = { paused, rate };
   const hooks = useRef(game);
   hooks.current = game;
 
@@ -201,6 +207,7 @@ function DungeonScreen() {
         return result.locked;
       },
       getClosedGates: () => hooks.current.closedGateIds ?? [],
+      getPace: () => (paceRef.current.paused ? 0 : paceRef.current.rate),
     });
     bindDungeon(mounted);
     let live = true;
@@ -264,28 +271,51 @@ function DungeonScreen() {
   const pickedProfile = openHero ? HERO_PROFILES[openHero] : null;
   const pickedFacts = picked?.facts.filter((fact) => !fact.burned) ?? [];
   const lowVault = game.vault < RAID.vaultStart * 0.25;
+  const tier = dungeonTier(game.raidsCleared ?? 0);
+  const vaultPct = Math.max(0, Math.min(100, (game.vault / RAID.vaultStart) * 100));
+  const bleed = game.phase === "raid" ? RAID.bleedPerHeroPerSec : 0;
+  const possessLocked = game.day < RAID.possess.fromWave;
 
   return (
     <div className={`relative h-full min-h-[640px] ${game.reduceMotion ? "motion-reduce" : ""}`}>
       <canvas ref={canvasRef} className="view absolute inset-0 h-full w-full" />
-      <div className="pointer-events-none absolute inset-x-0 top-2 flex flex-col gap-2 px-2 sm:px-3">
-        <div className="hud-glass pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-hud px-3 py-2 text-sm">
-          <span>Vault <Num className={`${lowVault ? "text-blood" : "text-gold"} ${vaultPulse ? "vault-tick" : ""}`}>{game.vault}</Num></span>
-          <span className="num">{game.phase === "raid" ? `−${RAID.bleedPerHeroPerSec}/s` : "−0/s"}{lowVault ? " · low" : ""}</span>
-          <span>Gold <Num className="text-gold">{Math.round(game.gold)}</Num></span>
-          <span className="text-ember" aria-label={`${game.cinder} of ${RAID.cinder.cap} cinder`}>Cinder {"●".repeat(game.cinder)}{"○".repeat(Math.max(0, RAID.cinder.cap - game.cinder))}</span>
-          <span className="num">Wave {game.day}</span>
-          <span className="num">Tier {dungeonTier(game.raidsCleared ?? 0)}</span>
-          {game.phase !== "raid" && game.pageResult !== "decision" && <Button tone="ghost" className="ml-auto" onClick={() => setScreen("gate")}>Contract board</Button>}
-          <Button tone="ghost" className={game.phase === "raid" || game.pageResult === "decision" ? "ml-auto" : ""} onClick={() => setLogOpen((value) => !value)}>Chronicle</Button>
-        </div>
+      <div className="pointer-events-none absolute left-3 top-3 z-20 flex max-w-[min(28rem,calc(100%-18rem))] flex-col gap-2">
         <div className="pointer-events-auto flex flex-wrap gap-2">
+          <div className="flex items-center gap-2 rounded-full bg-[#120e0c]/92 py-1 pl-1 pr-4 ring-1 ring-gold/40">
+            <span className="grid h-10 w-10 place-items-center rounded-full bg-gold text-ink" aria-hidden="true">
+              <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="7.5" /><path d="M12 8v8M9.2 9.6c.7-.9 4.9-.9 5.6 0 .7.9-.2 1.8-2.8 2s-3.5 1.1-2.8 2 .7 1.8 2.8 1.8 2.1-.8 2.8-1.7" /></svg>
+            </span>
+            <div className="leading-none">
+              <Num className={`block text-lg text-gold ${vaultPulse ? "vault-tick" : ""}`}>{Math.round(game.gold)}</Num>
+              <span className={`text-[11px] ${bleed > 0 ? "text-blood" : "text-parchment/60"}`}>{bleed > 0 ? `−${bleed}/s` : "−0/s"}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 rounded-full bg-[#120e0c]/92 py-1 pl-1 pr-4 ring-1 ring-amber-700/50">
+            <span className="grid h-10 w-10 place-items-center rounded-full bg-ember text-ink" aria-hidden="true">
+              <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor"><path d="M12 3s5 4.2 5 9a5 5 0 1 1-10 0c0-2.2 1.2-4 2.4-5.2C10 8.2 11 10 12 10c0-2.6.6-4.8 0-7z" /></svg>
+            </span>
+            <div className="leading-none">
+              <Num className="block text-lg text-parchment">{game.day}</Num>
+              <span className="text-[11px] text-parchment/70">Wave</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 rounded-full bg-[#120e0c]/92 py-1 pl-1 pr-4 ring-1 ring-blood/60" aria-label={`${game.cinder} of ${RAID.cinder.cap} cinder`}>
+            <span className="grid h-10 w-10 place-items-center rounded-full bg-blood text-parchment" aria-hidden="true">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor"><path d="M12 2 20 12 12 22 4 12 12 2z" /></svg>
+            </span>
+            <div className="leading-none">
+              <Num className="block text-lg text-parchment">{game.cinder}</Num>
+              <span className="text-[11px] text-parchment/70">Cinder</span>
+            </div>
+          </div>
+        </div>
+        <div className="pointer-events-auto flex flex-wrap gap-1.5">
           {(["kara", "brann", "ivo"] as const).map((id) => {
             const body = game.heroes[id];
             const profile = HERO_PROFILES[id];
             const open = openHero === id;
             return (
-              <button key={id} className={`min-h-11 rounded-full px-3 text-sm ${open ? "bg-gold text-ink" : "hud-glass text-parchment"}`} aria-pressed={open} onClick={() => setOpenHero(open ? null : id)}>
+              <button key={id} className={`min-h-9 rounded-full px-3 text-xs ${open ? "bg-gold text-ink" : "bg-[#120e0c]/80 text-parchment ring-1 ring-gold/25"}`} aria-pressed={open} onClick={() => setOpenHero(open ? null : id)}>
                 {profile.name} <span className="num">{body.hp}/{body.maxHp}</span>
               </button>
             );
@@ -305,15 +335,43 @@ function DungeonScreen() {
             <button type="button" className="mt-1 min-h-11 text-sm text-gold underline" onClick={() => setScreen("registry")}>Hero record</button>
           </div>
         )}
+        <p className="pointer-events-none max-w-md text-xs text-parchment/80">
+          {game.pageResult === "decision"
+            ? `The page is in the air. Burn costs ${RAID.cinder.burnCost} cinder${game.cinder < RAID.cinder.burnCost ? ", and you do not have enough" : ""}. Waiting lets it land as a rumour. ${seconds}s.`
+            : hint}
+        </p>
+        {toast && <p className="pointer-events-none max-w-md text-xs text-gold">{toast}</p>}
+        <p className="pointer-events-none text-[10px] uppercase tracking-[0.14em] text-parchment/45">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
+      </div>
+      <div className="pointer-events-auto absolute right-3 top-3 z-20 flex gap-1 rounded-2xl bg-[#120e0c]/92 p-1.5 ring-1 ring-gold/30">
+        {TRAP_IDS.map((id) => {
+          const trap = TRAP_DEFINITIONS[id];
+          const selected = game.selectedTrap === id;
+          const short = game.gold < trap.cost;
+          return (
+            <button key={id} disabled={short} aria-pressed={selected} className={`flex w-[4.5rem] flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-center ${selected ? "bg-gold/15 ring-2 ring-gold" : "hover:bg-white/5"} disabled:opacity-40`} onClick={() => selected ? clearTrap() : armTrap(id)}>
+              {trapIcons[id] ? <img src={trapIcons[id]} alt="" className="h-11 w-11 object-contain" /> : <span className="h-11 w-11 rounded-lg bg-white/5" />}
+              <span className={`font-display text-xs ${selected ? "text-gold" : "text-parchment"}`}>{trap.name}</span>
+              <span className="num text-[10px] text-gold">{short ? "Short" : `${trap.cost} gold`}</span>
+            </button>
+          );
+        })}
+        <button className={`flex w-[4.5rem] flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-center ${game.possessArmed ? "bg-gold/15 ring-2 ring-gold" : "hover:bg-white/5"} disabled:opacity-40`} disabled={possessLocked || game.gold < RAID.possess.cost} onClick={() => armPossess()}>
+          <span className="grid h-11 w-11 place-items-center text-gold" aria-hidden="true">
+            <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M8 11V7a2 2 0 1 1 4 0v4" /><path d="M12 11V5a2 2 0 1 1 4 0v8" /><path d="M16 10V8a2 2 0 1 1 4 0v6c0 4-3 7-8 7s-8-3-8-7v-3a2 2 0 1 1 4 0" /></svg>
+          </span>
+          <span className="font-display text-xs text-parchment">Possess</span>
+          <span className="num text-[10px] text-gold">{possessLocked ? `Wave ${RAID.possess.fromWave}` : `${RAID.possess.cost} gold`}</span>
+        </button>
       </div>
       {game.phase === "report" && report && !walking && (
-        <Receipt className="pointer-events-auto absolute left-3 top-28 max-w-sm text-sm">
+        <Receipt className="pointer-events-auto absolute left-3 top-44 z-20 max-w-sm text-sm">
           <div className="font-display text-lg">Raid results</div>
           <p>{report.survived ? `${hero.name} survived.` : `${hero.name} died.`}</p>
           <p>Traps sprung <span className="num">{report.trapsTriggered.length}</span>. Chain ×<span className="num">{game.chain ?? 0}</span>.</p>
           <p>Pages {game.pageResult === "burned" ? "burned" : game.pageResult === "escaped" ? "landed" : "still in the air"}: <span className="num">{report.facts.length}</span>. A landed page is sold. It does not teach a hero.</p>
           <p>Salvage: iron <span className="num">{game.inventory.iron ?? 0}</span>, ash <span className="num">{game.inventory.ash ?? 0}</span>, bone <span className="num">{game.inventory.bone ?? 0}</span>.</p>
-          <p>Tier <span className="num">{dungeonTier(game.raidsCleared ?? 0)}</span>.</p>
+          <p>Tier <span className="num">{tier}</span>.</p>
           {game.dungeonClosed && <p className="text-blood">The vault is empty. The next wave restocks it.</p>}
           <div className="mt-2 flex flex-wrap gap-2">
             <Button onClick={() => nextDay()}>{game.dungeonClosed ? "Restock and continue" : "Continue"}</Button>
@@ -324,14 +382,7 @@ function DungeonScreen() {
           </div>
         </Receipt>
       )}
-      <div className="pointer-events-none absolute inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] flex justify-center px-3">
-        <div className="hud-glass w-[min(42rem,100%)] rounded-hud px-4 py-3 text-center">
-          <p className="text-sm text-parchment">{game.pageResult === "decision" ? `The page is in the air. Burn costs ${RAID.cinder.burnCost} cinder${game.cinder < RAID.cinder.burnCost ? ", and you do not have enough" : ""}. Waiting lets it land as a rumour. No hero learns it until they buy it. ${seconds}s.` : hint}</p>
-          {toast && <p className="mt-1 text-xs text-gold">{toast}</p>}
-          <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-parchment/55">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
-        </div>
-      </div>
-      <div className={`pointer-events-auto absolute right-2 top-36 z-20 w-[min(20rem,calc(100%-1rem))] lg:right-3 ${logOpen ? "block" : "hidden"}`}>
+      <div className={`pointer-events-auto absolute right-3 top-36 z-20 w-[min(20rem,calc(100%-1rem))] ${logOpen ? "block" : "hidden"}`}>
         <div className="hud-glass max-h-72 overflow-auto rounded-2xl p-3 text-sm">
           <div className="flex items-center justify-between">
             <div className="font-display text-xl text-gold">Chronicle</div>
@@ -351,25 +402,57 @@ function DungeonScreen() {
           {game.ledger.length === 0 && <p className="mt-2 text-parchment/70">The chronicle is empty.</p>}
         </div>
       </div>
-      <div className="absolute bottom-[max(7.5rem,calc(env(safe-area-inset-bottom)+6.5rem))] left-0 right-0 flex justify-start gap-2 overflow-x-auto px-3 pb-1 sm:justify-center">
-        {TRAP_IDS.map((id) => {
-          const trap = TRAP_DEFINITIONS[id];
-          const selected = game.selectedTrap === id;
-          const short = game.gold < trap.cost;
-          return (
-            <button key={id} disabled={short} aria-pressed={selected} className={`hud-glass flex min-h-11 w-24 shrink-0 flex-col items-center gap-1 rounded-hud px-2 py-2 text-sm ${selected ? "ring-2 ring-gold" : ""}`} onClick={() => selected ? clearTrap() : armTrap(id)}>
-              {trapIcons[id] ? <img src={trapIcons[id]} alt="" className="h-14 w-14 object-contain" /> : <span className="h-14 w-14 rounded-xl bg-white/5" />}
-              <span className={selected ? "text-gold" : "text-parchment"}>{trap.name}</span>
-              <span className="num text-[10px] text-gold">{short ? "Short" : `${trap.cost} gold`}</span>
-            </button>
-          );
-        })}
-        <button className={`hud-glass min-h-11 w-24 shrink-0 rounded-hud px-2 py-2 text-sm ${game.possessArmed ? "ring-2 ring-gold text-gold" : ""}`} disabled={game.day < RAID.possess.fromWave || game.gold < RAID.possess.cost} onClick={() => armPossess()}>
-          Possess
-          <span className="num mt-1 block text-[10px] text-gold">{game.day < RAID.possess.fromWave ? `Wave ${RAID.possess.fromWave}` : `${RAID.possess.cost} gold`}</span>
-        </button>
+      <div className="pointer-events-none absolute bottom-4 left-4 z-20 flex w-56 flex-col gap-2">
+        <div className="rounded-2xl bg-[#120e0c]/92 px-3 py-2 ring-1 ring-gold/35">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-parchment/65">Dungeon Tier</p>
+          <p className="font-display text-3xl leading-none text-gold">{tier}</p>
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-black/60" aria-hidden="true">
+            <div className="h-full rounded-full bg-gradient-to-r from-amber-900 to-gold" style={{ width: `${(tier / 4) * 100}%` }} />
+          </div>
+        </div>
+        <div className="rounded-2xl bg-[#120e0c]/92 px-3 py-2 ring-1 ring-gold/35">
+          <div className="flex items-center gap-2">
+            <span className="text-gold" aria-hidden="true">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M12 3 5 6v6c0 4.2 2.8 7.2 7 9 4.2-1.8 7-4.8 7-9V6l-7-3z" /></svg>
+            </span>
+            <p className="text-[11px] uppercase tracking-[0.16em] text-parchment/65">Vault Health</p>
+          </div>
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-black/60" aria-label={`Vault ${game.vault} of ${RAID.vaultStart}`} role="meter" aria-valuenow={game.vault} aria-valuemin={0} aria-valuemax={RAID.vaultStart}>
+            <div className={`h-full rounded-full ${lowVault ? "bg-blood" : "bg-gradient-to-r from-amber-700 to-gold"}`} style={{ width: `${vaultPct}%` }} />
+          </div>
+        </div>
       </div>
-      <p className="pointer-events-none absolute bottom-1 right-3 text-[10px] text-parchment/35">{game.fps.toFixed(0)} fps · p95 {(game.frameP95 ?? 0).toFixed(0)} ms · {game.drawCalls} draws · {game.triangles} tris · {game.textureCount ?? 0} tex · {game.rendererInfo || "renderer"}</p>
+      <div className="pointer-events-auto absolute bottom-4 right-4 z-20 flex items-end gap-2">
+        <button type="button" aria-label={paused ? "Resume" : "Pause"} aria-pressed={paused} className={`grid h-12 w-12 place-items-center rounded-full bg-[#120e0c]/92 text-gold ring-1 ring-gold/50 ${paused ? "ring-2" : ""}`} onClick={() => setPaused((value) => !value)}>
+          {paused ? (
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true"><path d="M9 7v10l8-5-8-5z" /></svg>
+          ) : (
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true"><path d="M8 6h3v12H8V6zm5 0h3v12h-3V6z" /></svg>
+          )}
+        </button>
+        <button type="button" aria-label="Double speed" aria-pressed={rate === 2} className={`grid h-12 w-12 place-items-center rounded-full bg-[#120e0c]/92 font-display text-sm text-gold ring-1 ring-gold/50 ${rate === 2 ? "ring-2 bg-gold text-ink" : ""}`} onClick={() => setRate((value) => value === 2 ? 1 : 2)}>2x</button>
+        <div className="relative">
+          <button type="button" aria-label="Settings" aria-expanded={gearOpen} className="grid h-12 w-12 place-items-center rounded-full bg-[#120e0c]/92 text-gold ring-1 ring-gold/50" onClick={() => setGearOpen((value) => !value)}>
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" /><path d="M4 12h2m12 0h2M12 4v2m0 12v2M6.3 6.3l1.4 1.4m8.6 8.6 1.4 1.4m0-11.4-1.4 1.4M7.7 16.3l-1.4 1.4" /></svg>
+          </button>
+          {gearOpen && (
+            <div className="absolute bottom-14 right-0 w-48 rounded-2xl border border-gold/30 bg-[#120e0c] p-2 shadow-panel" role="menu">
+              {([
+                ["settings", "Settings"],
+                ["market", "Market"],
+                ["workshop", "Workshop"],
+                ["map", "World map"],
+                ["gate", "Contract board"],
+                ["registry", "Hero records"],
+              ] as const).map(([id, label]) => (
+                <button key={id} className="block min-h-11 w-full rounded-xl px-3 text-left text-sm text-parchment hover:bg-white/5 hover:text-gold" role="menuitem" onClick={() => { setGearOpen(false); setScreen(id); }}>{label}</button>
+              ))}
+              <button className="block min-h-11 w-full rounded-xl px-3 text-left text-sm text-parchment hover:bg-white/5 hover:text-gold" role="menuitem" onClick={() => { setGearOpen(false); setLogOpen(true); }}>Chronicle</button>
+            </div>
+          )}
+        </div>
+      </div>
+      <p className="pointer-events-none absolute bottom-1 left-1/2 z-10 -translate-x-1/2 text-[10px] text-parchment/30">{game.fps.toFixed(0)} fps · p95 {(game.frameP95 ?? 0).toFixed(0)} ms · {game.drawCalls} draws · {game.triangles} tris · {game.textureCount ?? 0} tex · {game.rendererInfo || "renderer"}</p>
     </div>
   );
 }

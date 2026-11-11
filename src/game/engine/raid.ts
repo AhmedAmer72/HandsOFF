@@ -1,5 +1,5 @@
 import { HERO_PROFILES } from "../config/heroProfiles";
-import { ROOM_GATES, RULES, cellKey } from "../config/gameRules";
+import { ROOM_GATES, RULES, cellKey, gateCovers } from "../config/gameRules";
 import { ECONOMY } from "../config/economyRules";
 import { TRAP_DEFINITIONS } from "../config/trapDefinitions";
 import { findPath, type PlacedTrap } from "./path";
@@ -47,7 +47,7 @@ export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "deci
   const lifted = new Set<string>();
 
   for (const cell of path) {
-    const gate = ROOM_GATES.find((entry) => entry.ix === cell.ix && entry.iz === cell.iz);
+    const gate = ROOM_GATES.find((entry) => gateCovers(entry, cell.ix, cell.iz));
     if (gate && !lifted.has(gate.id)) {
       lifted.add(gate.id);
       push({ type: "gate", text: `${profile.name} lifts the ${gate.name}.`, ix: cell.ix, iz: cell.iz });
