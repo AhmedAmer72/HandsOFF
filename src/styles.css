@@ -162,8 +162,7 @@ button:active:not(:disabled) {
     background: #100c0a;
   }
 
-  .parallax__fade,
-  .landing-mark {
+  .parallax__fade {
     display: none;
   }
 
@@ -211,6 +210,393 @@ button:active:not(:disabled) {
   background: rgba(20, 16, 14, 0.88);
   border: 1px solid rgba(242, 193, 78, 0.28);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+}
+
+.land {
+  background: #07080c;
+  color: #f6efe4;
+}
+
+.land section[id] {
+  scroll-margin-top: 4.5rem;
+}
+
+.land-nav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  background: linear-gradient(to bottom, rgba(7, 8, 12, 0.92), rgba(7, 8, 12, 0.72) 70%, transparent);
+}
+
+.land-brand {
+  font-family: "Lilita One", "Baloo 2", cursive;
+  letter-spacing: 0.04em;
+  color: #f6efe4;
+  font-size: 1.15rem;
+}
+
+.land-links {
+  display: none;
+  align-items: center;
+  gap: 1.25rem;
+  font-size: 0.95rem;
+}
+
+.land-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #f6efe4;
+  text-decoration: none;
+}
+
+.land-links a.is-on {
+  color: #f2c14e;
+  box-shadow: inset 0 -2px 0 #f2c14e;
+}
+
+.land-hero {
+  position: relative;
+  display: flex;
+  min-height: 100svh;
+  margin-top: -4.25rem;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  background: #07080c center 32% / cover no-repeat;
+}
+
+.land-hero-shade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to top, rgba(7, 8, 12, 0.92) 0%, rgba(7, 8, 12, 0.28) 32%, rgba(7, 8, 12, 0.18) 58%, rgba(7, 8, 12, 0.45) 100%);
+}
+
+.land-hero-copy {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: min(40rem, calc(100% - 2rem));
+  flex-direction: column;
+  align-items: center;
+  padding-bottom: 2.2rem;
+  text-align: center;
+}
+
+.land-tagline {
+  max-width: 36rem;
+  font-size: 1.2rem;
+  line-height: 1.45;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.8);
+}
+
+.land-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.8rem;
+  margin-top: 1.25rem;
+}
+
+.land-note {
+  margin-top: 0.85rem;
+  max-width: 28rem;
+  color: #f6efe4;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
+}
+
+.land-scroll {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 1.3rem;
+  color: #f6efe4;
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.land-scroll span {
+  width: 1px;
+  height: 2.4rem;
+  background: linear-gradient(#f6efe4, transparent);
+}
+
+.land-btn {
+  min-height: 3rem;
+  padding: 0.65rem 1.35rem;
+  border: 2px solid #f2c14e;
+  background: #f2c14e;
+  color: #1a1204;
+  font-family: "Fredoka", "Baloo 2", sans-serif;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transform: skewX(-8deg);
+}
+
+.land-btn > span {
+  display: inline-block;
+  transform: skewX(8deg);
+}
+
+.land-btn-ghost {
+  background: transparent;
+  color: #f2c14e;
+}
+
+.land-btn:hover {
+  background: #ffe08a;
+  border-color: #ffe08a;
+}
+
+.land-btn-ghost:hover {
+  background: rgba(242, 193, 78, 0.12);
+  color: #ffe08a;
+}
+
+.land-section {
+  padding: 5.5rem 1.25rem;
+}
+
+.land-wrap {
+  width: min(68rem, 100%);
+  margin: 0 auto;
+}
+
+.land-kicker {
+  display: inline-block;
+  margin-bottom: 0.9rem;
+  background: #f6efe4;
+  color: #14100e;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transform: skewX(-8deg);
+}
+
+.land-kicker > span {
+  display: inline-block;
+  transform: skewX(8deg);
+}
+
+.land-split {
+  display: grid;
+  gap: 2.5rem;
+  align-items: center;
+}
+
+.land-figure {
+  min-height: 22rem;
+  background: #14100e center / cover no-repeat;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+
+.land-steps {
+  display: grid;
+  gap: 1rem;
+}
+
+.land-card {
+  position: relative;
+  border: 1px solid rgba(233, 216, 180, 0.18);
+  background: #1a1816;
+  padding: 1.5rem 1.35rem 1.4rem;
+}
+
+.land-num {
+  display: grid;
+  width: 1.7rem;
+  height: 1.7rem;
+  place-items: center;
+  border-radius: 999px;
+  background: #f2c14e;
+  color: #1a1204;
+  font-weight: 700;
+}
+
+.land-plays {
+  display: grid;
+  gap: 1rem;
+}
+
+.land-play {
+  display: flex;
+  min-height: 16rem;
+  flex-direction: column;
+  border: 1px solid rgba(233, 216, 180, 0.16);
+  background: #161412;
+  padding: 1.4rem 1.25rem 1.1rem;
+  text-align: left;
+  color: inherit;
+}
+
+.land-play strong {
+  font-family: "Lilita One", "Baloo 2", cursive;
+  font-size: 1.45rem;
+  font-weight: 400;
+}
+
+.land-go {
+  display: grid;
+  width: 2.4rem;
+  height: 2.4rem;
+  margin-top: auto;
+  place-items: center;
+  border-radius: 999px;
+  background: #f2c14e;
+  color: #1a1204;
+  font-size: 0.95rem;
+}
+
+.land-band,
+.land-close {
+  display: flex;
+  min-height: 46vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 1.25rem;
+  text-align: center;
+}
+
+.land-close {
+  position: relative;
+  min-height: 70vh;
+  justify-content: flex-end;
+  overflow: hidden;
+  padding-bottom: 4.5rem;
+  background: #07080c center 28% / cover no-repeat;
+}
+
+.land-close-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(7, 8, 12, 0.9) 0%, rgba(7, 8, 12, 0.2) 46%, rgba(7, 8, 12, 0.35) 100%);
+}
+
+.land-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.land-chip {
+  border: 1px solid rgba(246, 239, 228, 0.28);
+  border-radius: 0.45rem;
+  background: transparent;
+  color: #f6efe4;
+  padding: 0.55rem 0.8rem;
+  text-align: left;
+}
+
+.land-chip:hover {
+  border-color: #f2c14e;
+  color: #f2c14e;
+}
+
+.land-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 2.5rem 1.25rem 3rem;
+  color: #f6efe4;
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.land-foot a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.land-foot nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+}
+
+@media (min-width: 800px) {
+  .land-nav {
+    padding: 1rem 2.25rem;
+  }
+
+  .land-links {
+    display: flex;
+  }
+
+  .land-section {
+    padding: 6.5rem 2.5rem;
+  }
+
+  .land-split {
+    grid-template-columns: 1.05fr 0.95fr;
+  }
+
+  .land-split-flip {
+    grid-template-columns: 0.95fr 1.05fr;
+  }
+
+  .land-figure {
+    min-height: 28rem;
+  }
+
+  .land-steps {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+
+  .land-step-2 {
+    margin-top: 5.5rem;
+  }
+
+  .land-step-3 {
+    margin-top: -1.5rem;
+  }
+
+  .land-plays {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .land-hero {
+    margin-top: 0;
+    min-height: 0;
+    justify-content: flex-start;
+    padding-top: 72vw;
+    background-color: #07080c;
+    background-position: center top;
+    background-size: 118% auto;
+  }
+
+  .land-hero-shade {
+    background: linear-gradient(to bottom, transparent 0%, transparent 34%, #07080c 72%);
+  }
+
+  .land-tagline {
+    font-size: 1.05rem;
+  }
+
+  .land-actions .land-btn {
+    flex: 1 1 9rem;
+  }
 }
 
 .receipt {
