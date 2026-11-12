@@ -76,47 +76,86 @@ const TORCH = new THREE.Color("#FF9A3C");
 const ISO_YAW = Math.PI / 4;
 const ISO_ELEVATION = 40 * Math.PI / 180;
 const CAMERA_DIST = 140;
-const ZOOM_MIN = 0.85;
-const ZOOM_MAX = 1.2;
+/** Zoom 1 is the fitted frame. The wheel can pull back, or step closer until a room would leave the screen. */
+const ZOOM_MIN = 0.7;
+const ZOOM_MAX = 1.06;
 const WALL_GHOST = 0.36;
+const WALL_TOP = 4;
+const TILE_PAD = 1.35;
 
-type HallVolume = { minX: number; maxX: number; minZ: number; maxZ: number; top: number };
+type ScreenBox = { x: number; y: number; w: number; h: number };
 
-function dungeonVolume(): HallVolume {
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minZ = Infinity;
-  let maxZ = -Infinity;
-  for (const [ix, iz] of FLOORS) {
-    minX = Math.min(minX, ix);
-    maxX = Math.max(maxX, ix);
-    minZ = Math.min(minZ, iz);
-    maxZ = Math.max(maxZ, iz);
-  }
-  const pad = 2.6;
-  return { minX: minX * CELL - pad, maxX: maxX * CELL + pad, minZ: minZ * CELL - pad, maxZ: maxZ * CELL + pad, top: 3.6 };
-}
-
-function volumeCorners(volume: HallVolume) {
-  const corners: THREE.Vector3[] = [];
-  for (const x of [volume.minX, volume.maxX]) {
-    for (const z of [volume.minZ, volume.maxZ]) {
-      corners.push(new THREE.Vector3(x, 0, z), new THREE.Vector3(x, volume.top, z));
+function convexHull(points: { x: number; z: number }[]) {
+  const unique = new Map<string, { x: number; z: number }>();
+  for (const point of points) unique.set(`${point.x.toFixed(2)},${point.z.toFixed(2)}`, point);
+  const sorted = [...unique.values()].sort((a, b) => a.x - b.x || a.z - b.z);
+  const cross = (origin: { x: number; z: number }, a: { x: number; z: number }, b: { x: number; z: number }) =>
+    (a.x - origin.x) * (b.z - origin.z) - (a.z - origin.z) * (b.x - origin.x);
+  const build = (source: { x: number; z: number }[]) => {
+    const chain: { x: number; z: number }[] = [];
+    for (const point of source) {
+      while (chain.length >= 2 && cross(chain[chain.length - 2], chain[chain.length - 1], point) <= 0) chain.pop();
+      chain.push(point);
     }
-  }
-  return corners;
+    return chain;
+  };
+  const lower = build(sorted);
+  const upper = build([...sorted].reverse());
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
 }
+
+/** Outline of the real floors, not the empty corners of a bounding box. */
+function hallFrame() {
+  let sx = 0;
+  let sz = 0;
+  const flat: { x: number; z: number }[] = [];
+  for (const [ix, iz] of FLOORS) {
+    sx += (ix + 0.5) * CELL;
+    sz += (iz + 0.5) * CELL;
+    const x0 = ix * CELL - TILE_PAD;
+    const x1 = (ix + 1) * CELL + TILE_PAD;
+    const z0 = iz * CELL - TILE_PAD;
+    const z1 = (iz + 1) * CELL + TILE_PAD;
+    flat.push({ x: x0, z: z0 }, { x: x0, z: z1 }, { x: x1, z: z0 }, { x: x1, z: z1 });
+  }
+  const points: THREE.Vector3[] = [];
+  for (const point of convexHull(flat)) {
+    points.push(new THREE.Vector3(point.x, 0, point.z), new THREE.Vector3(point.x, WALL_TOP, point.z));
+  }
+  return { focus: new THREE.Vector3(sx / FLOORS.length, 0, sz / FLOORS.length), points };
+}
+
+const HALL_FRAME = hallFrame();
 
 /**
- * Screen padding, as fractions of the canvas, so the hall lands in the gap between the fixed HUD.
- * Desktop keeps a modest margin. A phone portrait stacks the controls into a top band and a bottom band.
- * A short landscape screen does the same, with a little extra room at the right for the round buttons.
+ * HUD rectangles as fractions of the canvas. The hall may use the open corners between them.
+ * Portrait and short landscape stack the controls into full-width bands.
  */
-function frameInset(width: number, height: number) {
+function hudObstacles(width: number, height: number): ScreenBox[] {
   const aspect = width / Math.max(height, 1);
-  if (aspect < 0.85) return { left: 0.04, right: 0.04, top: 0.23, bottom: 0.36 };
-  if (height < 520 && aspect > 1.2) return { left: 0.03, right: 0.04, top: 0.30, bottom: 0.28 };
-  return { left: 0.05, right: 0.05, top: 0.15, bottom: 0.17 };
+  if (aspect < 0.85) {
+    return [
+      { x: 0, y: 0, w: 1, h: 0.23 },
+      { x: 0, y: 0.66, w: 1, h: 0.34 },
+    ];
+  }
+  if (height < 520 && aspect > 1.2) {
+    return [
+      { x: 0, y: 0, w: 1, h: 0.26 },
+      { x: 0, y: 0.72, w: 1, h: 0.28 },
+    ];
+  }
+  const meter = Math.min(0.22, 290 / width);
+  return [
+    { x: 0, y: 0, w: Math.min(0.36, 470 / width), h: 0.17 },
+    { x: 0.62, y: 0, w: 0.38, h: 0.16 },
+    { x: 0, y: 0.15, w: Math.min(0.34, 360 / width), h: 0.26 },
+    { x: 0, y: 0.38, w: Math.min(0.24, 230 / width), h: 0.16 },
+    { x: 0, y: 0.78, w: meter, h: 0.22 },
+    { x: 0.84, y: 0.90, w: 0.16, h: 0.10 },
+  ];
 }
 
 export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
@@ -131,13 +170,8 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog("#1B1A22", 140, 380);
   scene.add(new THREE.HemisphereLight("#ffe0bf", "#2a1c16", 0.72));
-  const hallVolume = dungeonVolume();
-  const hallFocus = new THREE.Vector3(
-    (hallVolume.minX + hallVolume.maxX) / 2,
-    0,
-    (hallVolume.minZ + hallVolume.maxZ) / 2,
-  );
-  const hallCorners = volumeCorners(hallVolume);
+  const hallFocus = HALL_FRAME.focus.clone();
+  const hallPoints = HALL_FRAME.points;
   const sun = new THREE.DirectionalLight("#d7e4ff", 0.55);
   sun.position.set(hallFocus.x + 24, 40, hallFocus.z + 18);
   sun.target.position.copy(hallFocus);
@@ -154,7 +188,9 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
 
   const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 1, 800);
   const focus = hallFocus.clone();
-  let fitView = 76;
+  let fitView = 52;
+  let frameDx = 0;
+  let frameDy = 0;
   let zoom = 1;
   let zoomTarget = 1;
   let view = fitView;
@@ -303,54 +339,123 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     camera.updateMatrixWorld();
   }
 
-  function frameFits(candidate: number, aspect: number, inset: { left: number; right: number; top: number; bottom: number }) {
+  function placeView(candidate: number, dx: number, dy: number) {
+    const width = canvas.clientWidth || 1;
+    const height = canvas.clientHeight || 1;
+    const aspect = width / Math.max(height, 1);
+    const halfW = candidate * aspect;
+    const halfH = candidate;
+    const ox = -dx * halfW;
+    const oy = -dy * halfH;
+    camera.left = -halfW + ox;
+    camera.right = halfW + ox;
+    camera.top = halfH + oy;
+    camera.bottom = -halfH + oy;
+    camera.updateProjectionMatrix();
+  }
+
+  function projectOutline(candidate: number) {
+    const width = canvas.clientWidth || 1;
+    const height = canvas.clientHeight || 1;
+    const aspect = width / Math.max(height, 1);
     camera.left = -candidate * aspect;
     camera.right = candidate * aspect;
     camera.top = candidate;
     camera.bottom = -candidate;
     camera.updateProjectionMatrix();
     aimAt(hallFocus);
-    const minX = -1 + inset.left * 2;
-    const maxX = 1 - inset.right * 2;
-    const maxY = 1 - inset.top * 2;
-    const minY = -1 + inset.bottom * 2;
-    for (const corner of hallCorners) {
-      const projected = corner.clone().project(camera);
-      if (projected.z < -1 || projected.z > 1) return false;
-      if (projected.x < minX || projected.x > maxX) return false;
-      if (projected.y > maxY || projected.y < minY) return false;
-    }
-    return true;
+    return hallPoints.map((corner) => corner.clone().project(camera));
   }
 
-  function fittedView(width: number, height: number) {
-    const aspect = width / Math.max(height, 1);
-    const inset = frameInset(width, height);
+  /** Largest framing whose outline misses the HUD, then a small step back so zoom-in stays on screen. */
+  function composeFrame(width: number, height: number) {
+    const edge = Math.max(18, Math.min(width, height) * 0.028);
+    const obstacles = hudObstacles(width, height).map((box) => ({
+      x: box.x * width - 10,
+      y: box.y * height - 10,
+      r: (box.x + box.w) * width + 10,
+      b: (box.y + box.h) * height + 10,
+    }));
+    const shiftFor = (candidate: number) => {
+      const projected = projectOutline(candidate);
+      let dx0 = -2;
+      let dx1 = 2;
+      let dy0 = -2;
+      let dy1 = 2;
+      const mx = (edge / width) * 2;
+      const my = (edge / height) * 2;
+      for (const point of projected) {
+        dx0 = Math.max(dx0, -1 + mx - point.x);
+        dx1 = Math.min(dx1, 1 - mx - point.x);
+        dy0 = Math.max(dy0, -1 + my - point.y);
+        dy1 = Math.min(dy1, 1 - my - point.y);
+      }
+      if (dx0 > dx1 || dy0 > dy1) return null;
+      let best: { dx: number; dy: number; score: number } | null = null;
+      const steps = 24;
+      const midDx = (dx0 + dx1) / 2;
+      const midDy = (dy0 + dy1) / 2;
+      for (let ix = 0; ix <= steps; ix += 1) {
+        const dx = dx0 + ((dx1 - dx0) * ix) / steps;
+        for (let iy = 0; iy <= steps; iy += 1) {
+          const dy = dy0 + ((dy1 - dy0) * iy) / steps;
+          let clearance = Infinity;
+          let open = true;
+          for (const point of projected) {
+            const sx = ((point.x + dx + 1) / 2) * width;
+            const sy = ((1 - (point.y + dy)) / 2) * height;
+            if (sx < edge || sx > width - edge || sy < edge || sy > height - edge) {
+              open = false;
+              break;
+            }
+            let gap = Math.min(sx - edge, width - edge - sx, sy - edge, height - edge - sy);
+            for (const box of obstacles) {
+              const outsideX = Math.max(box.x - sx, 0, sx - box.r);
+              const outsideY = Math.max(box.y - sy, 0, sy - box.b);
+              if (outsideX === 0 && outsideY === 0) {
+                open = false;
+                break;
+              }
+              gap = Math.min(gap, Math.hypot(outsideX, outsideY));
+            }
+            if (!open) break;
+            clearance = Math.min(clearance, gap);
+          }
+          if (!open) continue;
+          // Clearance wins. Equal clearance keeps the hall in the middle of the free area.
+          const score = clearance - (Math.abs(dx - midDx) + Math.abs(dy - midDy)) * 80;
+          if (!best || score > best.score) best = { dx, dy, score };
+        }
+      }
+      return best;
+    };
     let low = 24;
-    let high = 320;
-    for (let step = 0; step < 22; step += 1) {
+    let high = 240;
+    let chosen = { dx: 0, dy: 0 };
+    for (let step = 0; step < 18; step += 1) {
       const mid = (low + high) / 2;
-      if (frameFits(mid, aspect, inset)) high = mid;
-      else low = mid;
+      const hit = shiftFor(mid);
+      if (hit) {
+        high = mid;
+        chosen = hit;
+      } else low = mid;
     }
-    return high;
+    return { view: high * ZOOM_MAX, dx: chosen.dx, dy: chosen.dy };
   }
 
   function applyFrustum() {
     const width = canvas.clientWidth || 1;
     const height = canvas.clientHeight || 1;
-    const aspect = width / height;
     view = fitView / zoom;
-    camera.left = -view * aspect;
-    camera.right = view * aspect;
-    camera.top = view;
-    camera.bottom = -view;
-    camera.updateProjectionMatrix();
+    placeView(view, frameDx, frameDy);
     renderer.setSize(width, height, false);
   }
 
   function resize() {
-    fitView = fittedView(canvas.clientWidth || 1, canvas.clientHeight || 1);
+    const frame = composeFrame(canvas.clientWidth || 1, canvas.clientHeight || 1);
+    fitView = frame.view;
+    frameDx = frame.dx;
+    frameDy = frame.dy;
     applyFrustum();
   }
 
@@ -359,7 +464,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     // Stay inside the screen. The default framing already clears the HUD; panning may
     // approach the edges and must not push a hall corner past them.
     const limit = 0.97;
-    for (const corner of hallCorners) {
+    for (const corner of hallPoints) {
       const projected = corner.clone().project(camera);
       if (projected.z < -1 || projected.z > 1) return false;
       if (Math.abs(projected.x) > limit || Math.abs(projected.y) > limit) return false;
@@ -1010,7 +1115,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     event.preventDefault();
     if (scripted) return;
     const direction = event.deltaY > 0 ? -1 : 1;
-    zoomTarget = THREE.MathUtils.clamp(zoomTarget + direction * 0.05, ZOOM_MIN, ZOOM_MAX);
+    zoomTarget = THREE.MathUtils.clamp(zoomTarget + direction * 0.04, ZOOM_MIN, ZOOM_MAX);
   }
 
   function onKey(event: KeyboardEvent) {

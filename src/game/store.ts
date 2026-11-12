@@ -40,6 +40,7 @@ interface Session extends SaveData {
   possessArmed: boolean;
   continueReady: boolean;
   reduceMotion?: boolean;
+  showStats?: boolean;
   frameP95?: number;
   textureCount?: number;
   merchantCue?: { id: string; action: string; nonce: number };
@@ -170,9 +171,14 @@ export function setReduceMotion(value: boolean) {
   listeners.forEach((listener) => listener());
 }
 
+export function setShowStats(value: boolean) {
+  state = { ...state, showStats: value };
+  listeners.forEach((listener) => listener());
+}
+
 export function newGame() {
   if (state.dungeonPublished) writeRegistry(unpublishHall(readRegistry(), hallIdOf(state)));
-  state = { ...createSave("dungeon"), ownerId: state.ownerId, displayName: state.displayName, dungeonName: state.dungeonName, dungeonDescription: state.dungeonDescription, dungeonPublished: false, quality: state.quality, worldMode: "prototype", screen: "dungeon", selectedTrap: null, selection: null, fps: 0, minFps: 0, avgFps: 0, drawCalls: 0, triangles: 0, rendererInfo: state.rendererInfo, lastDecision: "A new dungeon day begins.", priceNote: "", pageResult: "idle", possessArmed: false, continueReady: true, catalogNonce: state.catalogNonce + 1, spectating: false, spectatorDungeonId: null };
+  state = { ...createSave("dungeon"), ownerId: state.ownerId, displayName: state.displayName, dungeonName: state.dungeonName, dungeonDescription: state.dungeonDescription, dungeonPublished: false, quality: state.quality, showStats: state.showStats, worldMode: "prototype", screen: "dungeon", selectedTrap: null, selection: null, fps: 0, minFps: 0, avgFps: 0, drawCalls: 0, triangles: 0, rendererInfo: state.rendererInfo, lastDecision: "A new dungeon day begins.", priceNote: "", pageResult: "idle", possessArmed: false, continueReady: true, catalogNonce: state.catalogNonce + 1, spectating: false, spectatorDungeonId: null };
   void clearSave();
   emit();
 }

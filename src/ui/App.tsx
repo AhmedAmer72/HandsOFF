@@ -35,6 +35,7 @@ import {
   clearTrap,
   setQuality,
   setReduceMotion,
+  setShowStats,
   setScreen,
   setStats,
   startRaid,
@@ -340,7 +341,7 @@ function DungeonScreen() {
           </ForgedFrame>
         )}
         {toast && <div className="hud-toast"><Notice tone="gold">{toast}</Notice></div>}
-        <p className="hud-tutorial pointer-events-none text-[10px] uppercase tracking-[0.14em] text-parchment/75">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
+        <p className="hud-tutorial pointer-events-none max-w-[12.5rem] text-[10px] uppercase tracking-[0.14em] text-parchment/75">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
       </div>
       <div className="trap-bar pointer-events-auto absolute right-3 top-3 z-20 flex w-[9.4rem] flex-wrap justify-end gap-1 sm:w-auto sm:max-w-[calc(100%-20rem)]">
         {TRAP_IDS.map((id) => {
@@ -446,7 +447,9 @@ function DungeonScreen() {
           )}
         </div>
       </div>
-      <p className="pointer-events-none absolute bottom-1 left-1/2 z-10 hidden -translate-x-1/2 text-[10px] text-parchment/30 sm:block">{game.fps.toFixed(0)} fps · p95 {(game.frameP95 ?? 0).toFixed(0)} ms · {game.drawCalls} draws · {game.triangles} tris · {game.textureCount ?? 0} tex · {game.rendererInfo || "renderer"}</p>
+      {game.showStats && (
+        <p className="pointer-events-none absolute bottom-1 left-1/2 z-10 -translate-x-1/2 text-[10px] text-parchment/30">{game.fps.toFixed(0)} fps · p95 {(game.frameP95 ?? 0).toFixed(0)} ms · {game.drawCalls} draws · {game.triangles} tris · {game.textureCount ?? 0} tex · {game.rendererInfo || "renderer"}</p>
+      )}
     </div>
   );
 }
@@ -631,13 +634,14 @@ function Settings() {
         <Button tone={sound ? "gold" : "ghost"} onClick={() => setSound((value) => !value)}>Sound {sound ? "on" : "off"}</Button>
         <Button tone={music ? "gold" : "ghost"} onClick={() => setMusic((value) => !value)}>Music {music ? "on" : "off"}</Button>
         <Button tone={game.reduceMotion ? "ghost" : "gold"} onClick={() => setReduceMotion(!game.reduceMotion)}>Motion {game.reduceMotion ? "reduced" : "on"}</Button>
+        <Button tone={game.showStats ? "gold" : "ghost"} onClick={() => setShowStats(!game.showStats)}>Performance details {game.showStats ? "on" : "off"}</Button>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         {(["low", "medium", "high"] as const).map((quality) => (
           <Button key={quality} tone={game.quality === quality ? "gold" : "ghost"} onClick={() => setQuality(quality)}>{quality}</Button>
         ))}
       </div>
-      <p className="mt-3 text-sm text-parchment/70">Low drops shadows. The fps counter in the dungeon is a measurement from this machine.</p>
+      <p className="mt-3 text-sm text-parchment/70">Low drops shadows. Performance details stay off until you turn them on here. The numbers are a measurement from this machine.</p>
       <div className="mt-6 flex flex-col items-start gap-2">
         <Button tone="ember" onClick={() => newGame()}>New game (clears this browser save)</Button>
         <Button onClick={() => setScreen("sandbox")}>Mock chain</Button>
