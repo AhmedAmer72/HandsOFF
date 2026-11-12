@@ -2,6 +2,7 @@ import gsap from "gsap";
 import * as THREE from "three";
 import { ANIMATION_FILES, CELL, CLIP_ALIASES, HEROES, item, monsterModel, type HeroId, type Piece, type Quality, type WorldMode } from "../game/content";
 import { HERO_PROFILES } from "../game/config/heroProfiles";
+import { FLOORS } from "../game/config/ashgateLayout";
 import { ENTRANCE_TILES, HERO_POSTS, ROOM_GATES, RULES, isEntranceTile } from "../game/config/gameRules";
 import { ashgatePieces } from "../game/world";
 import { TRAP_DEFINITIONS, type TrapId } from "../game/config/trapDefinitions";
@@ -71,6 +72,53 @@ interface Actor {
 
 const TORCH = new THREE.Color("#FF9A3C");
 
+/** Fixed isometric presentation. Yaw stays on the diagonal. Elevation is measured from the ground plane. */
+const ISO_YAW = Math.PI / 4;
+const ISO_ELEVATION = 40 * Math.PI / 180;
+const CAMERA_DIST = 140;
+const ZOOM_MIN = 0.85;
+const ZOOM_MAX = 1.2;
+const WALL_GHOST = 0.36;
+
+type HallVolume = { minX: number; maxX: number; minZ: number; maxZ: number; top: number };
+
+function dungeonVolume(): HallVolume {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const [ix, iz] of FLOORS) {
+    minX = Math.min(minX, ix);
+    maxX = Math.max(maxX, ix);
+    minZ = Math.min(minZ, iz);
+    maxZ = Math.max(maxZ, iz);
+  }
+  const pad = 2.6;
+  return { minX: minX * CELL - pad, maxX: maxX * CELL + pad, minZ: minZ * CELL - pad, maxZ: maxZ * CELL + pad, top: 3.6 };
+}
+
+function volumeCorners(volume: HallVolume) {
+  const corners: THREE.Vector3[] = [];
+  for (const x of [volume.minX, volume.maxX]) {
+    for (const z of [volume.minZ, volume.maxZ]) {
+      corners.push(new THREE.Vector3(x, 0, z), new THREE.Vector3(x, volume.top, z));
+    }
+  }
+  return corners;
+}
+
+/**
+ * Screen padding, as fractions of the canvas, so the hall lands in the gap between the fixed HUD.
+ * Desktop keeps a modest margin. A phone portrait stacks the controls into a top band and a bottom band.
+ * A short landscape screen does the same, with a little extra room at the right for the round buttons.
+ */
+function frameInset(width: number, height: number) {
+  const aspect = width / Math.max(height, 1);
+  if (aspect < 0.85) return { left: 0.04, right: 0.04, top: 0.23, bottom: 0.36 };
+  if (height < 520 && aspect > 1.2) return { left: 0.03, right: 0.04, top: 0.30, bottom: 0.28 };
+  return { left: 0.05, right: 0.05, top: 0.15, bottom: 0.17 };
+}
+
 export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -83,7 +131,13 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog("#1B1A22", 140, 380);
   scene.add(new THREE.HemisphereLight("#ffe0bf", "#2a1c16", 0.72));
-  const hallFocus = new THREE.Vector3(15.5 * CELL, 0, 15 * CELL);
+  const hallVolume = dungeonVolume();
+  const hallFocus = new THREE.Vector3(
+    (hallVolume.minX + hallVolume.maxX) / 2,
+    0,
+    (hallVolume.minZ + hallVolume.maxZ) / 2,
+  );
+  const hallCorners = volumeCorners(hallVolume);
   const sun = new THREE.DirectionalLight("#d7e4ff", 0.55);
   sun.position.set(hallFocus.x + 24, 40, hallFocus.z + 18);
   sun.target.position.copy(hallFocus);
@@ -98,13 +152,12 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   sun.shadow.camera.bottom = -100;
   scene.add(sun);
 
-  const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 420);
-  const focus = new THREE.Vector3(8, 0, 8);
-  let yaw = 0;
-  const HALL_VIEW = 68;
-  const RAIDER_VIEW = 4.5;
-  let view = HALL_VIEW;
-  let releaseZoom: gsap.core.Tween | null = null;
+  const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 1, 800);
+  const focus = hallFocus.clone();
+  let fitView = 76;
+  let zoom = 1;
+  let zoomTarget = 1;
+  let view = fitView;
   const pointer = new THREE.Vector2();
   const raycaster = new THREE.Raycaster();
   const selectables: THREE.Object3D[] = [];
@@ -182,9 +235,9 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const livingCoins: THREE.Object3D[] = [];
   const livingWalls: { mesh: THREE.Object3D; z: number }[] = [];
   const cutawayBatches: { mesh: THREE.InstancedMesh; slots: { matrix: THREE.Matrix4; z: number }[] }[] = [];
-  const raidWallBatches: { mesh: THREE.InstancedMesh; slots: { matrix: THREE.Matrix4; x: number; z: number }[] }[] = [];
-  const raidLooseWalls: { obj: THREE.Object3D; x: number; z: number }[] = [];
-  let raidCutKey = "";
+  const fadeBatches: { solid: THREE.InstancedMesh; ghost: THREE.InstancedMesh; slots: { matrix: THREE.Matrix4; x: number; z: number }[] }[] = [];
+  const fadeLoose: { x: number; z: number; materials: THREE.MeshStandardMaterial[] }[] = [];
+  const watched: THREE.Object3D[] = [];
   let cutawayStamp = Number.NaN;
   const floatPool: { sprite: THREE.Sprite; life: number }[] = [];
   const coinBurst = new THREE.Points(
@@ -239,10 +292,55 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     sun.intensity = quality === "low" ? 0.4 : 0.55;
   }
 
-  function resize() {
+  function aimAt(target: THREE.Vector3) {
+    camera.up.set(0, 1, 0);
+    camera.position.set(
+      target.x + Math.cos(ISO_YAW) * Math.cos(ISO_ELEVATION) * CAMERA_DIST,
+      Math.sin(ISO_ELEVATION) * CAMERA_DIST,
+      target.z + Math.sin(ISO_YAW) * Math.cos(ISO_ELEVATION) * CAMERA_DIST,
+    );
+    camera.lookAt(target.x, 0, target.z);
+    camera.updateMatrixWorld();
+  }
+
+  function frameFits(candidate: number, aspect: number, inset: { left: number; right: number; top: number; bottom: number }) {
+    camera.left = -candidate * aspect;
+    camera.right = candidate * aspect;
+    camera.top = candidate;
+    camera.bottom = -candidate;
+    camera.updateProjectionMatrix();
+    aimAt(hallFocus);
+    const minX = -1 + inset.left * 2;
+    const maxX = 1 - inset.right * 2;
+    const maxY = 1 - inset.top * 2;
+    const minY = -1 + inset.bottom * 2;
+    for (const corner of hallCorners) {
+      const projected = corner.clone().project(camera);
+      if (projected.z < -1 || projected.z > 1) return false;
+      if (projected.x < minX || projected.x > maxX) return false;
+      if (projected.y > maxY || projected.y < minY) return false;
+    }
+    return true;
+  }
+
+  function fittedView(width: number, height: number) {
+    const aspect = width / Math.max(height, 1);
+    const inset = frameInset(width, height);
+    let low = 24;
+    let high = 320;
+    for (let step = 0; step < 22; step += 1) {
+      const mid = (low + high) / 2;
+      if (frameFits(mid, aspect, inset)) high = mid;
+      else low = mid;
+    }
+    return high;
+  }
+
+  function applyFrustum() {
     const width = canvas.clientWidth || 1;
     const height = canvas.clientHeight || 1;
     const aspect = width / height;
+    view = fitView / zoom;
     camera.left = -view * aspect;
     camera.right = view * aspect;
     camera.top = view;
@@ -251,21 +349,47 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     renderer.setSize(width, height, false);
   }
 
+  function resize() {
+    fitView = fittedView(canvas.clientWidth || 1, canvas.clientHeight || 1);
+    applyFrustum();
+  }
+
+  function focusFits(target: THREE.Vector3) {
+    aimAt(target);
+    // Stay inside the screen. The default framing already clears the HUD; panning may
+    // approach the edges and must not push a hall corner past them.
+    const limit = 0.97;
+    for (const corner of hallCorners) {
+      const projected = corner.clone().project(camera);
+      if (projected.z < -1 || projected.z > 1) return false;
+      if (Math.abs(projected.x) > limit || Math.abs(projected.y) > limit) return false;
+    }
+    return true;
+  }
+
+  /** Slide the look-at point only while every corner of the hall stays inside the frame. */
+  function clampFocus() {
+    const desired = focus.clone();
+    if (focusFits(desired)) return;
+    let low = 0;
+    let high = 1;
+    const trial = new THREE.Vector3();
+    for (let step = 0; step < 8; step += 1) {
+      const t = (low + high) / 2;
+      trial.lerpVectors(hallFocus, desired, t);
+      if (focusFits(trial)) low = t;
+      else high = t;
+    }
+    focus.lerpVectors(hallFocus, desired, low);
+  }
+
   function aimCamera() {
-    const az = Math.PI / 4 + yaw;
-    const el = 35 * Math.PI / 180;
-    const dist = 48;
-    camera.up.set(0, 1, 0);
-    camera.position.set(
-      focus.x + Math.cos(az) * Math.cos(el) * dist,
-      2 + Math.sin(el) * dist,
-      focus.z + Math.sin(az) * Math.cos(el) * dist,
-    );
     const elapsed = Math.max(0, (performance.now() - shakeStarted) / 1000);
     const shake = shakeOffset(elapsed, shakeAmp, hooks.getReduceMotion?.() ?? false);
+    aimAt(focus);
     camera.position.x += shake.x;
     camera.position.y += shake.y;
-    camera.lookAt(focus.x, scripted ? 1.15 : focus.y, focus.z);
+    camera.lookAt(focus.x, 0, focus.z);
     camera.updateMatrixWorld();
   }
 
@@ -380,6 +504,18 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     return { geometry: mesh.geometry, material: mesh.material, local: mesh.matrixWorld.clone() };
   }
 
+  function ghostMaterial(source: THREE.Material | THREE.Material[]) {
+    const material = (Array.isArray(source) ? source[0] : source).clone();
+    if (material instanceof THREE.MeshStandardMaterial) {
+      material.transparent = true;
+      material.opacity = WALL_GHOST;
+      material.depthWrite = false;
+      material.polygonOffset = true;
+      material.polygonOffsetFactor = -1;
+    }
+    return material;
+  }
+
   function addInstances(template: { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[]; local: THREE.Matrix4 }, entries: Piece[], cutaway: boolean) {
     if (!entries.length) return;
     const mesh = new THREE.InstancedMesh(template.geometry, template.material, entries.length);
@@ -396,7 +532,15 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     mesh.instanceMatrix.needsUpdate = true;
     scene.add(mesh);
     const occludes = entries[0]?.file === "wall.gltf" || entries[0]?.file === "wall_half.gltf" || entries[0]?.file === "pillar.gltf";
-    if (occludes && !cutaway) raidWallBatches.push({ mesh, slots });
+    if (occludes && !cutaway) {
+      const ghost = new THREE.InstancedMesh(template.geometry, ghostMaterial(template.material), entries.length);
+      ghost.userData.level = true;
+      ghost.frustumCulled = false;
+      ghost.count = 0;
+      ghost.renderOrder = 2;
+      scene.add(ghost);
+      fadeBatches.push({ solid: mesh, ghost, slots });
+    }
     if (entries[0]?.kind === "floor") {
       mesh.userData.meta = entries[0];
       floors.push(mesh);
@@ -412,9 +556,9 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     selectables.length = 0;
     floors.length = 0;
     cutawayBatches.length = 0;
-    raidWallBatches.length = 0;
-    raidLooseWalls.length = 0;
-    raidCutKey = "";
+    fadeBatches.length = 0;
+    fadeLoose.length = 0;
+    watched.length = 0;
     cutawayStamp = Number.NaN;
     selectables.push(groundPick);
     floors.push(groundPick);
@@ -474,7 +618,19 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
           if (entry.id === "anvil") mesh.userData.action = "craft";
           if (entry.kind === "vault") mesh.userData.action = "brace";
           if (entry.kind === "floor") floors.push(mesh);
-          if (entry.kind === "wall") raidLooseWalls.push({ obj: mesh, x: entry.x, z: entry.z });
+          if (entry.kind === "wall") {
+            const materials: THREE.MeshStandardMaterial[] = [];
+            mesh.traverse((obj) => {
+              const pieceMesh = obj as THREE.Mesh;
+              if (!pieceMesh.isMesh) return;
+              const cloned = (Array.isArray(pieceMesh.material) ? pieceMesh.material[0] : pieceMesh.material).clone();
+              if (cloned instanceof THREE.MeshStandardMaterial) {
+                pieceMesh.material = cloned;
+                materials.push(cloned);
+              }
+            });
+            fadeLoose.push({ x: entry.x, z: entry.z, materials });
+          }
           if (entry.kind === "light") {
             const low = hooks.getQuality() === "low";
             const vaultLight = entry.id === "torch-vault";
@@ -714,6 +870,7 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   function onPointerDown(event: PointerEvent) {
     if (event.button === 2 || event.shiftKey) {
       canvas.dataset.pan = `${event.clientX},${event.clientY}`;
+      if (canvas.setPointerCapture) canvas.setPointerCapture(event.pointerId);
       return;
     }
     const found = pickedNode(event.clientX, event.clientY);
@@ -815,11 +972,13 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   function onPointerMove(event: PointerEvent) {
     const pan = canvas.dataset.pan;
     if (pan && (event.buttons === 2 || event.shiftKey)) {
-      if (scripted) return;
       const [sx, sy] = pan.split(",").map(Number);
-      focus.x -= (event.clientX - sx) * 0.03;
-      focus.z -= (event.clientY - sy) * 0.03;
       canvas.dataset.pan = `${event.clientX},${event.clientY}`;
+      if (scripted) return;
+      const scale = view * 0.0018;
+      focus.x -= (event.clientX - sx) * scale;
+      focus.z -= (event.clientY - sy) * scale;
+      clampFocus();
       return;
     }
     void previewTrap(event.clientX, event.clientY);
@@ -850,24 +1009,21 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   function onWheel(event: WheelEvent) {
     event.preventDefault();
     if (scripted) return;
-    releaseZoom?.kill();
-    view = THREE.MathUtils.clamp(view + event.deltaY * 0.02, 36, 110);
-    resize();
+    const direction = event.deltaY > 0 ? -1 : 1;
+    zoomTarget = THREE.MathUtils.clamp(zoomTarget + direction * 0.05, ZOOM_MIN, ZOOM_MAX);
   }
 
   function onKey(event: KeyboardEvent) {
     keys.add(event.key.toLowerCase());
-    if (event.key === "q") yaw = THREE.MathUtils.clamp(yaw - 0.08, -0.7, 0.7);
-    if (event.key === "e") yaw = THREE.MathUtils.clamp(yaw + 0.08, -0.7, 0.7);
     if (event.key.toLowerCase() === "r" && !scripted) {
-      releaseZoom?.kill();
       gsap.killTweensOf(focus);
-      yaw = 0;
-      view = HALL_VIEW;
+      zoomTarget = 1;
       focus.copy(hallFocus);
-      resize();
     }
-    if (event.key.toLowerCase() === "f" && hero?.root.visible) focus.set(hero.root.position.x, 0, hero.root.position.z);
+    if (event.key.toLowerCase() === "f" && hero?.root.visible) {
+      focus.set(hero.root.position.x, 0, hero.root.position.z);
+      clampFocus();
+    }
   }
 
   function hurtHero(amount: number) {
@@ -1016,33 +1172,56 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     if (hooks.diaryChoice() === "escaped") releaseJournal();
   }
 
-  function syncRaidWalls() {
-    const key = scripted ? `${Math.round(focus.x)}:${Math.round(focus.z)}:${yaw.toFixed(2)}` : "open";
-    if (key === raidCutKey) return;
-    raidCutKey = key;
-    const az = Math.PI / 4 + yaw;
-    const towardX = Math.cos(az);
-    const towardZ = Math.sin(az);
-    const reach = CELL * 4;
-    const blocksRaider = (x: number, z: number) => {
-      if (!scripted) return false;
-      const dx = x - focus.x;
-      const dz = z - focus.z;
-      if (dx * dx + dz * dz > reach * reach) return false;
-      return dx * towardX + dz * towardZ > 0.35;
-    };
-    for (const batch of raidWallBatches) {
-      let count = 0;
-      for (const slot of batch.slots) {
-        if (blocksRaider(slot.x, slot.z)) continue;
-        batch.mesh.setMatrixAt(count, slot.matrix);
-        count += 1;
-      }
-      batch.mesh.count = count;
-      batch.mesh.visible = count > 0;
-      batch.mesh.instanceMatrix.needsUpdate = true;
+  function wallBlocks(x: number, z: number, targetX: number, targetZ: number) {
+    const dx = x - targetX;
+    const dz = z - targetZ;
+    const along = dx * Math.cos(ISO_YAW) + dz * Math.sin(ISO_YAW);
+    const side = Math.abs(dx * -Math.sin(ISO_YAW) + dz * Math.cos(ISO_YAW));
+    return along > 0.8 && along < CELL * 2.4 && side < CELL * 1.35;
+  }
+
+  function watchPoints() {
+    const points: { x: number; z: number }[] = [];
+    if (hero?.root.visible) points.push({ x: hero.root.position.x, z: hero.root.position.z });
+    if (placing?.visible) points.push({ x: placing.position.x, z: placing.position.z });
+    for (const mark of watched) {
+      if (!mark.visible) continue;
+      points.push({ x: mark.position.x, z: mark.position.z });
     }
-    for (const wall of raidLooseWalls) wall.obj.visible = !blocksRaider(wall.x, wall.z);
+    return points;
+  }
+
+  /** Walls between the camera and a hero, a placed cursor, or a rolling boulder become see-through. Every other wall stays solid. */
+  function updateWallFade() {
+    const points = watchPoints();
+    const blocks = (x: number, z: number) => points.some((point) => wallBlocks(x, z, point.x, point.z));
+    for (const batch of fadeBatches) {
+      let solid = 0;
+      let ghost = 0;
+      for (const slot of batch.slots) {
+        if (blocks(slot.x, slot.z)) {
+          batch.ghost.setMatrixAt(ghost, slot.matrix);
+          ghost += 1;
+        } else {
+          batch.solid.setMatrixAt(solid, slot.matrix);
+          solid += 1;
+        }
+      }
+      if (batch.solid.count !== solid || ghost > 0) {
+        batch.solid.count = Math.max(solid, 0);
+        batch.ghost.count = ghost;
+        batch.solid.instanceMatrix.needsUpdate = true;
+        batch.ghost.instanceMatrix.needsUpdate = true;
+      }
+    }
+    for (const wall of fadeLoose) {
+      const fade = blocks(wall.x, wall.z);
+      for (const material of wall.materials) {
+        material.opacity = fade ? WALL_GHOST : 1;
+        material.transparent = fade;
+        material.depthWrite = !fade;
+      }
+    }
   }
 
   function frame(now: number) {
@@ -1050,10 +1229,11 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     if (!scripted) {
-      if (keys.has("w")) focus.z -= 6 * dt;
-      if (keys.has("s")) focus.z += 6 * dt;
-      if (keys.has("a")) focus.x -= 6 * dt;
-      if (keys.has("d")) focus.x += 6 * dt;
+      const pace = 6 * dt;
+      if (keys.has("w")) focus.z -= pace;
+      if (keys.has("s")) focus.z += pace;
+      if (keys.has("a")) focus.x -= pace;
+      if (keys.has("d")) focus.x += pace;
     }
     const calm = hooks.getReduceMotion?.() ?? false;
     const stopped = now < hitStopUntil;
@@ -1069,7 +1249,8 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
     }
     const vault = hooks.getVault?.() ?? 1200;
     const fog = scene.fog as THREE.Fog;
-    fog.near = vault < 1200 * 0.25 ? 36 : 140;
+    fog.near = vault < 1200 * 0.25 ? 80 : 260;
+    fog.far = vault < 1200 * 0.25 ? 320 : 620;
     const camSide = camera.position.z > focus.z;
     // Near-side interior walls can still cut away when a piece is marked. Ashgate's
     // stone walls are not marked, so the floor-plan outlines stay visible.
@@ -1123,7 +1304,14 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       focus.x = hero.root.position.x;
       focus.z = hero.root.position.z;
     }
-    syncRaidWalls();
+    const calmZoom = hooks.getReduceMotion?.() ?? false;
+    if (Math.abs(zoomTarget - zoom) > 0.0008) {
+      zoom += (zoomTarget - zoom) * (calmZoom ? 1 : 0.16);
+      if (Math.abs(zoomTarget - zoom) < 0.001) zoom = zoomTarget;
+      applyFrustum();
+    }
+    clampFocus();
+    updateWallFade();
     stepActors(motionDt);
     aimCamera();
     renderer.render(scene, camera);
@@ -1156,7 +1344,11 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
   const listeners: [string, EventListenerOrEventListenerObject, boolean?][] = [
     ["pointerdown", onPointerDown as EventListener],
     ["pointermove", onPointerMove as EventListener],
-    ["pointerup", ((event: PointerEvent) => { delete canvas.dataset.pan; onPointerUp(event); }) as EventListener],
+    ["pointerup", ((event: PointerEvent) => {
+      delete canvas.dataset.pan;
+      if (canvas.hasPointerCapture?.(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      onPointerUp(event);
+    }) as EventListener],
     ["contextmenu", (event) => event.preventDefault()],
     ["wheel", onWheel as EventListener, true],
   ];
@@ -1220,14 +1412,12 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       if (hero) hero.root.visible = true;
       if (hero && steps[0]) hero.root.position.set(steps[0].x, 0, steps[0].z);
       if (hero) {
-        releaseZoom?.kill();
         gsap.killTweensOf(focus);
         focus.set(hero.root.position.x, 0, hero.root.position.z);
-        view = RAIDER_VIEW;
-        resize();
+        zoomTarget = ZOOM_MAX;
       }
       scripted = true;
-      syncRaidWalls();
+      updateWallFade();
       const locked = new Set(hooks.getClosedGates());
       for (const gate of roomGates) {
         if (!locked.has(gate.id)) gate.mesh.rotation.y = gate.shut;
@@ -1254,6 +1444,8 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
           sfx.hit();
           const cask = await spawn(TRAP_DEFINITIONS.boulder.model, "cast");
           cask.position.set(step.x, 0.2, step.z);
+          cask.userData.level = true;
+          watched.push(cask);
           scene.add(cask);
           const roll = { t: 0 };
           gsap.to(roll, {
@@ -1263,7 +1455,11 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
               cask.position.x = step.x + roll.t * CELL * 2;
               cask.rotation.z = -roll.t * Math.PI * 3;
             },
-            onComplete: () => scene.remove(cask),
+            onComplete: () => {
+              const index = watched.indexOf(cask);
+              if (index >= 0) watched.splice(index, 1);
+              scene.remove(cask);
+            },
           });
           await pause(0.85);
         } else if (step.type === "trap" || step.type === "combat") {
@@ -1299,25 +1495,15 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
         }
       }
       scripted = false;
-      syncRaidWalls();
+      updateWallFade();
       gsap.killTweensOf(focus);
-      releaseZoom?.kill();
+      zoomTarget = 1;
       if (hooks.getReduceMotion?.()) {
-        view = HALL_VIEW;
+        zoom = 1;
         focus.copy(hallFocus);
-        resize();
+        applyFrustum();
       } else {
         gsap.to(focus, { x: hallFocus.x, z: hallFocus.z, duration: 0.7, ease: "power2.inOut", overwrite: "auto" });
-        const zoom = { value: view };
-        releaseZoom = gsap.to(zoom, {
-          value: HALL_VIEW,
-          duration: 0.7,
-          ease: "power2.inOut",
-          onUpdate: () => {
-            view = zoom.value;
-            resize();
-          },
-        });
       }
       for (const gate of roomGates) gate.mesh.rotation.y = gate.shut;
       if (hero) {
@@ -1352,17 +1538,6 @@ export function mountDungeon(canvas: HTMLCanvasElement, hooks: DungeonHooks) {
       slash.position.set(0.15, 1.15, 0.45);
       hero.root.add(slash);
       gsap.to(slash.rotation, { z: -2, duration: 0.55, onComplete: () => hero?.root.remove(slash) });
-      const zoom = { value: view };
-      gsap.to(zoom, {
-        value: Math.max(6.2, view - 1.4),
-        duration: 0.18,
-        yoyo: true,
-        repeat: 1,
-        onUpdate: () => {
-          view = zoom.value;
-          resize();
-        },
-      });
       const target = actors
         .filter((actor) => actor.family === "skeleton" && actor.hp > 0)
         .sort((a, b) => a.root.position.distanceTo(hero!.root.position) - b.root.position.distanceTo(hero!.root.position))[0];

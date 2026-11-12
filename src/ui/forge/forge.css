@@ -435,11 +435,165 @@
     width: 100%;
   }
 
-  .hud-meters {
-    bottom: 5.75rem !important;
+  .hud-stack {
+    max-width: calc(100% - 1.5rem) !important;
+  }
+
+  .hud-stack .ur-resource {
+    width: 6.7rem;
+    min-height: 2.5rem;
+    padding: 0.12rem 0.35rem 0.12rem 0.2rem;
+  }
+
+  .hud-heroes {
+    flex-wrap: nowrap;
+  }
+
+  .hud-hint,
+  .gate-blurb {
+    display: none;
+  }
+
+  .trap-bar .ur-trap {
+    width: 3.35rem;
+  }
+
+  .ur-trap-name {
+    font-size: 0.56rem;
+  }
+
+  .ur-trap-cost {
+    font-size: 0.5rem;
+  }
+
+  .gate-dock .ur-btn {
+    min-height: 1.7rem;
+    border-width: 6px 10px;
+    border-image-width: 6px 10px;
+    padding: 0.05rem 0.4rem;
+    font-size: 0.82rem;
+  }
+
+  .gate-dock .font-display {
+    font-size: 1rem;
+    line-height: 1.1;
+  }
+
+  .trap-bar {
+    top: 7rem !important;
+    right: 0.75rem !important;
     left: 0.75rem !important;
-    width: calc(100% - 1.5rem) !important;
-    max-width: 16rem !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+
+  .gate-dock {
+    position: fixed;
+    top: auto;
+    right: 5.6rem;
+    bottom: 10.65rem;
+    left: 0.75rem;
+    z-index: 30;
+    max-width: none;
+  }
+
+  .hud-tutorial {
+    position: fixed;
+    right: 0.75rem;
+    bottom: 17rem;
+    left: 0.75rem;
+    z-index: 20;
+    margin: 0;
+  }
+
+  .hud-toast {
+    position: fixed;
+    top: 10.4rem;
+    right: 0.75rem;
+    left: 0.75rem;
+    z-index: 30;
+  }
+
+  .hud-meters {
+    bottom: 0.75rem !important;
+    left: 0.75rem !important;
+    width: calc(100% - 6.4rem) !important;
+    max-width: none !important;
+  }
+}
+
+@media (max-height: 520px) and (min-width: 721px) {
+  .hud-hint,
+  .gate-blurb {
+    display: none;
+  }
+
+  .trap-bar .ur-trap {
+    width: 4.2rem;
+  }
+
+  .trap-bar {
+    max-width: calc(100% - 16rem);
+  }
+
+  .gate-dock {
+    position: fixed;
+    top: auto;
+    right: 12.5rem;
+    bottom: 0.45rem;
+    left: auto;
+    z-index: 30;
+    max-width: 16rem;
+  }
+
+  .gate-dock .ur-btn {
+    min-height: 1.7rem;
+    border-width: 6px 10px;
+    border-image-width: 6px 10px;
+    padding: 0.05rem 0.4rem;
+    font-size: 0.82rem;
+  }
+
+  .gate-dock .font-display {
+    font-size: 1rem;
+    line-height: 1.1;
+  }
+
+  .gate-dock .mt-2 {
+    margin-top: 0.25rem;
+  }
+
+  .hud-tutorial {
+    position: fixed;
+    top: 5.6rem;
+    right: 1rem;
+    left: 16rem;
+    z-index: 20;
+    margin: 0;
+    text-align: right;
+  }
+
+  .hud-toast {
+    position: fixed;
+    top: 6.8rem;
+    left: 0.75rem;
+    z-index: 30;
+    max-width: 16rem;
+  }
+
+  .hud-meters {
+    right: auto;
+    bottom: 0.55rem !important;
+    left: 0.75rem !important;
+    flex-direction: row !important;
+    align-items: stretch;
+    width: auto !important;
+    max-width: none !important;
+  }
+
+  .hud-meters .channel {
+    min-width: 9.5rem;
+    width: 10.5rem;
   }
 }
 

@@ -271,9 +271,9 @@ function DungeonScreen() {
   const possessLocked = game.day < RAID.possess.fromWave;
 
   return (
-    <div className={`relative h-full min-h-[640px] ${game.reduceMotion ? "motion-reduce" : ""}`}>
+    <div className={`relative h-full w-full overflow-hidden ${game.reduceMotion ? "motion-reduce" : ""}`}>
       <canvas ref={canvasRef} className="view absolute inset-0 h-full w-full" />
-      <div className="pointer-events-none absolute left-3 top-3 z-20 flex max-w-[calc(100%-10.5rem)] flex-col gap-2 sm:max-w-[min(28rem,calc(100%-18rem))]">
+      <div className="hud-stack pointer-events-none absolute left-3 top-3 z-20 flex max-w-[calc(100%-10.5rem)] flex-col gap-2 sm:max-w-[min(28rem,calc(100%-18rem))]">
         <div className="pointer-events-auto flex flex-wrap gap-2">
           <ResourcePanel icon={ui.icon.coin} value={Math.round(game.gold)} label={bleed > 0 ? `−${bleed}/s` : "−0/s"} labelHot={bleed > 0} pulse={Boolean(vaultPulse)} />
           <ResourcePanel icon={ui.icon.wave} value={game.day} label="Wave" />
@@ -281,7 +281,7 @@ function DungeonScreen() {
             <CinderPips value={game.cinder} cap={RAID.cinder.cap} />
           </ResourcePanel>
         </div>
-        <div className="pointer-events-auto flex flex-wrap gap-1.5">
+        <div className="hud-heroes pointer-events-auto flex flex-wrap gap-1.5">
           {(["kara", "brann", "ivo"] as const).map((id) => {
             const body = game.heroes[id];
             const profile = HERO_PROFILES[id];
@@ -310,15 +310,17 @@ function DungeonScreen() {
             <Button tone="ghost" className="mt-2" onClick={() => setScreen("registry")}>Hero record</Button>
           </ForgedFrame>
         )}
-        <Notice>
-          {game.pageResult === "decision"
-            ? `The page is in the air. Burn costs ${RAID.cinder.burnCost} cinder${game.cinder < RAID.cinder.burnCost ? ", and you do not have enough" : ""}. Waiting lets it land as a rumour. ${seconds}s.`
-            : hint}
-        </Notice>
+        <div className="hud-hint">
+          <Notice>
+            {game.pageResult === "decision"
+              ? `The page is in the air. Burn costs ${RAID.cinder.burnCost} cinder${game.cinder < RAID.cinder.burnCost ? ", and you do not have enough" : ""}. Waiting lets it land as a rumour. ${seconds}s.`
+              : hint}
+          </Notice>
+        </div>
         {game.phase === "prep" && !walking && (
-          <ForgedFrame variant="tooltip" className="pointer-events-auto max-w-xs">
+          <ForgedFrame variant="tooltip" className="gate-dock pointer-events-auto max-w-xs">
             <p className="font-display text-lg text-gold">South gate</p>
-            <p className="text-sm text-parchment/80">The hero starts beside the banners and walks the corridor.</p>
+            <p className="gate-blurb text-sm text-parchment/80">The hero starts beside the banners and walks the corridor.</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <Button onClick={() => {
                 const result = startRaid();
@@ -337,10 +339,10 @@ function DungeonScreen() {
             )}
           </ForgedFrame>
         )}
-        {toast && <Notice tone="gold">{toast}</Notice>}
-        <p className="pointer-events-none text-[10px] uppercase tracking-[0.14em] text-parchment/75">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
+        {toast && <div className="hud-toast"><Notice tone="gold">{toast}</Notice></div>}
+        <p className="hud-tutorial pointer-events-none text-[10px] uppercase tracking-[0.14em] text-parchment/75">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
       </div>
-      <div className="pointer-events-auto absolute right-3 top-3 z-20 flex w-[9.4rem] flex-wrap justify-end gap-1 sm:w-auto sm:max-w-[calc(100%-20rem)]">
+      <div className="trap-bar pointer-events-auto absolute right-3 top-3 z-20 flex w-[9.4rem] flex-wrap justify-end gap-1 sm:w-auto sm:max-w-[calc(100%-20rem)]">
         {TRAP_IDS.map((id) => {
           const trap = TRAP_DEFINITIONS[id];
           const selected = game.selectedTrap === id;
@@ -418,7 +420,7 @@ function DungeonScreen() {
           meter={{ now: game.vault, max: RAID.vaultStart, label: `Vault ${game.vault} of ${RAID.vaultStart}` }}
         />
       </div>
-      <div className="pointer-events-auto absolute bottom-4 right-4 z-20 flex items-end gap-2">
+      <div className="hud-controls pointer-events-auto absolute bottom-4 right-4 z-20 flex items-end gap-2">
         <CircularGameButton aria-label={paused ? "Resume" : "Pause"} aria-pressed={paused} pressed={paused} onClick={() => setPaused((value) => !value)}>
           <GameIcon src={paused ? ui.icon.play : ui.icon.pause} />
         </CircularGameButton>
