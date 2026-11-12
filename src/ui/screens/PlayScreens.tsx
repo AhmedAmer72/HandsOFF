@@ -176,7 +176,7 @@ export function TakeHomeScreen() {
         <p className="text-sm">Only the treasury can leave. Vault gold stays in the hall. Nothing is sent off this device.</p>
         <p className="mt-2">Treasury on this device {treasury.toFixed(4)}.</p>
         <label className="mt-3 block text-sm">Amount
-          <input className="mt-1 w-full rounded-xl bg-ink px-3 py-2" type="number" min={0.001} step={0.001} value={amount} onChange={(event) => setAmount(Number(event.target.value))} />
+          <input className="control mt-1" type="number" min={0.001} step={0.001} value={amount} onChange={(event) => setAmount(Number(event.target.value))} />
         </label>
         <p className="mt-2 text-sm">Quoted fee {fee.toFixed(4)}. You would keep {(amount - fee).toFixed(4)}. This quote is simulated.</p>
         <p className="mt-2 text-sm">Status: {status === "idle" ? STEPS[step] : status}.</p>

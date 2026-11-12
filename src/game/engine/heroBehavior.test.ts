@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { HERO_PROFILES } from "../config/heroProfiles";
+import { RULES } from "../config/gameRules";
 import { createSave } from "./newGame";
 import { chooseRaider, evaluateHero } from "./decisions";
 import { findPath } from "./path";
 import { simulateRaid } from "./raid";
 import type { Fact } from "./types";
 
-const spike = { id: "s1", trapId: "spike" as const, ix: 4, iz: 6 };
+const spike = { id: "s1", trapId: "spike" as const, ix: RULES.spikeTutorialCell.ix, iz: RULES.spikeTutorialCell.iz };
 const rumour: Fact = {
-  id: "spike-4,6-d1",
+  id: "spike-door",
   kind: "spike",
-  ix: 4,
-  iz: 6,
-  text: "Spike Trap at tile 4, 6.",
+  ix: RULES.spikeTutorialCell.ix,
+  iz: RULES.spikeTutorialCell.iz,
+  text: "Spike at the vault door.",
   quality: 3,
   burned: false,
   epoch: 1,
@@ -51,9 +52,9 @@ describe("distinct hero behavior", () => {
     const ivoPath = findPath([spike], [warned], HERO_PROFILES.ivo);
     const brannPath = findPath([spike], [], HERO_PROFILES.brann);
     const karaPath = findPath([spike], [{ ...rumour, memory: "observed", source: "eyes" }], HERO_PROFILES.kara);
-    expect(ivoPath.some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(false);
-    expect(brannPath.some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(true);
-    expect(karaPath.some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(true);
+    expect(ivoPath.some((cell) => cell.ix === spike.ix && cell.iz === spike.iz)).toBe(false);
+    expect(brannPath.some((cell) => cell.ix === spike.ix && cell.iz === spike.iz)).toBe(true);
+    expect(karaPath.some((cell) => cell.ix === spike.ix && cell.iz === spike.iz)).toBe(true);
   });
 
   it("refuses the same offer for Kara and accepts it for Brann", () => {
@@ -81,21 +82,21 @@ describe("distinct hero behavior", () => {
   it("lets bait pull Brann onto a trap he already dodged", () => {
     const dodged: Fact = { ...rumour, memory: "dodged", source: "previous raid" };
     const bait = { id: "b1", trapId: "bait" as const, ix: 3, iz: 5 };
-    expect(findPath([spike, bait], [dodged], HERO_PROFILES.brann).some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(true);
-    expect(findPath([spike, bait], [dodged], HERO_PROFILES.kara).some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(false);
-    expect(findPath([spike], [dodged], HERO_PROFILES.brann).some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(false);
+    expect(findPath([spike, bait], [dodged], HERO_PROFILES.brann).some((cell) => cell.ix === spike.ix && cell.iz === spike.iz)).toBe(true);
+    expect(findPath([spike, bait], [dodged], HERO_PROFILES.kara).some((cell) => cell.ix === spike.ix && cell.iz === spike.iz)).toBe(false);
+    expect(findPath([spike], [dodged], HERO_PROFILES.brann).some((cell) => cell.ix === spike.ix && cell.iz === spike.iz)).toBe(false);
   });
 
   it("ignores a warning from another dungeon", () => {
     const foreign: Fact = { ...rumour, memory: "warned", source: "bought rumour", dungeonId: "otherhall" };
     const path = findPath([spike], [foreign], HERO_PROFILES.ivo);
-    expect(path.some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(true);
+    expect(path.some((cell) => cell.ix === spike.ix && cell.iz === spike.iz)).toBe(true);
   });
 
   it("marks a survived warning as dodged, and armor as countered", () => {
     const save = createSave();
-    const warned: Fact = { ...rumour, ix: 4, iz: 0, id: "spike-4,0-d1", text: "Spike Trap at tile 4, 0.", memory: "warned", source: "bought rumour", epoch: 1, dungeonId: "ashgate" };
-    const vaultSpike = { id: "vault", trapId: "spike" as const, ix: 4, iz: 0, epoch: 1 };
+    const warned: Fact = { ...rumour, ix: RULES.grid.vault.ix, iz: RULES.grid.vault.iz, id: "spike-vault", text: "Spike on the chest.", memory: "warned", source: "bought rumour", epoch: 1, dungeonId: "ashgate" };
+    const vaultSpike = { id: "vault", trapId: "spike" as const, ix: RULES.grid.vault.ix, iz: RULES.grid.vault.iz, epoch: 1 };
     const dodged = simulateRaid({ day: 2, seed: 3, hero: { ...save.heroes.ivo, facts: [{ ...warned }] }, traps: [vaultSpike], tutorial: false });
     expect(dodged.hero.facts.find((fact) => fact.id === warned.id)?.memory).toBe("dodged");
     const countered = simulateRaid({ day: 2, seed: 3, hero: { ...save.heroes.brann, facts: [{ ...warned }], equipment: ["armor"] }, traps: [vaultSpike], tutorial: false });
@@ -106,6 +107,6 @@ describe("distinct hero behavior", () => {
   it("sends a stale warning back to the short path", () => {
     const stale: Fact = { ...rumour, memory: "warned", epoch: 1 };
     const path = findPath([{ ...spike, epoch: 2 }], [stale], HERO_PROFILES.ivo);
-    expect(path.some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(true);
+    expect(path.some((cell) => cell.ix === spike.ix && cell.iz === spike.iz)).toBe(true);
   });
 });

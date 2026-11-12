@@ -1,5 +1,5 @@
 import { HERO_PROFILES } from "../config/heroProfiles";
-import { RULES, cellKey } from "../config/gameRules";
+import { ROOM_GATES, RULES, cellKey, gateCovers } from "../config/gameRules";
 import { ECONOMY } from "../config/economyRules";
 import { TRAP_DEFINITIONS } from "../config/trapDefinitions";
 import { findPath, type PlacedTrap } from "./path";
@@ -14,6 +14,7 @@ export interface RaidInput {
   upgrades?: string[];
   possessGuard?: boolean;
   spentTrapIds?: string[];
+  closedGateIds?: string[];
 }
 
 export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "decision">; hero: HeroState } {
@@ -28,7 +29,7 @@ export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "deci
     history: [...input.hero.history],
   };
   const facts = hero.facts;
-  const path = findPath(input.traps, facts, profile);
+  const path = findPath(input.traps, facts, profile, input.closedGateIds ?? []);
   const events: RaidEvent[] = [];
   const triggered: string[] = [];
   const learned: Fact[] = [];
@@ -42,9 +43,15 @@ export function simulateRaid(input: RaidInput): { report: Omit<RaidReport, "deci
     events.push({ ...event, tick: tick++, heroHp: hero.hp });
   };
 
-  push({ type: "enter", text: `${profile.name} enters Ashgate at the south corridor.`, ix: path[0]?.ix, iz: path[0]?.iz });
+  push({ type: "enter", text: `${profile.name} enters Ashgate through the south gate.`, ix: path[0]?.ix, iz: path[0]?.iz });
+  const lifted = new Set<string>();
 
   for (const cell of path) {
+    const gate = ROOM_GATES.find((entry) => gateCovers(entry, cell.ix, cell.iz));
+    if (gate && !lifted.has(gate.id)) {
+      lifted.add(gate.id);
+      push({ type: "gate", text: `${profile.name} lifts the ${gate.name}.`, ix: cell.ix, iz: cell.iz });
+    }
     push({ type: "move", text: `${profile.name} steps to ${cell.ix}, ${cell.iz}.`, ix: cell.ix, iz: cell.iz });
     const trap = input.traps.find((entry) => entry.ix === cell.ix && entry.iz === cell.iz);
     if (trap && input.spentTrapIds?.includes(trap.id)) {

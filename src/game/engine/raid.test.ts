@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HERO_PROFILES } from "../config/heroProfiles";
+import { RULES } from "../config/gameRules";
 import { TRAP_DEFINITIONS } from "../config/trapDefinitions";
 import { createSave } from "./newGame";
 import { applyPurchase, chooseRaider, evaluateHero } from "./decisions";
@@ -8,7 +9,7 @@ import { quotePrice } from "./pricing";
 import { outcomeHash, sameRaid, simulateRaid } from "./raid";
 import type { Fact, HeroState } from "./types";
 
-const spike = { id: "s1", trapId: "spike" as const, ix: 4, iz: 6 };
+const spike = { id: "s1", trapId: "spike" as const, ix: RULES.spikeTutorialCell.ix, iz: RULES.spikeTutorialCell.iz };
 
 function kara(extra: Partial<HeroState> = {}): HeroState {
   const save = createSave();
@@ -18,22 +19,22 @@ function kara(extra: Partial<HeroState> = {}): HeroState {
 describe("pathing", () => {
   it("walks the center corridor when the spike is unknown", () => {
     const path = findPath([spike], [], HERO_PROFILES.kara);
-    expect(path.some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(true);
-    expect(path.at(-1)).toEqual({ ix: 4, iz: 0 });
+    expect(path.some((cell) => cell.ix === spike.ix && cell.iz === spike.iz)).toBe(true);
+    expect(path.at(-1)).toEqual(RULES.grid.vault);
   });
 
   it("does not detour for a page she only saw, or for a stale epoch", () => {
-    const observed: Fact = { id: "eyes", kind: "spike", ix: 4, iz: 6, text: "seen", quality: 3, burned: false, memory: "observed", epoch: 1 };
-    const stale: Fact = { id: "old", kind: "spike", ix: 4, iz: 6, text: "old", quality: 3, burned: false, memory: "warned", epoch: 1 };
-    expect(findPath([spike], [observed], HERO_PROFILES.kara).some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(true);
-    expect(findPath([{ ...spike, epoch: 2 }], [stale], HERO_PROFILES.kara).some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(true);
+    const observed: Fact = { id: "eyes", kind: "spike", ix: spike.ix, iz: spike.iz, text: "seen", quality: 3, burned: false, memory: "observed", epoch: 1 };
+    const stale: Fact = { id: "old", kind: "spike", ix: spike.ix, iz: spike.iz, text: "old", quality: 3, burned: false, memory: "warned", epoch: 1 };
+    expect(findPath([spike], [observed], HERO_PROFILES.kara).some((cell) => cell.ix === spike.ix && cell.iz === spike.iz)).toBe(true);
+    expect(findPath([{ ...spike, epoch: 2 }], [stale], HERO_PROFILES.kara).some((cell) => cell.ix === spike.ix && cell.iz === spike.iz)).toBe(true);
   });
 
   it("Kara walks around a spike she knows", () => {
-    const fact: Fact = { id: "spike-4,6-d1", kind: "spike", ix: 4, iz: 6, text: "Spike Trap at tile 4, 6.", quality: 3, burned: false };
+    const fact: Fact = { id: "spike-door", kind: "spike", ix: spike.ix, iz: spike.iz, text: "Spike at the vault door.", quality: 3, burned: false };
     const path = findPath([spike], [fact], HERO_PROFILES.kara);
-    expect(path.some((cell) => cell.ix === 4 && cell.iz === 6)).toBe(false);
-    expect(path.at(-1)).toEqual({ ix: 4, iz: 0 });
+    expect(path.some((cell) => cell.ix === spike.ix && cell.iz === spike.iz)).toBe(false);
+    expect(path.at(-1)).toEqual(RULES.grid.vault);
   });
 });
 
@@ -56,7 +57,7 @@ describe("raid", () => {
   });
 
   it("lets Kara live when she already knows the spike and can walk around it", () => {
-    const fact: Fact = { id: "spike-4,6-d1", kind: "spike", ix: 4, iz: 6, text: "Spike Trap at tile 4, 6.", quality: 3, burned: false };
+    const fact: Fact = { id: "spike-door", kind: "spike", ix: spike.ix, iz: spike.iz, text: "Spike at the vault door.", quality: 3, burned: false };
     const result = simulateRaid({
       day: 2,
       seed: 1105,
@@ -65,6 +66,16 @@ describe("raid", () => {
       tutorial: false,
     });
     expect(result.report.events.some((event) => event.trapId === "spike")).toBe(false);
+    expect(result.report.survived).toBe(true);
+  });
+
+  it("makes Kara lift the gates on the bent path", () => {
+    const result = simulateRaid({ day: 2, seed: 3, hero: kara({ hp: 64, maxHp: 64 }), traps: [], tutorial: false });
+    const names = result.report.events.filter((event) => event.type === "gate").map((event) => event.text);
+    expect(names).toEqual([
+      "Kara lifts the Spike gate.",
+      "Kara lifts the Vault gate.",
+    ]);
     expect(result.report.survived).toBe(true);
   });
 });

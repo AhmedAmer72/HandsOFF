@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import Lenis from "@studio-freight/lenis";
+import { SealButton } from "../../ui/forge/controls";
 
 const HERO = "/hero/underrealm-hands-off.jpg";
 
@@ -15,8 +16,8 @@ export function ParallaxComponent({ onStart, onConnect, continueReady }: HeroPro
   const parallaxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const root = parallaxRef.current;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches || Boolean(root?.closest(".motion-reduce"));
     const scroller = root?.closest("main");
     const content = scroller?.querySelector<HTMLElement>("[data-testid=landing]") ?? undefined;
     const triggerElement = root?.querySelector<HTMLElement>("[data-parallax-layers]");
@@ -74,8 +75,8 @@ export function ParallaxComponent({ onStart, onConnect, continueReady }: HeroPro
             <img src={HERO} data-parallax-layer="2" alt="" width="1600" height="900" className="parallax__layer-img parallax__layer-img--front" />
             <div data-parallax-layer="3" className="parallax__layer-title">
               <div className="parallax__actions">
-                <button className="min-h-11 rounded-hud bg-gold px-8 font-display tracking-wide text-ink shadow-[inset_0_-2px_0_rgba(58,42,26,0.45)]" data-testid="get-started" onClick={onStart}>Get Started</button>
-                <button className="min-h-11 rounded-hud border border-gold/70 bg-ink/70 px-8 font-display tracking-wide text-gold" data-testid="connect-wallet" onClick={onConnect}>Connect Wallet</button>
+                <SealButton data-testid="get-started" onClick={onStart}>Get Started</SealButton>
+                <SealButton tone="ghost" data-testid="connect-wallet" onClick={onConnect}>Connect Wallet</SealButton>
                 {continueReady && <p className="basis-full text-center text-sm text-parchment">A guest hall is already saved on this device. Get Started opens it.</p>}
               </div>
             </div>

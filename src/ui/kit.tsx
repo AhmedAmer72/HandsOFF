@@ -1,11 +1,16 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { SealButton } from "./forge/controls";
+import { ForgedFrame } from "./forge/frame";
+import { StatusBadge } from "./pack/components";
 
-export function Panel({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <section className={`rounded-hud border border-gold/30 bg-panel/95 p-4 text-parchment shadow-panel ${className}`}>{children}</section>;
+type PanelVariant = "steel" | "ledger" | "tablet" | "modal" | "compact" | "hero" | "tall" | "square" | "tooltip";
+
+export function Panel({ children, className = "", variant = "steel" }: { children: ReactNode; className?: string; variant?: PanelVariant }) {
+  return <ForgedFrame variant={variant} className={className}>{children}</ForgedFrame>;
 }
 
 export function Receipt({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <section className={`receipt rounded-hud p-4 ${className}`}>{children}</section>;
+  return <ForgedFrame variant="ledger" className={className}>{children}</ForgedFrame>;
 }
 
 export function Title({ children }: { children: ReactNode }) {
@@ -17,12 +22,7 @@ export function Num({ children, className = "" }: { children: ReactNode; classNa
 }
 
 export function Button({ tone = "gold", className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: "gold" | "ghost" | "ember" }) {
-  const toneClass = tone === "gold"
-    ? "bg-gold text-ink shadow-[inset_0_-2px_0_rgba(58,42,26,0.45)] hover:bg-torch"
-    : tone === "ember"
-      ? "bg-ember text-ink shadow-[inset_0_-2px_0_rgba(58,42,26,0.45)] hover:bg-torch"
-      : "border border-gold/45 bg-panel text-parchment shadow-hud hover:border-gold hover:text-gold";
-  return <button className={`min-h-11 rounded-hud px-4 py-2 font-display tracking-wide disabled:hover:bg-inherit ${toneClass} ${className}`} {...props} />;
+  return <SealButton tone={tone} className={className} {...props} />;
 }
 
 export function Chip({ children, hot = false }: { children: ReactNode; hot?: boolean }) {
@@ -30,18 +30,11 @@ export function Chip({ children, hot = false }: { children: ReactNode; hot?: boo
 }
 
 export function Status({ children, tone = "quiet" }: { children: ReactNode; tone?: "quiet" | "live" | "danger" | "mock" }) {
-  const toneClass = tone === "danger"
-    ? "border-blood text-blood"
-    : tone === "live"
-      ? "border-gold text-gold"
-      : tone === "mock"
-        ? "border-ember/70 text-ember"
-        : "border-gold/30 text-parchment";
-  return <span className={`inline-flex min-h-8 items-center rounded-full border px-3 text-xs ${toneClass}`}>{children}</span>;
+  return <StatusBadge tone={tone}>{children}</StatusBadge>;
 }
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
-  return <label className="block text-sm text-parchment/80">{label}<span className="mt-1 block [&_input]:min-h-11 [&_input]:rounded-hud [&_input]:border [&_input]:border-gold/20 [&_select]:min-h-11">{children}</span></label>;
+  return <label className="block text-sm text-parchment/80">{label}<span className="mt-1 block [&_input]:min-h-11 [&_input]:border [&_input]:border-bronze/70 [&_select]:min-h-11">{children}</span></label>;
 }
 
 export type ChronicleCat = "Combat" | "Heroes" | "Market" | "Economy" | "Traps" | "Rumours" | "Vault" | "Transactions";

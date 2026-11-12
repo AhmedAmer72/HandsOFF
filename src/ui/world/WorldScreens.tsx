@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { HERO_PROFILES } from "../../game/config/heroProfiles";
 import { fundRaidOffer, hallIdOf, leaveWatch, publishHall, setScreen, switchKeeper, unpublishCurrent, useGame, watchRaid } from "../../game/store";
 import { getActivity, listPublic, loadRegistry, pullHalls, readRegistry, type HallQuery, type PublicDungeon } from "../../game/world/registry";
+import { ForgedFrame } from "../forge/frame";
+import { GameIcon } from "../pack/components";
+import { ui } from "../pack/urls";
 import { Button, Chip, Field, Panel, Status, Title } from "../kit";
 
 const SORTS: { id: NonNullable<HallQuery["sort"]>; label: string }[] = [
@@ -58,14 +61,18 @@ export function WorldMap() {
     <section className="mx-auto flex h-full w-full max-w-6xl flex-col gap-5 p-4 md:p-6" data-testid="dungeon-directory">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="font-display text-5xl leading-none text-parchment">World Map</h2>
+          <div className="flex items-center gap-3">
+            <GameIcon src={ui.icon.dungeon} />
+            <h2 className="font-display text-5xl leading-none text-parchment">World Map</h2>
+          </div>
           <p className="mt-3 max-w-[62ch] font-body text-base text-parchment/80">Discover dungeons across the Underrealm. Heroes raid them. You do not.</p>
           <p className="mt-2 font-body text-sm text-parchment/70" data-testid="hall-count">{board.total} published {board.total === 1 ? "hall" : "halls"}. {liveRaids} live {liveRaids === 1 ? "raid" : "raids"}. Shared by browsers on this server. Not a mainnet.</p>
         </div>
         <Button tone="ghost" onClick={() => setHallOpen((value) => !value)}>{hallOpen ? "Close your hall" : "Your hall"}</Button>
       </header>
-      <div className="grid gap-3 rounded-hud border border-gold/25 bg-panel/80 p-3 shadow-hud sm:grid-cols-2 lg:grid-cols-6" data-testid="map-filters">
-        <Field label="Name"><input className="control" value={name} onChange={(event) => setName(event.target.value)} /></Field>
+      <ForgedFrame>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6" data-testid="map-filters">
+        <Field label="Name"><span className="flex items-center gap-2"><GameIcon src={ui.icon.search} /><input className="control" value={name} onChange={(event) => setName(event.target.value)} /></span></Field>
         <Field label="Owner"><input className="control" value={owner} onChange={(event) => setOwner(event.target.value)} /></Field>
         <Field label="Tier">
           <select className="control" value={String(tier)} onChange={(event) => setTier(event.target.value === "any" ? "any" : Number(event.target.value))}>
@@ -93,13 +100,17 @@ export function WorldMap() {
           </select>
         </Field>
       </div>
-      {board.total === 0 && <p className="rounded-hud border border-gold/25 bg-panel px-4 py-8 text-center font-body text-sm text-parchment/70">No published hall matches. A draft stays with its owner.</p>}
+      </ForgedFrame>
+      {board.total === 0 && <ForgedFrame className="text-center font-body text-sm text-parchment/70">No published hall matches. A draft stays with its owner.</ForgedFrame>}
       <div className="grid flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <ul className="flex flex-col gap-3">
           {board.halls.map((hall) => (
             <li key={hall.dungeonId}>
-              <button className={`flex min-h-[5.5rem] w-full flex-wrap items-center gap-4 rounded-hud border px-4 py-3 text-left shadow-hud sm:flex-nowrap ${selectedId === hall.dungeonId ? "border-gold bg-panel2" : "border-gold/25 bg-panel hover:border-gold"}`} data-testid="dungeon-row" onClick={() => setSelectedId(hall.dungeonId)}>
-                <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-ink font-display text-2xl text-gold" aria-hidden="true">{hall.tier}</span>
+              <button className={`tablet-row ${selectedId === hall.dungeonId ? "is-on" : ""}`} data-testid="dungeon-row" onClick={() => setSelectedId(hall.dungeonId)}>
+                <span className="flex shrink-0 items-center gap-2">
+                  <GameIcon src={ui.icon.dungeon} />
+                  <span className="num font-display text-2xl text-gold" aria-label={`Tier ${hall.tier}`}>{hall.tier}</span>
+                </span>
                 <span className="min-w-0 flex-1">
                   <span className="block font-display text-2xl text-parchment">{hall.name}</span>
                   <span className="mt-1 block font-body text-sm text-parchment/75">Owner {hall.displayName} · Settled raids {hall.raidCount} · Hero traffic {hall.heroTraffic}</span>
@@ -114,7 +125,7 @@ export function WorldMap() {
         </ul>
         <div>
           {selected && <PublicCard hall={selected} own={selected.ownerId === (game.ownerId || "keeper-local")} onClose={() => setSelectedId(null)} onNote={setNote} />}
-          {!selected && <Panel className="flex h-full min-h-40 items-center justify-center text-center font-body text-sm text-parchment/70">Select a hall to read its public page.</Panel>}
+          {!selected && <Panel variant="square" className="flex min-h-40 items-center justify-center text-center font-body text-sm text-parchment/70">Select a hall to read its public page.</Panel>}
         </div>
       </div>
       {note && <p className="font-body text-sm text-gold">{note}</p>}
@@ -143,7 +154,7 @@ function PublicCard({ hall, own, onClose, onNote }: { hall: PublicDungeon; own: 
   const mine = hall.dungeonId === hallIdOf(useGame());
   return (
     <div data-testid="public-dungeon">
-      <Panel>
+      <Panel variant="square">
         <div className="flex items-start justify-between gap-3">
           <Title>{hall.name}</Title>
           <Button tone="ghost" onClick={onClose}>Close</Button>

@@ -17,6 +17,9 @@ import {
   useGame,
 } from "../../game/store";
 import { MARKET_SPOTS, WORKSHOP_SPOTS, mountPlace } from "../../three/places";
+import { Prompt } from "../forge/controls";
+import { GameIcon, ItemSlot } from "../pack/components";
+import { TRAP_ICON, ui } from "../pack/urls";
 import { Button, Panel, Title } from "../kit";
 
 function itemLabel(id: string) {
@@ -64,14 +67,17 @@ function StallHall({ place, title }: { place: "market" | "workshop"; title: stri
       <canvas ref={canvasRef} data-testid={`${place}-hall`} className="view h-full min-h-[70vh] w-full" />
       <div className="pointer-events-none absolute left-3 top-3">
         <p className="font-display text-2xl text-gold">{title}</p>
-        {!open && <p className="mt-2 max-w-xs rounded-2xl bg-ink/80 px-3 py-2 text-sm" data-testid={spot ? "interact-prompt" : "place-controls"}>{spot ? spot.prompt : "WASD moves. Q and C turn. E talks when you are close. R resets the view."}</p>}
+        {!open && <Prompt className="mt-2" testId={spot ? "interact-prompt" : "place-controls"}>{spot ? spot.prompt : "WASD moves. Q and C turn. E talks when you are close. R resets the view."}</Prompt>}
       </div>
       {open && (
-        <div className="absolute inset-x-0 bottom-0 z-20 max-h-[70%] overflow-auto p-3" data-testid={`${place}-panel`}>
+        <div className="absolute bottom-3 right-3 top-16 z-20 w-[min(24rem,calc(100%-1.5rem))] overflow-auto" data-testid={`${place}-panel`}>
           <Panel>
             <div className="flex items-start justify-between gap-3">
-              <Title>{spot?.label ?? "Stall"}</Title>
-              <Button tone="ghost" onClick={() => setOpen(null)}>Close</Button>
+              <span className="flex items-center gap-2">
+                <GameIcon src={place === "market" ? ui.icon.market : ui.icon.anvil} />
+                <Title>{spot?.label ?? "Stall"}</Title>
+              </span>
+              <Button tone="ghost" onClick={() => setOpen(null)}><GameIcon src={ui.icon.close} /> Close</Button>
             </div>
             {note && <p className="mt-2 text-sm text-gold" data-testid="stall-note">{note}</p>}
             {place === "market" && open !== "board" && open !== "exit" && (
@@ -139,11 +145,11 @@ function ListingSheet({ onNote }: { onNote: (text: string) => void }) {
       ))}
       {open.length === 0 && <p>No listings.</p>}
       <label className="block">Gold ask
-        <input className="ml-2 w-20 rounded-xl bg-black/40 px-2 py-1" type="number" min={1} value={price} onChange={(event) => setPrice(Number(event.target.value))} />
+        <input className="control ml-2 w-24" type="number" min={1} value={price} onChange={(event) => setPrice(Number(event.target.value))} />
       </label>
       {Object.entries(game.inventory).filter(([, qty]) => qty > 0).map(([id, qty]) => (
         <div key={id} className="flex flex-wrap items-center justify-between gap-2">
-          <span>{itemLabel(id)} × {qty}</span>
+          <span className="flex items-center gap-2"><ItemSlot><span className="num text-xs">{qty}</span></ItemSlot>{itemLabel(id)} × {qty}</span>
           <Button tone="ghost" onClick={() => onNote(listItem(id, price, "PLAY_GOLD").reason ?? "")}>List</Button>
         </div>
       ))}
@@ -167,7 +173,11 @@ function CraftSheet({ station, onNote }: { station: string; onNote: (text: strin
         const missing = needs.filter(([material, qty]) => (game.inventory[material] ?? 0) < qty);
         return (
           <div key={kind}>
-            <p className="font-display text-gold">{kind}</p>
+            <p className="flex items-center gap-2 font-display text-gold">
+              {(kind === "spike" || kind === "pit" || kind === "boulder") && <GameIcon src={TRAP_ICON[kind]} />}
+              {kind === "armor" && <GameIcon src={ui.icon.helmet} />}
+              {kind}
+            </p>
             <ul>
               {needs.map(([material, qty]) => {
                 const held = game.inventory[material] ?? 0;
@@ -180,7 +190,7 @@ function CraftSheet({ station, onNote }: { station: string; onNote: (text: strin
       })}
       {station === "forge" && (
         <div className="flex flex-wrap gap-2">
-          <Button tone="ghost" onClick={() => onNote(forgeKit().reason)}>Forge spike kit · 4 nails</Button>
+          <Button tone="ghost" onClick={() => onNote(forgeKit().reason)}><GameIcon src={ui.icon.spike} /> Forge spike kit · 4 nails</Button>
           <Button tone="ghost" onClick={() => onNote(buyUpgrade("vault-brace").reason)}>Vault brace · {RULES.vaultBraceCost}g</Button>
         </div>
       )}

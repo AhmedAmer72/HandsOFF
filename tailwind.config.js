@@ -16,6 +16,9 @@ export default {
         blood: "#8E1B1B",
         fog: "#1B1A22",
         inktext: "#3A2A1A",
+        bronze: "#8C6239",
+        steel: "#1A1714",
+        channel: "#0E0C0B",
       },
       fontFamily: {
         display: ["Lilita One", "Baloo 2", "cursive"],

@@ -4,7 +4,7 @@ import { CELL } from "./content";
 import { PERMIT, RAID, RECIPES, RUMOUR, SALVAGE, GOODS as RULE_GOODS, type Currency } from "../../rules/economy";
 import { buybackPrice, liveQuote, rumourPrice } from "./rules/money";
 import { buySale, cancelSale, craftOutputClass, expireSales, itemClass, listForSale, merchantBuyListing, merchantNear, merchantStatus, recipeInputs, recoverMerchant } from "./engine/market";
-import { isWalkable, RULES } from "./config/gameRules";
+import { isEntranceTile, isWalkable, RULES } from "./config/gameRules";
 import { TRAP_DEFINITIONS, type TrapId } from "./config/trapDefinitions";
 import { HERO_PROFILES } from "./config/heroProfiles";
 import { applyPurchase, chooseRaider, evaluateHero, playerBuy } from "./engine/decisions";
@@ -40,6 +40,7 @@ interface Session extends SaveData {
   possessArmed: boolean;
   continueReady: boolean;
   reduceMotion?: boolean;
+  showStats?: boolean;
   frameP95?: number;
   textureCount?: number;
   merchantCue?: { id: string; action: string; nonce: number };
@@ -170,9 +171,14 @@ export function setReduceMotion(value: boolean) {
   listeners.forEach((listener) => listener());
 }
 
+export function setShowStats(value: boolean) {
+  state = { ...state, showStats: value };
+  listeners.forEach((listener) => listener());
+}
+
 export function newGame() {
   if (state.dungeonPublished) writeRegistry(unpublishHall(readRegistry(), hallIdOf(state)));
-  state = { ...createSave("dungeon"), ownerId: state.ownerId, displayName: state.displayName, dungeonName: state.dungeonName, dungeonDescription: state.dungeonDescription, dungeonPublished: false, quality: state.quality, worldMode: "prototype", screen: "dungeon", selectedTrap: null, selection: null, fps: 0, minFps: 0, avgFps: 0, drawCalls: 0, triangles: 0, rendererInfo: state.rendererInfo, lastDecision: "A new dungeon day begins.", priceNote: "", pageResult: "idle", possessArmed: false, continueReady: true, catalogNonce: state.catalogNonce + 1, spectating: false, spectatorDungeonId: null };
+  state = { ...createSave("dungeon"), ownerId: state.ownerId, displayName: state.displayName, dungeonName: state.dungeonName, dungeonDescription: state.dungeonDescription, dungeonPublished: false, quality: state.quality, showStats: state.showStats, worldMode: "prototype", screen: "dungeon", selectedTrap: null, selection: null, fps: 0, minFps: 0, avgFps: 0, drawCalls: 0, triangles: 0, rendererInfo: state.rendererInfo, lastDecision: "A new dungeon day begins.", priceNote: "", pageResult: "idle", possessArmed: false, continueReady: true, catalogNonce: state.catalogNonce + 1, spectating: false, spectatorDungeonId: null };
   void clearSave();
   emit();
 }
@@ -188,7 +194,7 @@ export function placeTrap(trapId: TrapId, ix: number, iz: number): { ok: boolean
   if (state.gold < cost) return { ok: false, reason: `Need ${cost} Gold for ${rule.name}.` };
   if (state.traps.some((trap) => trap.ix === ix && trap.iz === iz)) return { ok: false, reason: "That tile already holds a trap." };
   if (ix === RULES.grid.vault.ix && iz === RULES.grid.vault.iz) return { ok: false, reason: "The vault tile stays clear." };
-  if (ix === RULES.grid.entrance.ix && iz === RULES.grid.entrance.iz) return { ok: false, reason: "The entrance tile stays clear." };
+  if (isEntranceTile(ix, iz)) return { ok: false, reason: "The entrance tile stays clear." };
   if (!isWalkable(ix, iz)) return { ok: false, reason: "That tile is not part of the hall." };
   const trap: PlacedTrap = { id: `${trapId}-${ix}-${iz}-${state.day}`, trapId, ix, iz, epoch: 1 };
   const tutorialStep = state.tutorialStep === 0 && trapId === "spike" && ix === RULES.spikeTutorialCell.ix && iz === RULES.spikeTutorialCell.iz ? 1 : state.tutorialStep;
@@ -212,7 +218,7 @@ export function relayTrap(id: string) {
   const options = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const next = options
     .map(([dx, dz]) => ({ ix: trap.ix + dx, iz: trap.iz + dz }))
-    .find((cell) => isWalkable(cell.ix, cell.iz) && !(cell.ix === RULES.grid.vault.ix && cell.iz === RULES.grid.vault.iz) && !(cell.ix === RULES.grid.entrance.ix && cell.iz === RULES.grid.entrance.iz) && !state.traps.some((other) => other.ix === cell.ix && other.iz === cell.iz));
+    .find((cell) => isWalkable(cell.ix, cell.iz) && !(cell.ix === RULES.grid.vault.ix && cell.iz === RULES.grid.vault.iz) && !isEntranceTile(cell.ix, cell.iz) && !state.traps.some((other) => other.ix === cell.ix && other.iz === cell.iz));
   if (!next) return { ok: false, reason: "No open tile beside that trap." };
   const moved: PlacedTrap = { ...trap, ix: next.ix, iz: next.iz, epoch: (trap.epoch ?? 1) + 1 };
   state = {
@@ -232,7 +238,7 @@ export function relayTrapTo(id: string, ix: number, iz: number) {
   if (Math.abs(trap.ix - ix) + Math.abs(trap.iz - iz) !== 1) return { ok: false, reason: "Re-lay onto a neighboring tile." };
   if (state.gold < RAID.relay) return { ok: false, reason: `Re-lay costs ${RAID.relay} Gold.` };
   if (!isWalkable(ix, iz)) return { ok: false, reason: "That tile is not open." };
-  if ((ix === RULES.grid.vault.ix && iz === RULES.grid.vault.iz) || (ix === RULES.grid.entrance.ix && iz === RULES.grid.entrance.iz)) {
+  if ((ix === RULES.grid.vault.ix && iz === RULES.grid.vault.iz) || isEntranceTile(ix, iz)) {
     return { ok: false, reason: "That tile stays clear." };
   }
   if (state.traps.some((other) => other.ix === ix && other.iz === iz)) return { ok: false, reason: "A trap already sits there." };
@@ -401,6 +407,7 @@ export function startRaid() {
     upgrades: save.upgrades,
     possessGuard,
     spentTrapIds: save.spentTrapIds ?? [],
+    closedGateIds: save.closedGateIds ?? [],
   });
   const report: RaidReport = { ...simulated.report, decision };
   const heroes = {
@@ -903,6 +910,18 @@ export function watchRaid(dungeonId: string) {
 export function leaveWatch() {
   state = { ...state, spectating: false, spectatorDungeonId: null, screen: "map" };
   emit();
+}
+
+export function toggleGate(id: string) {
+  if (state.spectating) return { ok: false, locked: false, reason: "Spectators cannot touch the gates." };
+  if (state.phase !== "prep") return { ok: false, locked: (state.closedGateIds ?? []).includes(id), reason: "The gates hold while a raid is on." };
+  const closed = new Set(state.closedGateIds ?? []);
+  if (closed.has(id)) closed.delete(id);
+  else closed.add(id);
+  const locked = closed.has(id);
+  state = { ...state, closedGateIds: [...closed] };
+  emit();
+  return { ok: true, locked, reason: locked ? "Gate locked. The heroes cannot lift it." : "Gate unlocked. A hero can stop and lift it." };
 }
 
 export function toSteps(report: RaidReport): VisualStep[] {

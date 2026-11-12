@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { goodsRule } from "../game/config/economyRules";
+import { RULES } from "../game/config/gameRules";
 import { GOODS as RULE_GOODS, RAID } from "../../rules/economy";
 import { HERO_PROFILES } from "../game/config/heroProfiles";
 import { TRAP_DEFINITIONS, TRAP_IDS } from "../game/config/trapDefinitions";
@@ -34,9 +35,11 @@ import {
   clearTrap,
   setQuality,
   setReduceMotion,
+  setShowStats,
   setScreen,
   setStats,
   startRaid,
+  toggleGate,
   toSteps,
   useGame,
 } from "../game/store";
@@ -49,25 +52,28 @@ import { MockSandbox } from "./screens/MockSandbox";
 import { DeedScreen, GuildScreen, ReportScreen, TakeHomeScreen, WeekScreen } from "./screens/PlayScreens";
 import { MarketHall, WorkshopHall } from "./stalls/StallHalls";
 import { SpectatorScreen, WorldMap } from "./world/WorldScreens";
-import { renderTrapIcons } from "./trapIcons";
 import { Shell } from "./shell";
-import { Button, CHRONICLE, chronicleKind, Num, Panel, Receipt } from "./kit";
+import { Channel, HeroPip, Notice } from "./forge/controls";
+import { ForgedFrame } from "./forge/frame";
+import { CircularGameButton, CinderPips, CornerOrnament, Divider, GameIcon, ItemSlot, ProgressTrack, ResourcePanel, TrapCard, WaxSealMark } from "./pack/components";
+import { HERO_ICON, TRAP_ICON, ui } from "./pack/urls";
+import { Button, CHRONICLE, chronicleKind, Panel, Receipt } from "./kit";
 
 const TUTORIAL = [
-  "Choose Spike Trap on the bar. It follows the cursor. Click tile 4, 6.",
-  "Click the red banner in the south doorway. The chosen hero walks in.",
+  `The way to the vault bends through gates. Choose Spike and click tile ${RULES.spikeTutorialCell.ix}, ${RULES.spikeTutorialCell.iz}.`,
+  "Press Begin the raid. The hero walks in from the south gate.",
   "Click the flying page to burn it, or let the moment pass.",
-  "Orrin keeps a landed page. Click him to buy it back.",
-  "Click the gate again. A hero who bought the rumour walks around the spike.",
-  "Click Mira to supply iron, or Tallow to buy a phial.",
+  "Orrin keeps a landed page. Buy it back at his stall in the Market.",
+  "Press Begin the raid again. A hero who bought the rumour walks around the spike.",
+  "Supply iron or buy a phial from the stalls in the Market.",
   "Chapter 7. The vault brace is in the workshop. After that, the next day is yours.",
 ];
 
 export function App() {
   const game = useGame();
   return (
-    <div className="flex h-full min-h-screen bg-ink font-body text-parchment">
-      {game.screen !== "menu" && <Shell screen={game.screen} />}
+    <div className={`flex h-full min-h-screen bg-ink font-body text-parchment ${game.reduceMotion ? "motion-reduce" : ""}`}>
+      {game.screen !== "menu" && game.screen !== "dungeon" && game.screen !== "home" && <Shell screen={game.screen} />}
       <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         {game.screen === "menu" && <MainMenu />}
         {(game.screen === "dungeon" || game.screen === "home") && <DungeonScreen />}
@@ -95,8 +101,7 @@ function DungeonScreen() {
   const game = useGame();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [seconds, setSeconds] = useState<number>(RAID.pageFlightSec);
-  const [hint, setHint] = useState("Choose a trap on the bar. It follows the cursor until you click a tile.");
-  const [trapIcons, setTrapIcons] = useState<Partial<Record<(typeof TRAP_IDS)[number], string>>>({});
+  const [hint, setHint] = useState("Choose a trap. It follows the cursor until you click a tile.");
   const [openHero, setOpenHero] = useState<"kara" | "brann" | "ivo" | null>(null);
   const [feed, setFeed] = useState("All");
   const [logOpen, setLogOpen] = useState(false);
@@ -110,16 +115,14 @@ function DungeonScreen() {
     const timer = window.setTimeout(() => setVaultPulse(null), 320);
     return () => window.clearTimeout(timer);
   }, [game.vault, game.reduceMotion]);
-  useEffect(() => {
-    let live = true;
-    void renderTrapIcons().then((icons) => {
-      if (live) setTrapIcons(icons);
-    }).catch(() => undefined);
-    return () => {
-      live = false;
-    };
-  }, []);
   const [toast, setToast] = useState("");
+  const [walking, setWalking] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [rate, setRate] = useState<1 | 2>(1);
+  const [gearOpen, setGearOpen] = useState(false);
+  const [raidNote, setRaidNote] = useState("");
+  const paceRef = useRef({ paused: false, rate: 1 as 1 | 2 });
+  paceRef.current = { paused, rate };
   const hooks = useRef(game);
   hooks.current = game;
 
@@ -193,15 +196,30 @@ function DungeonScreen() {
       getReduceMotion: () => Boolean(hooks.current.reduceMotion),
       getChain: () => hooks.current.chain ?? 0,
       getVault: () => hooks.current.vault,
+      onRoomGate: (id) => {
+        const result = toggleGate(id);
+        setToast(result.reason);
+        return result.locked;
+      },
+      getClosedGates: () => hooks.current.closedGateIds ?? [],
+      getPace: () => (paceRef.current.paused ? 0 : paceRef.current.rate),
     });
     bindDungeon(mounted);
-    void mounted.ready.then(() => {
+    let live = true;
+    void mounted.ready.then(async () => {
       const current = hooks.current;
-      if (current.pending && (current.phase === "raid" || current.phase === "report")) {
-        void mounted.playRoute(toSteps(current.pending));
+      if (!live || !current.pending || (current.phase !== "raid" && current.phase !== "report")) return;
+      setWalking(true);
+      try {
+        await mounted.playRoute(toSteps(current.pending));
+      } finally {
+        if (live) setWalking(false);
       }
     });
-    return () => mounted.dispose();
+    return () => {
+      live = false;
+      mounted.dispose();
+    };
   }, [game.worldMode, game.quality, game.pending?.id]);
 
   useEffect(() => {
@@ -248,112 +266,190 @@ function DungeonScreen() {
   const pickedProfile = openHero ? HERO_PROFILES[openHero] : null;
   const pickedFacts = picked?.facts.filter((fact) => !fact.burned) ?? [];
   const lowVault = game.vault < RAID.vaultStart * 0.25;
+  const tier = dungeonTier(game.raidsCleared ?? 0);
+  const vaultPct = Math.max(0, Math.min(100, (game.vault / RAID.vaultStart) * 100));
+  const bleed = game.phase === "raid" ? RAID.bleedPerHeroPerSec : 0;
+  const possessLocked = game.day < RAID.possess.fromWave;
 
   return (
-    <div className={`relative h-full min-h-[640px] ${game.reduceMotion ? "motion-reduce" : ""}`}>
+    <div className={`relative h-full w-full overflow-hidden ${game.reduceMotion ? "motion-reduce" : ""}`}>
       <canvas ref={canvasRef} className="view absolute inset-0 h-full w-full" />
-      <div className="pointer-events-none absolute inset-x-0 top-2 flex flex-col gap-2 px-2 sm:px-3">
-        <div className="hud-glass pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-hud px-3 py-2 text-sm">
-          <span>Vault <Num className={`${lowVault ? "text-blood" : "text-gold"} ${vaultPulse ? "vault-tick" : ""}`}>{game.vault}</Num></span>
-          <span className="num">{game.phase === "raid" ? `−${RAID.bleedPerHeroPerSec}/s` : "−0/s"}{lowVault ? " · low" : ""}</span>
-          <span>Gold <Num className="text-gold">{Math.round(game.gold)}</Num></span>
-          <span className="text-ember" aria-label={`${game.cinder} of ${RAID.cinder.cap} cinder`}>Cinder {"●".repeat(game.cinder)}{"○".repeat(Math.max(0, RAID.cinder.cap - game.cinder))}</span>
-          <span className="num">Wave {game.day}</span>
-          <span className="num">Tier {dungeonTier(game.raidsCleared ?? 0)}</span>
-          {game.phase !== "raid" && game.pageResult !== "decision" && <Button tone="ghost" className="ml-auto" onClick={() => setScreen("gate")}>Contract board</Button>}
-          <Button tone="ghost" className={game.phase === "raid" || game.pageResult === "decision" ? "ml-auto" : ""} onClick={() => setLogOpen((value) => !value)}>Chronicle</Button>
-        </div>
+      <div className="hud-stack pointer-events-none absolute left-3 top-3 z-20 flex max-w-[calc(100%-10.5rem)] flex-col gap-2 sm:max-w-[min(28rem,calc(100%-18rem))]">
         <div className="pointer-events-auto flex flex-wrap gap-2">
+          <ResourcePanel icon={ui.icon.coin} value={Math.round(game.gold)} label={bleed > 0 ? `−${bleed}/s` : "−0/s"} labelHot={bleed > 0} pulse={Boolean(vaultPulse)} />
+          <ResourcePanel icon={ui.icon.wave} value={game.day} label="Wave" />
+          <ResourcePanel icon={ui.icon.cinder} value={game.cinder} label="Cinder" labelFor={`${game.cinder} of ${RAID.cinder.cap} cinder`}>
+            <CinderPips value={game.cinder} cap={RAID.cinder.cap} />
+          </ResourcePanel>
+        </div>
+        <div className="hud-heroes pointer-events-auto flex flex-wrap gap-1.5">
           {(["kara", "brann", "ivo"] as const).map((id) => {
             const body = game.heroes[id];
             const profile = HERO_PROFILES[id];
-            const open = openHero === id;
             return (
-              <button key={id} className={`min-h-11 rounded-full px-3 text-sm ${open ? "bg-gold text-ink" : "hud-glass text-parchment"}`} aria-pressed={open} onClick={() => setOpenHero(open ? null : id)}>
-                {profile.name} <span className="num">{body.hp}/{body.maxHp}</span>
-              </button>
+              <HeroPip key={id} name={profile.name} hp={body.hp} max={body.maxHp} pressed={openHero === id} onClick={() => setOpenHero(openHero === id ? null : id)} icon={<GameIcon src={HERO_ICON[id]} />} />
             );
           })}
         </div>
-        {picked && pickedProfile && (
-          <div className="hud-glass pointer-events-auto max-w-sm rounded-hud p-3 text-sm">
-            <p className="font-display text-xl text-gold">{pickedProfile.name} · {pickedProfile.role}</p>
+        {picked && pickedProfile && openHero && (
+          <ForgedFrame variant="hero" className="pointer-events-auto max-w-sm text-sm">
+            <div className="flex items-center gap-2">
+              <GameIcon src={HERO_ICON[openHero]} />
+              <p className="font-display text-xl text-gold">{pickedProfile.name} · {pickedProfile.role}</p>
+            </div>
             <p>HP <span className="num">{picked.hp}/{picked.maxHp}</span> · Purse <span className="num">{picked.gold}</span></p>
-            <p className="text-parchment/75">Gear {picked.equipment.join(", ") || "pack only"}</p>
-            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10" aria-hidden="true">
-              <div className="h-full bg-blood" style={{ width: `${Math.max(0, (picked.hp / picked.maxHp) * 100)}%` }} />
+            <div className="mt-2 flex items-center gap-2">
+              <ItemSlot><GameIcon src={ui.icon.helmet} /></ItemSlot>
+              <p className="text-parchment/75">Gear {picked.equipment.join(", ") || "pack only"}</p>
+            </div>
+            <div className="mt-2">
+              <ProgressTrack track="health" pct={Math.max(0, (picked.hp / picked.maxHp) * 100)} label={`Health ${picked.hp} of ${picked.maxHp}`} now={picked.hp} max={picked.maxHp} />
             </div>
             {pickedFacts[0] ? <p className="mt-1 text-memory">{pickedFacts[0].memory ?? "warned"} · {pickedFacts[0].source ?? "record"}</p> : <p className="mt-1 text-parchment/70">No trap memory yet</p>}
             <p className="mt-1 text-parchment/80">{picked.memory[0]}</p>
             {pickedFacts.slice(0, 3).map((fact) => <p key={fact.id}>{fact.text}</p>)}
-            <button type="button" className="mt-1 min-h-11 text-sm text-gold underline" onClick={() => setScreen("registry")}>Hero record</button>
-          </div>
+            <Button tone="ghost" className="mt-2" onClick={() => setScreen("registry")}>Hero record</Button>
+          </ForgedFrame>
         )}
-      </div>
-      {game.phase === "report" && report && (
-        <Receipt className="pointer-events-auto absolute left-3 top-28 max-w-sm text-sm">
-          <div className="font-display text-lg">Raid results</div>
-          <p>{report.survived ? `${hero.name} survived.` : `${hero.name} died.`}</p>
-          <p>Traps sprung <span className="num">{report.trapsTriggered.length}</span>. Chain ×<span className="num">{game.chain ?? 0}</span>.</p>
-          <p>Pages {game.pageResult === "burned" ? "burned" : game.pageResult === "escaped" ? "landed" : "still in the air"}: <span className="num">{report.facts.length}</span>. A landed page is sold. It does not teach a hero.</p>
-          <p>Salvage: iron <span className="num">{game.inventory.iron ?? 0}</span>, ash <span className="num">{game.inventory.ash ?? 0}</span>, bone <span className="num">{game.inventory.bone ?? 0}</span>.</p>
-          <p>Tier <span className="num">{dungeonTier(game.raidsCleared ?? 0)}</span>.</p>
-          {game.dungeonClosed && <p className="text-blood">The vault is empty. The next wave restocks it.</p>}
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Button onClick={() => nextDay()}>{game.dungeonClosed ? "Restock and continue" : "Continue"}</Button>
-            <Button tone="ghost" className="!text-ink" onClick={() => setScreen("report")}>Full report</Button>
-            <Button tone="ghost" className="!text-ink" onClick={() => setScreen("market")}>Market</Button>
-            <Button tone="ghost" className="!text-ink" onClick={() => setScreen("workshop")}>Workshop</Button>
-            <Button tone="ghost" className="!text-ink" onClick={() => setScreen("chronicle")}>Watch replay</Button>
-          </div>
-        </Receipt>
-      )}
-      <div className="pointer-events-none absolute inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] flex justify-center px-3">
-        <div className="hud-glass w-[min(42rem,100%)] rounded-hud px-4 py-3 text-center">
-          <p className="text-sm text-parchment">{game.pageResult === "decision" ? `The page is in the air. Burn costs ${RAID.cinder.burnCost} cinder${game.cinder < RAID.cinder.burnCost ? ", and you do not have enough" : ""}. Waiting lets it land as a rumour. No hero learns it until they buy it. ${seconds}s.` : hint}</p>
-          {toast && <p className="mt-1 text-xs text-gold">{toast}</p>}
-          <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-parchment/55">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
+        <div className="hud-hint">
+          <Notice>
+            {game.pageResult === "decision"
+              ? `The page is in the air. Burn costs ${RAID.cinder.burnCost} cinder${game.cinder < RAID.cinder.burnCost ? ", and you do not have enough" : ""}. Waiting lets it land as a rumour. ${seconds}s.`
+              : hint}
+          </Notice>
         </div>
+        {game.phase === "prep" && !walking && (
+          <ForgedFrame variant="tooltip" className="gate-dock pointer-events-auto max-w-xs">
+            <p className="font-display text-lg text-gold">South gate</p>
+            <p className="gate-blurb text-sm text-parchment/80">The hero starts beside the banners and walks the corridor.</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button onClick={() => {
+                const result = startRaid();
+                setRaidNote(result.ok ? "" : result.reason);
+                if (result.ok) sfx.ui();
+              }}>Begin the raid</Button>
+            </div>
+            {raidNote && (
+              <>
+                <p className="mt-2 text-sm text-gold">{raidNote}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button tone="ghost" onClick={() => void fundRaidOffer().then((result) => setRaidNote(result.reason))}>Fund offer</Button>
+                  <Button tone="ghost" onClick={() => void acceptRaidOffer().then((result) => setRaidNote(result.reason))}>Accept offer</Button>
+                </div>
+              </>
+            )}
+          </ForgedFrame>
+        )}
+        {toast && <div className="hud-toast"><Notice tone="gold">{toast}</Notice></div>}
+        <p className="hud-tutorial pointer-events-none max-w-[12.5rem] text-[10px] uppercase tracking-[0.14em] text-parchment/75">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
       </div>
-      <div className={`pointer-events-auto absolute right-2 top-36 z-20 w-[min(20rem,calc(100%-1rem))] lg:right-3 ${logOpen ? "block" : "hidden"}`}>
-        <div className="hud-glass max-h-72 overflow-auto rounded-2xl p-3 text-sm">
-          <div className="flex items-center justify-between">
-            <div className="font-display text-xl text-gold">Chronicle</div>
-            <button className="min-h-11 px-2" onClick={() => setLogOpen(false)}>Close</button>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-1">
-            {["All", ...CHRONICLE].map((label) => (
-              <button key={label} className={`min-h-11 rounded-full px-3 ${feed === label ? "bg-gold text-ink" : "bg-white/5"}`} onClick={() => setFeed(label)}>{label}</button>
-            ))}
-          </div>
-          {game.ledger.filter((line) => feed === "All" || chronicleKind(line.text) === feed).slice(0, 8).map((line) => (
-            <article key={line.id} className="mt-2 rounded-xl border border-gold/15 bg-ink/40 p-2">
-              <p className="text-xs uppercase tracking-wider text-memory">{chronicleKind(line.text)} · day {line.day}</p>
-              <p>{line.text}</p>
-            </article>
-          ))}
-          {game.ledger.length === 0 && <p className="mt-2 text-parchment/70">The chronicle is empty.</p>}
-        </div>
-      </div>
-      <div className="absolute bottom-[max(7.5rem,calc(env(safe-area-inset-bottom)+6.5rem))] left-0 right-0 flex justify-start gap-2 overflow-x-auto px-3 pb-1 sm:justify-center">
+      <div className="trap-bar pointer-events-auto absolute right-3 top-3 z-20 flex w-[9.4rem] flex-wrap justify-end gap-1 sm:w-auto sm:max-w-[calc(100%-20rem)]">
         {TRAP_IDS.map((id) => {
           const trap = TRAP_DEFINITIONS[id];
           const selected = game.selectedTrap === id;
           const short = game.gold < trap.cost;
           return (
-            <button key={id} disabled={short} aria-pressed={selected} className={`hud-glass flex min-h-11 w-24 shrink-0 flex-col items-center gap-1 rounded-hud px-2 py-2 text-sm ${selected ? "ring-2 ring-gold" : ""}`} onClick={() => selected ? clearTrap() : armTrap(id)}>
-              {trapIcons[id] ? <img src={trapIcons[id]} alt="" className="h-14 w-14 object-contain" /> : <span className="h-14 w-14 rounded-xl bg-white/5" />}
-              <span className={selected ? "text-gold" : "text-parchment"}>{trap.name}</span>
-              <span className="num text-[10px] text-gold">{short ? "Short" : `${trap.cost} gold`}</span>
-            </button>
+            <TrapCard
+              key={id}
+              selected={selected}
+              disabled={short}
+              name={trap.name}
+              cost={short ? "Short" : `${trap.cost} gold`}
+              icon={TRAP_ICON[id]}
+              onClick={() => selected ? clearTrap() : armTrap(id)}
+            />
           );
         })}
-        <button className={`hud-glass min-h-11 w-24 shrink-0 rounded-hud px-2 py-2 text-sm ${game.possessArmed ? "ring-2 ring-gold text-gold" : ""}`} disabled={game.day < RAID.possess.fromWave || game.gold < RAID.possess.cost} onClick={() => armPossess()}>
-          Possess
-          <span className="num mt-1 block text-[10px] text-gold">{game.day < RAID.possess.fromWave ? `Wave ${RAID.possess.fromWave}` : `${RAID.possess.cost} gold`}</span>
-        </button>
+        <TrapCard
+          selected={game.possessArmed}
+          disabled={possessLocked || game.gold < RAID.possess.cost}
+          name="Possess"
+          cost={possessLocked ? `Wave ${RAID.possess.fromWave}` : `${RAID.possess.cost} gold`}
+          icon={ui.icon.possess}
+          onClick={() => armPossess()}
+        />
       </div>
-      <p className="pointer-events-none absolute bottom-1 right-3 text-[10px] text-parchment/35">{game.fps.toFixed(0)} fps · p95 {(game.frameP95 ?? 0).toFixed(0)} ms · {game.drawCalls} draws · {game.triangles} tris · {game.textureCount ?? 0} tex · {game.rendererInfo || "renderer"}</p>
+      {game.phase === "report" && report && !walking && (
+        <Receipt className="pointer-events-auto absolute left-3 top-44 z-20 max-w-sm text-sm">
+          <CornerOrnament />
+          <div className="font-display text-lg">Raid results</div>
+          <Divider />
+          <p>{report.survived ? `${hero.name} survived.` : `${hero.name} died.`}</p>
+          <p>Traps sprung <span className="num">{report.trapsTriggered.length}</span>. Chain ×<span className="num">{game.chain ?? 0}</span>.</p>
+          <p>Pages {game.pageResult === "burned" ? "burned" : game.pageResult === "escaped" ? "landed" : "still in the air"}: <span className="num">{report.facts.length}</span>. A landed page is sold. It does not teach a hero.</p>
+          <p>Salvage: iron <span className="num">{game.inventory.iron ?? 0}</span>, ash <span className="num">{game.inventory.ash ?? 0}</span>, bone <span className="num">{game.inventory.bone ?? 0}</span>.</p>
+          <p>Tier <span className="num">{tier}</span>.</p>
+          {game.dungeonClosed && <p className="text-blood">The vault is empty. The next wave restocks it.</p>}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button onClick={() => nextDay()}>{game.dungeonClosed ? "Restock and continue" : "Continue"}</Button>
+            <Button tone="ghost" onClick={() => setScreen("report")}>Full report</Button>
+            <Button tone="ghost" onClick={() => setScreen("market")}>Market</Button>
+            <Button tone="ghost" onClick={() => setScreen("workshop")}>Workshop</Button>
+            <Button tone="ghost" onClick={() => setScreen("chronicle")}>Watch replay</Button>
+          </div>
+        </Receipt>
+      )}
+      <div className={`pointer-events-auto absolute right-3 top-36 z-20 w-[min(20rem,calc(100%-1rem))] ${logOpen ? "block" : "hidden"}`}>
+        <ForgedFrame className="max-h-72 overflow-auto text-sm" pad={false}>
+          <div className="forged-body">
+          <div className="flex items-center justify-between">
+            <div className="font-display text-xl text-gold">Chronicle</div>
+            <button className="ur-tab" onClick={() => setLogOpen(false)}><GameIcon src={ui.icon.close} /> Close</button>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {["All", ...CHRONICLE].map((label) => (
+              <button key={label} className={`ur-tab ${feed === label ? "is-on" : ""}`} onClick={() => setFeed(label)}>{label}</button>
+            ))}
+          </div>
+          {game.ledger.filter((line) => feed === "All" || chronicleKind(line.text) === feed).slice(0, 8).map((line) => (
+            <article key={line.id} className="event-plate mt-2">
+              <p className="text-xs uppercase tracking-wider text-memory">{chronicleKind(line.text)} · day {line.day}</p>
+              <p>{line.text}</p>
+            </article>
+          ))}
+          {game.ledger.length === 0 && <p className="mt-2 text-parchment/70">The chronicle is empty.</p>}
+          </div>
+        </ForgedFrame>
+      </div>
+      <div className="hud-meters pointer-events-none absolute bottom-24 left-3 z-20 flex w-[calc(100%-1.5rem)] max-w-xs flex-col gap-2 sm:bottom-4 sm:left-4 sm:w-[min(16rem,calc(100%-12rem))]">
+        <Channel kicker="Dungeon Tier" value={tier} pct={(tier / 4) * 100} mark={<GameIcon src={ui.icon.shield} />} />
+        <Channel
+          kicker="Vault Health"
+          pct={vaultPct}
+          hot={lowVault}
+          mark={<GameIcon src={ui.icon.vault} />}
+          meter={{ now: game.vault, max: RAID.vaultStart, label: `Vault ${game.vault} of ${RAID.vaultStart}` }}
+        />
+      </div>
+      <div className="hud-controls pointer-events-auto absolute bottom-4 right-4 z-20 flex items-end gap-2">
+        <CircularGameButton aria-label={paused ? "Resume" : "Pause"} aria-pressed={paused} pressed={paused} onClick={() => setPaused((value) => !value)}>
+          <GameIcon src={paused ? ui.icon.play : ui.icon.pause} />
+        </CircularGameButton>
+        <CircularGameButton aria-label="Double speed" aria-pressed={rate === 2} pressed={rate === 2} onClick={() => setRate((value) => value === 2 ? 1 : 2)}>2×</CircularGameButton>
+        <div className="relative">
+          <CircularGameButton aria-label="Settings" aria-expanded={gearOpen} pressed={gearOpen} onClick={() => setGearOpen((value) => !value)}>
+            <GameIcon src={ui.icon.settings} />
+          </CircularGameButton>
+          {gearOpen && (
+            <div className="plate-menu bottom-14 right-0" role="menu">
+              {([
+                ["settings", "Settings"],
+                ["market", "Market"],
+                ["workshop", "Workshop"],
+                ["map", "World map"],
+                ["gate", "Contract board"],
+                ["registry", "Hero records"],
+              ] as const).map(([id, label]) => (
+                <button key={id} role="menuitem" onClick={() => { setGearOpen(false); setScreen(id); }}>{label}</button>
+              ))}
+              <button role="menuitem" onClick={() => { setGearOpen(false); setLogOpen(true); }}>Chronicle</button>
+            </div>
+          )}
+        </div>
+      </div>
+      {game.showStats && (
+        <p className="pointer-events-none absolute bottom-1 left-1/2 z-10 -translate-x-1/2 text-[10px] text-parchment/30">{game.fps.toFixed(0)} fps · p95 {(game.frameP95 ?? 0).toFixed(0)} ms · {game.drawCalls} draws · {game.triangles} tris · {game.textureCount ?? 0} tex · {game.rendererInfo || "renderer"}</p>
+      )}
     </div>
   );
 }
@@ -368,9 +464,15 @@ function GateMarket() {
   return (
     <section className="grid gap-4 p-4 lg:grid-cols-3" data-testid="contract-board">
       <div className="lg:col-span-3"><Button tone="ghost" onClick={() => setScreen("dungeon")}>Return to your dungeon</Button></div>
-      <Panel className="lg:col-span-3">
+      <Panel variant="ledger" className="lg:col-span-3">
+        <div className="ledger-head">
+          <div>
         <h3 className="font-display text-2xl text-gold">Raid board</h3>
-        <p className="text-sm text-parchment/70">A patron or the owner can fund 0.01 from the mock purse. Heroes decide on their own. A counter moves the split only. The price never changes. This is not a chain payment.</p>
+        <Divider />
+        <p className="text-sm text-ink/80">A patron or the owner can fund 0.01 from the mock purse. Heroes decide on their own. A counter moves the split only. The price never changes. This is not a chain payment.</p>
+          </div>
+          {offer?.status === "SETTLED" && <WaxSealMark />}
+        </div>
         <p className="num mt-2 text-sm">Mock purse {(game.near ?? 0).toFixed(4)}. {offer ? `Offer ${offer.status}. Split ${Math.round(offer.split.owner * 100)}/${Math.round(offer.split.agents * 100)}/${Math.round(offer.split.guild * 100)}/${Math.round(offer.split.ops * 100)}.` : "No open offer."}</p>
         <ul className="mt-2 space-y-2 text-sm">
           {board.map((trace) => (
@@ -394,7 +496,7 @@ function GateMarket() {
       {merchants.map((merchant) => {
         const status = merchantStatus(merchant);
         return (
-        <Panel key={merchant.id}>
+        <Panel key={merchant.id} variant="tall">
           <h3 className="font-display text-2xl text-gold">{merchant.name}</h3>
           <p className="text-sm text-parchment/70">{merchant.role} · {merchant.gold.toFixed(0)} gold · {(merchant.near ?? 0).toFixed(4)} mock NEAR · {status}</p>
           <ul className="mt-3 space-y-2 text-sm">
@@ -403,26 +505,26 @@ function GateMarket() {
               return (
                 <li key={line.itemId} className="flex items-center justify-between gap-2">
                   <span title={quote.reason}>{goodsRule(line.itemId)?.name ?? line.itemId} · {line.qty} · {quote.price < 1 ? quote.price.toFixed(4) : quote.price.toFixed(2)}</span>
-                  <button className="rounded border border-gold/40 px-2 py-1" title={quote.reason} onClick={() => { buyFromMerchant(merchant.id, line.itemId); sfx.coin(); }}>Buy</button>
-                  <button className="rounded border border-white/20 px-2 py-1" onClick={() => note(quote.reason)}>Why</button>
+                  <Button title={quote.reason} onClick={() => { buyFromMerchant(merchant.id, line.itemId); sfx.coin(); }}>Buy</Button>
+                  <Button tone="ghost" onClick={() => note(quote.reason)}>Why</Button>
                 </li>
               );
             })}
             {merchant.rumours.map((rumour) => (
               <li key={rumour.id} className="flex items-center justify-between gap-2">
                 <span>{rumour.text} · epoch {rumour.epoch ?? 1}</span>
-                <button className="min-h-11 rounded border border-gold/40 px-2 py-1" onClick={() => buyBackRumour(rumour.id)}>Buy back</button>
+                <Button onClick={() => buyBackRumour(rumour.id)}>Buy back</Button>
               </li>
             ))}
           </ul>
         </Panel>
         );
       })}
-      <article className="rounded border border-white/10 bg-panel2 p-4 lg:col-span-3">
+      <Panel className="lg:col-span-3">
         <h3 className="font-display text-gold">Why the price moved</h3>
         <p className="text-sm">{game.priceNote || "Prices follow stock against each merchant's target."}</p>
         {game.ledger.slice(0, 6).map((line) => <p key={line.id} className="text-sm">{line.text}</p>)}
-      </article>
+      </Panel>
     </section>
   );
 }
@@ -431,32 +533,35 @@ function Registry() {
   const game = useGame();
   return (
     <section className="grid gap-4 p-4 lg:grid-cols-2">
-      <div className="lg:col-span-2"><button className="min-h-11 rounded-2xl border border-gold/40 px-3 text-sm" onClick={() => setScreen("dungeon")}>Return to your dungeon</button></div>
+      <div className="lg:col-span-2"><Button tone="ghost" onClick={() => setScreen("dungeon")}>Return to your dungeon</Button></div>
       {(["kara", "brann", "ivo"] as const).map((id) => {
         const profile = HERO_PROFILES[id];
         const hero = game.heroes[id];
         return (
-          <article key={id} className="rounded border border-white/10 bg-panel p-4">
-            <h3 className="font-display text-2xl text-gold">{profile.name}</h3>
+          <Panel key={id} variant="hero">
+            <div className="flex items-center gap-2">
+              <GameIcon src={HERO_ICON[id]} />
+              <h3 className="font-display text-2xl text-gold">{profile.name}</h3>
+            </div>
             <p>{profile.role}. {profile.personality}</p>
             <p className="text-sm">Gold {hero.gold}. Mock NEAR {(hero.near ?? profile.nearStart).toFixed(4)}. Health {hero.hp}/{hero.maxHp}. Gear {hero.equipment.join(", ") || "pack only"}.</p>
             <p className="mt-2 text-sm text-parchment/70">{hero.memory[0]}</p>
             {hero.facts.filter((fact) => !fact.burned).map((fact) => <p key={fact.id} className="text-sm">{fact.memory ?? "warned"} · {fact.source ?? "record"} · {fact.text}</p>)}
-            <div className="mt-3 rounded-2xl border border-gold/20 p-3 text-sm">
+            <div className="mt-3 border border-bronze/40 p-3 text-sm">
               <p className="font-display text-gold">Verified</p>
               <p className="text-parchment/70">Each row is a simulated check. A mark here is not a live proof.</p>
               {["Agent response", "Gateway attestation", "Model evidence", "Spend policy", "Seed", "Execution pin", "Raid settlement", "Item ownership"].map((row) => (
                 <p key={row}>✗ {row} — unverified on this device.</p>
               ))}
             </div>
-          </article>
+          </Panel>
         );
       })}
       {([game.merchants.mira, game.merchants.orrin, game.merchants.tallow]).map((merchant) => (
-        <article key={merchant.id} className="rounded border border-white/10 bg-panel2 p-4">
+        <Panel key={merchant.id} variant="tablet">
           <h3 className="font-display text-2xl text-gold">{merchant.name}</h3>
           <p>{merchant.role}. Gold {merchant.gold.toFixed(0)}. Mock NEAR {(merchant.near ?? 0).toFixed(4)}. Sales {merchant.sales}. {merchantStatus(merchant)}.</p>
-        </article>
+        </Panel>
       ))}
     </section>
   );
@@ -489,6 +594,7 @@ function Chronicle() {
       <h2 className="font-display text-3xl text-gold">Replay</h2>
       <p className="text-sm text-parchment/75">Replayed from recorded inputs. Diary text and hero decisions are the ones already stored.</p>
       {raid && <p className="text-sm">Day {raid.day} · {raid.heroId}. Outcome {outcomeHash(rows)}. {raid.decision.reason}</p>}
+      <ProgressTrack pct={rows.length ? ((cursor + 1) / rows.length) * 100 : 0} label={`Replay ${rows.length ? cursor + 1 : 0} of ${rows.length}`} now={rows.length ? cursor + 1 : 0} max={Math.max(rows.length, 1)} />
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => setPlaying((value) => !value)}>{playing ? "Pause" : "Play"}</Button>
         {([1, 2, 4] as const).map((value) => (
@@ -497,17 +603,17 @@ function Chronicle() {
       </div>
       <ol className="space-y-2">
         {rows.map((event, index) => (
-          <li key={`${event.tick}-${index}`} className={`rounded-2xl border px-3 py-2 text-sm ${index === cursor ? "border-gold bg-panel" : "border-white/10"}`}>Tick {event.tick}. {event.text}</li>
+          <li key={`${event.tick}-${index}`} className={`event-plate text-sm ${index === cursor ? "is-on" : ""}`}>Tick {event.tick}. {event.text}</li>
         ))}
         {rows.length === 0 && <li className="text-parchment/70">No raid has been recorded.</li>}
       </ol>
       <div className="flex flex-wrap gap-1">
         {["All", ...CHRONICLE].map((label) => (
-          <button key={label} className={`min-h-11 rounded-full px-3 text-sm ${feed === label ? "bg-gold text-ink" : "border border-gold/20"}`} onClick={() => setFeed(label)}>{label}</button>
+          <button key={label} className={`ur-tab text-sm ${feed === label ? "is-on" : ""}`} onClick={() => setFeed(label)}>{label}</button>
         ))}
       </div>
       {game.ledger.filter((line) => feed === "All" || chronicleKind(line.text) === feed).slice(0, 12).map((line) => (
-        <article key={line.id} className="rounded-2xl border border-gold/20 bg-panel/80 p-3 text-sm">
+        <article key={line.id} className="event-plate text-sm">
           <p className="text-xs uppercase tracking-wider text-memory">{chronicleKind(line.text)} · day {line.day}</p>
           <p>{line.text}</p>
         </article>
@@ -525,20 +631,23 @@ function Settings() {
       <Button tone="ghost" className="mb-4" onClick={() => setScreen("dungeon")}>Return to your dungeon</Button>
       <h2 className="font-display text-3xl text-gold">Settings</h2>
       <div className="mt-4 flex flex-wrap gap-2">
-        <button className={`min-h-11 rounded-2xl px-3 ${sound ? "bg-gold text-ink" : "border border-gold/30"}`} onClick={() => setSound((value) => !value)}>Sound {sound ? "on" : "off"}</button>
-        <button className={`min-h-11 rounded-2xl px-3 ${music ? "bg-gold text-ink" : "border border-gold/30"}`} onClick={() => setMusic((value) => !value)}>Music {music ? "on" : "off"}</button>
-        <button className={`min-h-11 rounded-2xl px-3 ${game.reduceMotion ? "border border-gold/30" : "bg-gold text-ink"}`} onClick={() => setReduceMotion(!game.reduceMotion)}>Motion {game.reduceMotion ? "reduced" : "on"}</button>
+        <Button tone={sound ? "gold" : "ghost"} onClick={() => setSound((value) => !value)}>Sound {sound ? "on" : "off"}</Button>
+        <Button tone={music ? "gold" : "ghost"} onClick={() => setMusic((value) => !value)}>Music {music ? "on" : "off"}</Button>
+        <Button tone={game.reduceMotion ? "ghost" : "gold"} onClick={() => setReduceMotion(!game.reduceMotion)}>Motion {game.reduceMotion ? "reduced" : "on"}</Button>
+        <Button tone={game.showStats ? "gold" : "ghost"} onClick={() => setShowStats(!game.showStats)}>Performance details {game.showStats ? "on" : "off"}</Button>
       </div>
-      <div className="mt-4 flex gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         {(["low", "medium", "high"] as const).map((quality) => (
-          <button key={quality} className={`rounded px-3 py-1 ${game.quality === quality ? "bg-gold text-ink" : "border border-white/20"}`} onClick={() => setQuality(quality)}>{quality}</button>
+          <Button key={quality} tone={game.quality === quality ? "gold" : "ghost"} onClick={() => setQuality(quality)}>{quality}</Button>
         ))}
       </div>
-      <p className="mt-3 text-sm text-parchment/70">Low drops shadows. The fps counter in the dungeon is a measurement from this machine.</p>
-      <button className="mt-6 rounded border border-blood px-3 py-1 text-blood" onClick={() => newGame()}>New game (clears this browser save)</button>
-      <button className="mt-3 block rounded border border-gold/40 px-3 py-2 text-sm" onClick={() => setScreen("sandbox")}>Mock chain</button>
-      <button className="mt-3 block rounded border border-white/20 px-3 py-2 text-sm" onClick={() => setScreen("gallery")}>Model shelf</button>
-      <button className="mt-3 block rounded border border-white/20 px-3 py-2 text-sm" onClick={() => setScreen("registry")}>Hero directory</button>
+      <p className="mt-3 text-sm text-parchment/70">Low drops shadows. Performance details stay off until you turn them on here. The numbers are a measurement from this machine.</p>
+      <div className="mt-6 flex flex-col items-start gap-2">
+        <Button tone="ember" onClick={() => newGame()}>New game (clears this browser save)</Button>
+        <Button onClick={() => setScreen("sandbox")}>Mock chain</Button>
+        <Button tone="ghost" onClick={() => setScreen("gallery")}>Model shelf</Button>
+        <Button tone="ghost" onClick={() => setScreen("registry")}>Hero directory</Button>
+      </div>
       <p className="mt-2 text-xs text-parchment/50">Mock chain is a local ledger. It does not move real funds.</p>
     </section>
   );
@@ -583,9 +692,9 @@ function Gallery() {
     <section className="grid h-full min-h-0 lg:grid-cols-[320px_1fr_280px]">
       <div className="overflow-auto border-r border-white/10 p-3">
         <div className="flex flex-wrap gap-1">
-          {categories.map((entry) => <button key={entry} className={`rounded px-2 py-1 text-xs ${category === entry ? "bg-gold text-ink" : "border border-white/15"}`} onClick={() => setCategory(entry)}>{entry}</button>)}
+          {categories.map((entry) => <button key={entry} className={`ur-tab text-xs ${category === entry ? "is-on" : ""}`} onClick={() => setCategory(entry)}>{entry}</button>)}
         </div>
-        <input className="mt-3 w-full bg-black/40 px-2 py-1 text-sm" placeholder="Filter filename" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <input className="control mt-3 text-sm" placeholder="Filter filename" value={query} onChange={(event) => setQuery(event.target.value)} />
         <ul className="mt-3 space-y-1">
           {visible.map((asset) => (
             <li key={asset.publicPath}>
@@ -598,7 +707,7 @@ function Gallery() {
         <canvas ref={canvasRef} className="view h-full w-full" />
         <div className="absolute left-3 top-3 flex gap-1">
           {(["front", "side", "back", "three-quarter"] as const).map((viewName) => (
-            <button key={viewName} className="hud-glass rounded-full px-2 py-1 text-[11px] uppercase tracking-wider" onClick={() => view.current?.setView(viewName)}>{viewName}</button>
+            <button key={viewName} className="ur-tab text-[11px] uppercase tracking-wider" onClick={() => view.current?.setView(viewName)}>{viewName}</button>
           ))}
         </div>
         {error && <p className="absolute bottom-3 left-3 text-sm text-blood">{error}</p>}
