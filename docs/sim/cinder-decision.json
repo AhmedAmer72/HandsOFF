@@ -1,0 +1,11 @@
+{
+  "parameter": "RAID.cinder",
+  "chosen": {
+    "burnCost": 2,
+    "perKill": 1,
+    "perWaveClear": 0,
+    "cap": 5,
+    "start": 3
+  },
+  "reason": "A kill adds 1 Cinder and a burn costs 2, so a kill cannot fund its own burn. The burn-cost-1 variant fails that test. The wave-clear variant removes the per-kill trickle the raid already uses. Keep the v10.2 start value."
+}

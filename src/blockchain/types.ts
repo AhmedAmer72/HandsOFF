@@ -5,6 +5,7 @@ export type TxStatus = "CREATED" | "PENDING" | "VALIDATING" | "EXECUTING" | "CON
 export interface Receipt {
   simulated: true;
   label: "SIMULATED";
+  source: "SIMULATED";
   id: string;
   block: number;
   blockHash: string;

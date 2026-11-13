@@ -3,43 +3,67 @@
   "source": "rules/economy.ts",
   "days": 60,
   "raids": 1020,
-  "closures": 1,
-  "recoveries": 1,
-  "closedRaids": 112,
-  "endPrice": 5,
-  "min": 5,
-  "max": 20,
-  "liveCinder": {
-    "start": 3,
-    "burnCost": 2,
-    "afterOneKillFromEmpty": 1,
-    "killAlonePaysForBurn": false
+  "eps": 0.5,
+  "beta": 0.3,
+  "minSample": 6,
+  "permitPrice": 0.01,
+  "baseline": {
+    "permitRevenue": 8.559999999999862,
+    "agentShare": 2.5679999999999863,
+    "agentSpend": 2.131999999999986,
+    "rumourBuys": 1066,
+    "endStock": 226,
+    "minPrice": 5,
+    "maxPrice": 12.6349,
+    "boundShare": 0.000980392156862745
+  },
+  "scenarios": {
+    "floodPrice": 5.798275605729691,
+    "scarcePrice": 20,
+    "washDemand": 0,
+    "bankruptcyClosed": true,
+    "bankruptcyRecovered": true,
+    "lowPermitDaysShare": 0.15,
+    "depletedHero": "brann"
   },
   "cinderVariants": [
     {
       "burnCost": 1,
       "perKill": 1,
       "perWaveClear": 0,
-      "burns": 60,
-      "leftover": 3,
+      "burns": 500,
+      "lands": 500,
+      "leftover": 5,
       "killPaysForBurn": true
     },
     {
       "burnCost": 2,
       "perKill": 1,
       "perWaveClear": 0,
-      "burns": 31,
-      "leftover": 1,
+      "burns": 500,
+      "lands": 500,
+      "leftover": 3,
       "killPaysForBurn": false
     },
     {
       "burnCost": 1,
       "perKill": 0,
       "perWaveClear": 2,
-      "burns": 60,
-      "leftover": 4,
+      "burns": 403,
+      "lands": 597,
+      "leftover": 0,
       "killPaysForBurn": false
     }
   ],
-  "note": "Play Gold only. NEAR reserves, permits, and deeds are not settled here."
+  "decision": {
+    "parameter": "RAID.cinder",
+    "chosen": {
+      "burnCost": 2,
+      "perKill": 1,
+      "perWaveClear": 0,
+      "cap": 5,
+      "start": 3
+    },
+    "reason": "A kill adds 1 Cinder and a burn costs 2, so a kill cannot fund its own burn. The burn-cost-1 variant fails that test. The wave-clear variant removes the per-kill trickle the raid already uses. Keep the v10.2 start value."
+  }
 }

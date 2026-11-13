@@ -1,6 +1,8 @@
 # UNDERREALM loop
 
-Play Gold and Cinder only. NEAR settlement is not wired. Nothing in a raid spends real money.
+Play Gold and Cinder only inside a guest raid. The guest client stays on the mock chain, so a raid does not spend testnet NEAR and does not open a wallet.
+
+Testnet settlement exists on `game.neocrafts.testnet` for a signed player account. Those calls attach no deposit. A direct NEP-245 transfer is a separate 1 yoctoNEAR action and is not part of the raid loop.
 
 ## Every 30 seconds
 

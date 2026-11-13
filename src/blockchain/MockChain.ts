@@ -113,10 +113,11 @@ export class MockChain {
     this.block = snapshot.block;
   }
 
-  private receipt(partial: Omit<Receipt, "simulated" | "label" | "id" | "block" | "blockHash" | "at"> & { status: TxStatus }): Receipt {
+  private receipt(partial: Omit<Receipt, "simulated" | "label" | "source" | "id" | "block" | "blockHash" | "at"> & { status: TxStatus }): Receipt {
     const row: Receipt = {
       simulated: true,
       label: "SIMULATED",
+      source: "SIMULATED",
       id: `sim-${this.seq}`,
       block: this.block,
       blockHash: `mock-block-${this.block}`,
