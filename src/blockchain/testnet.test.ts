@@ -6,7 +6,7 @@ describe("testnet adapter", () => {
     const raid = prepareRaidCall("settle_raid");
     expect(raid.ok).toBe(true);
     expect(raid.depositYocto).toBe("0");
-    expect(raid.source).toBe("MOCK");
+    expect(raid.source).toBe("LIVE");
     expect(prepareRaidCall("set_paused").source).toBe("DISABLED");
   });
 });

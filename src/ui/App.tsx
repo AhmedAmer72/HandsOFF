@@ -14,13 +14,12 @@ import {
   bindDungeon,
   counterRaidOffer,
   fundRaidOffer,
-  hallIdOf,
-  refuseRaidOffer,
-  buyBackRumour,
-  buyFromMerchant,
+  publishRaid,
+  supplyOnChain,
+  buyBackOnChain,
+  buyStallOnChain,
+  craftOnChain,
   buyUpgrade,
-  craftTrap,
-  supplyIron,
   markDiary,
   newGame,
   nextDay,
@@ -43,7 +42,6 @@ import {
   toSteps,
   useGame,
 } from "../game/store";
-import { offersOf, readRegistry } from "../game/world/registry";
 import { outcomeHash } from "../game/engine/raid";
 import { mountDungeon } from "../three/dungeon";
 import { mountGallery } from "../three/gallery";
@@ -169,13 +167,13 @@ function DungeonScreen() {
       },
       onPossess: () => setToast(armPossess().reason),
       onMerchant: (id) => {
-        if (id === "mira") setToast(supplyIron(5).reason);
+        if (id === "mira") void supplyOnChain(5).then((result) => setToast(result.reason));
         else if (id === "orrin") {
           const rumour = hooks.current.merchants.orrin.rumours[0];
-          setToast(rumour ? buyBackRumour(rumour.id).reason : "Orrin has no unsold page.");
-        } else setToast(buyFromMerchant("tallow", "potion").reason);
+          void buyBackOnChain(rumour?.id ?? "rumour:ashgate:1:page").then((result) => setToast(result.reason));
+        } else void buyStallOnChain("tallow", "nb:gear:potion").then((result) => setToast(result.reason));
       },
-      onCraft: () => setToast(craftTrap("spike").reason),
+      onCraft: () => void craftOnChain("spike").then((result) => setToast(result.reason)),
       onTrigger: (id) => setToast(triggerTrap(id).reason),
       onBrace: () => setToast(buyUpgrade("vault-brace").reason),
       armTrap: (trapId) => armTrap(trapId),
@@ -325,8 +323,10 @@ function DungeonScreen() {
             <div className="mt-2 flex flex-wrap gap-2">
               <Button onClick={() => {
                 const result = startRaid();
-                setRaidNote(result.ok ? "" : result.reason);
-                if (result.ok) sfx.ui();
+                setRaidNote(result.ok ? "The hero is walking. Testnet settlement follows." : result.reason);
+                if (!result.ok) return;
+                sfx.ui();
+                void publishRaid().then((published) => setRaidNote(published.reason));
               }}>Begin the raid</Button>
             </div>
             {raidNote && (
@@ -459,7 +459,6 @@ function GateMarket() {
   const [slip, setSlip] = useState("");
   const merchants = [game.merchants.mira, game.merchants.orrin, game.merchants.tallow];
   const board = (["kara", "brann", "ivo"] as const).map((id) => evaluateHero(game, game.heroes[id]));
-  const offer = offersOf(readRegistry()).find((entry) => entry.dungeonId === hallIdOf(game) && !entry.consumed && entry.status !== "EXPIRED_REFUNDED");
   const raider = board.filter((trace) => trace.accept).sort((a, b) => b.score - a.score)[0];
   return (
     <section className="grid gap-4 p-4 lg:grid-cols-3" data-testid="contract-board">
@@ -469,16 +468,16 @@ function GateMarket() {
           <div>
         <h3 className="font-display text-2xl text-gold">Raid board</h3>
         <Divider />
-        <p className="text-sm text-ink/80">A patron or the owner can fund 0.01 from the mock purse. Heroes decide on their own. A counter moves the split only. The price never changes. This is not a chain payment.</p>
+        <p className="text-sm text-ink/80">Funding attaches 0.01 NEAR on game.neocrafts.testnet. The price stays fixed. A counter only moves the split. The raid itself attaches no deposit.</p>
           </div>
-          {offer?.status === "SETTLED" && <WaxSealMark />}
+          {game.chainHero && <WaxSealMark />}
         </div>
-        <p className="num mt-2 text-sm">Mock purse {(game.near ?? 0).toFixed(4)}. {offer ? `Offer ${offer.status}. Split ${Math.round(offer.split.owner * 100)}/${Math.round(offer.split.agents * 100)}/${Math.round(offer.split.guild * 100)}/${Math.round(offer.split.ops * 100)}.` : "No open offer."}</p>
+        <p className="num mt-2 text-sm">Keeper neocrafts.testnet. {game.chainOfferId ? `Offer ${game.chainOfferId}${game.chainHero ? ` · ${game.chainHero}` : " · waiting for a hero"}.` : "No testnet offer yet."}</p>
         <ul className="mt-2 space-y-2 text-sm">
           {board.map((trace) => (
             <li key={trace.heroId}>
               <p>{trace.accept ? "Accepted" : "Refused"} · {trace.reason}</p>
-              {(trace.counterShift ?? 0) > 0 && offer?.status === "OPEN" && (
+              {(trace.counterShift ?? 0) > 0 && Boolean(game.chainOfferId) && !game.chainHero && (
                 <Button tone="ghost" className="mt-1" onClick={() => void counterRaidOffer(trace.heroId).then((result) => setSlip(result.reason))}>Record {trace.heroId}'s counter</Button>
               )}
             </li>
@@ -488,9 +487,8 @@ function GateMarket() {
         {slip && <p className="mt-2 text-sm text-gold">{slip}</p>}
         <div className="mt-3 flex flex-wrap gap-2">
           <Button onClick={() => void fundRaidOffer().then((result) => setSlip(result.reason))}>Fund offer</Button>
-          {offer?.status === "COUNTER_PENDING" && <Button tone="ghost" onClick={() => void refuseRaidOffer().then((result) => setSlip(result.reason))}>Refuse counter</Button>}
-          {offer && offer.status !== "SETTLED" && <Button tone="ghost" onClick={() => void acceptRaidOffer().then((result) => setSlip(result.reason))}>Accept offer</Button>}
-          <Button tone="ghost" disabled={!offer || offer.status !== "SETTLED" || !raider} onClick={() => { const result = startRaid(); setSlip(result?.reason ?? "The raid started."); if (result?.ok) setScreen("dungeon"); }}>Send the willing hero</Button>
+          {game.chainOfferId && !game.chainHero && <Button tone="ghost" onClick={() => void acceptRaidOffer().then((result) => setSlip(result.reason))}>Accept offer</Button>}
+          <Button tone="ghost" disabled={!game.chainHero || !raider} onClick={() => { const result = startRaid(); setSlip(result?.reason ?? "The raid started."); if (result?.ok) { setScreen("dungeon"); void publishRaid().then((published) => setSlip(published.reason)); } }}>Send the willing hero</Button>
         </div>
       </Panel>
       {merchants.map((merchant) => {
@@ -498,14 +496,14 @@ function GateMarket() {
         return (
         <Panel key={merchant.id} variant="tall">
           <h3 className="font-display text-2xl text-gold">{merchant.name}</h3>
-          <p className="text-sm text-parchment/70">{merchant.role} · {merchant.gold.toFixed(0)} gold · {(merchant.near ?? 0).toFixed(4)} mock NEAR · {status}</p>
+          <p className="text-sm text-parchment/70">{merchant.role} · hall gold {merchant.gold.toFixed(0)} · {status}. Chain balances load on the charter and guild screens.</p>
           <ul className="mt-3 space-y-2 text-sm">
             {merchant.stock.map((line) => {
               const quote = quotePrice(line.itemId, line.qty);
               return (
                 <li key={line.itemId} className="flex items-center justify-between gap-2">
                   <span title={quote.reason}>{goodsRule(line.itemId)?.name ?? line.itemId} · {line.qty} · {quote.price < 1 ? quote.price.toFixed(4) : quote.price.toFixed(2)}</span>
-                  <Button title={quote.reason} onClick={() => { buyFromMerchant(merchant.id, line.itemId); sfx.coin(); }}>Buy</Button>
+                  <Button title={quote.reason} onClick={() => { void buyStallOnChain(merchant.id, line.itemId).then((result) => { setSlip(result.reason); if (result.ok) sfx.coin(); }); }}>Buy</Button>
                   <Button tone="ghost" onClick={() => note(quote.reason)}>Why</Button>
                 </li>
               );
@@ -513,7 +511,7 @@ function GateMarket() {
             {merchant.rumours.map((rumour) => (
               <li key={rumour.id} className="flex items-center justify-between gap-2">
                 <span>{rumour.text} · epoch {rumour.epoch ?? 1}</span>
-                <Button onClick={() => buyBackRumour(rumour.id)}>Buy back</Button>
+                <Button onClick={() => void buyBackOnChain(rumour.id).then((result) => setSlip(result.reason))}>Buy back</Button>
               </li>
             ))}
           </ul>
@@ -544,15 +542,12 @@ function Registry() {
               <h3 className="font-display text-2xl text-gold">{profile.name}</h3>
             </div>
             <p>{profile.role}. {profile.personality}</p>
-            <p className="text-sm">Gold {hero.gold}. Mock NEAR {(hero.near ?? profile.nearStart).toFixed(4)}. Health {hero.hp}/{hero.maxHp}. Gear {hero.equipment.join(", ") || "pack only"}.</p>
+            <p className="text-sm">Gold {hero.gold}. Health {hero.hp}/{hero.maxHp}. Gear {hero.equipment.join(", ") || "pack only"}.</p>
             <p className="mt-2 text-sm text-parchment/70">{hero.memory[0]}</p>
             {hero.facts.filter((fact) => !fact.burned).map((fact) => <p key={fact.id} className="text-sm">{fact.memory ?? "warned"} · {fact.source ?? "record"} · {fact.text}</p>)}
             <div className="mt-3 border border-bronze/40 p-3 text-sm">
-              <p className="font-display text-gold">Verified</p>
-              <p className="text-parchment/70">Each row is a simulated check. A mark here is not a live proof.</p>
-              {["Agent response", "Gateway attestation", "Model evidence", "Spend policy", "Seed", "Execution pin", "Raid settlement", "Item ownership"].map((row) => (
-                <p key={row}>✗ {row} — unverified on this device.</p>
-              ))}
+              <p className="font-display text-gold">On chain</p>
+              <p className="text-parchment/70">Agent ledgers live in game.neocrafts.testnet. NEAR AI verification is disabled until a verifier key is pinned, so diary pages are not minted.</p>
             </div>
           </Panel>
         );
@@ -560,7 +555,7 @@ function Registry() {
       {([game.merchants.mira, game.merchants.orrin, game.merchants.tallow]).map((merchant) => (
         <Panel key={merchant.id} variant="tablet">
           <h3 className="font-display text-2xl text-gold">{merchant.name}</h3>
-          <p>{merchant.role}. Gold {merchant.gold.toFixed(0)}. Mock NEAR {(merchant.near ?? 0).toFixed(4)}. Sales {merchant.sales}. {merchantStatus(merchant)}.</p>
+          <p>{merchant.role}. Hall gold {merchant.gold.toFixed(0)}. Sales {merchant.sales}. {merchantStatus(merchant)}.</p>
         </Panel>
       ))}
     </section>
@@ -644,11 +639,11 @@ function Settings() {
       <p className="mt-3 text-sm text-parchment/70">Low drops shadows. Performance details stay off until you turn them on here. The numbers are a measurement from this machine.</p>
       <div className="mt-6 flex flex-col items-start gap-2">
         <Button tone="ember" onClick={() => newGame()}>New game (clears this browser save)</Button>
-        <Button onClick={() => setScreen("sandbox")}>Mock chain</Button>
+        <Button onClick={() => setScreen("sandbox")}>Testnet ledger</Button>
         <Button tone="ghost" onClick={() => setScreen("gallery")}>Model shelf</Button>
         <Button tone="ghost" onClick={() => setScreen("registry")}>Hero directory</Button>
       </div>
-      <p className="mt-2 text-xs text-parchment/50">Mock chain is a local ledger. It does not move real funds.</p>
+      <p className="mt-2 text-xs text-parchment/50">The ledger reads game.neocrafts.testnet, deeds.neocrafts.testnet, and the Ashgate treasury.</p>
     </section>
   );
 }

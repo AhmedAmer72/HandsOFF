@@ -22,7 +22,7 @@ Checked before contract code. Sources were read on 13 November 2026 (Africa/Cair
 
 - The skill at https://github.com/near/agent-skills/tree/main/skills/near-dapp was fetched and saved at `.agents/skills/near-dapp/SKILL.md`.
 - It covers wallet connection for a React app (`@hot-labs/near-connect`, network default mainnet). It does not contain a Rust NEP-245 template.
-- Resolution: guest play stays on the mock chain. Testnet calls use `near-cli` and a small RPC adapter. The wallet connector is not added to the raid loop, because a wallet prompt during a raid is a bug. The skill's mainnet default is not used.
+- Resolution: the app calls testnet through `near-cli` on the dev server and `https://rpc.testnet.near.org` for views. The wallet connector is not added to the raid loop, because a wallet prompt during a raid is a bug. The skill's mainnet default is not used.
 
 ## Network
 

@@ -11,7 +11,7 @@ npm run build
 
 Open the dev server and choose Enter Dungeon. `npm test` runs the rules, raid, market, and mock-ledger checks. `npm run build` typechecks and writes `dist/`.
 
-`BLOCKCHAIN_MODE` defaults to `mock` in `src/blockchain/guard.ts`. The page blocks fetches to NEAR hosts unless `VITE_CHAIN_MODE=testnet`, and even then only `https://rpc.testnet.near.org` is allowed. Guest play does not connect a wallet.
+`BLOCKCHAIN_MODE` defaults to `testnet`. The page allows `https://rpc.testnet.near.org` and blocks mainnet, Intents, OutLayer, and NEAR AI hosts. Set `VITE_CHAIN_MODE=mock` only for a local ledger. The dev server signs as `neocrafts.testnet` through `/api/near` when that key is in the near-cli keychain. The key is not shipped in the page.
 
 In-raid actions are zero-deposit game-contract calls. Direct NEP-245 transfers need 1 yoctoNEAR and a full sign-in; they only happen outside raids. A wallet prompt during a raid is a bug — report it with the raid id.
 

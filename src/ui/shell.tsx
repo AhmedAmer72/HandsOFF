@@ -16,8 +16,8 @@ const MORE: { id: ScreenId; label: string }[] = [
   { id: "settings", label: "Settings" },
   { id: "deed", label: "Charter" },
   { id: "takehome", label: "Take it home" },
-  { id: "guild", label: "Guild · simulated" },
-  { id: "week", label: "A week of raids · simulated" },
+  { id: "guild", label: "Guild" },
+  { id: "week", label: "Prices" },
   { id: "menu", label: "Entrance" },
 ];
 
@@ -40,7 +40,7 @@ export function Shell({ screen }: { screen: ScreenId }) {
   return (
     <aside className="z-30 flex h-full w-[4.5rem] shrink-0 flex-col border-r border-bronze/50 bg-steel pb-[env(safe-area-inset-bottom)] md:w-56">
       <p className="hidden px-4 pb-1 pt-5 font-display text-lg tracking-[0.12em] text-gold md:block">UNDERREALM</p>
-      <p className="hidden px-4 pb-3 text-[11px] leading-snug text-parchment/70 md:block">Guest — progress is saved on this device until you sign in.</p>
+      <p className="hidden px-4 pb-3 text-[11px] leading-snug text-parchment/70 md:block">Testnet keeper neocrafts.testnet. Raid calls attach no deposit.</p>
       <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2" aria-label="Game">
         {LINKS.map((link) => {
           const current = active === link.id;
@@ -59,7 +59,7 @@ export function Shell({ screen }: { screen: ScreenId }) {
         })}
       </nav>
       <div className="relative border-t border-bronze/40 p-2">
-        <p className="mb-2 px-1 text-[10px] leading-snug text-parchment/70 md:hidden">Guest save on this device.</p>
+        <p className="mb-2 px-1 text-[10px] leading-snug text-parchment/70 md:hidden">Testnet · neocrafts.testnet</p>
         <button className={`nav-plate w-full ${open ? "is-on" : ""}`} aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((value) => !value)}>
           <GameIcon src={ui.icon.settings} />
           <span className="hidden md:inline">More</span>

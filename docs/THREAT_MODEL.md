@@ -1,6 +1,6 @@
 # Threat model
 
-The guest game does not talk to NEAR. `BLOCKCHAIN_MODE` defaults to `mock`, and the fetch guard rejects `near.org`, Intents, OutLayer, and NEAR AI hosts. Testnet mode allows only `https://rpc.testnet.near.org`.
+The app talks to NEAR testnet. `BLOCKCHAIN_MODE` defaults to `testnet`. The fetch guard allows only `https://rpc.testnet.near.org` and rejects mainnet, Intents, OutLayer, and NEAR AI hosts. `VITE_CHAIN_MODE=mock` is the local-ledger escape hatch.
 
 On testnet, the assets that matter are the NEAR held by `game.neocrafts.testnet`, `deeds.neocrafts.testnet`, and `ashgate.deeds.neocrafts.testnet`, plus the deed `deed:ashgate`.
 

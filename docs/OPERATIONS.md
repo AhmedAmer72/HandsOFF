@@ -1,6 +1,6 @@
 # Operations
 
-Guest play needs no account. `npm test` and `npm run dev` stay on the mock chain.
+`npm run dev` talks to NEAR testnet. State changes from this machine are signed by `neocrafts.testnet` or `buyer.neocrafts.testnet` through the Vite `/api/near` route. `npm test` does not send those calls.
 
 Testnet reads:
 

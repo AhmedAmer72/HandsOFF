@@ -4,7 +4,7 @@ import { sfx } from "../../game/audio";
 import { ForgedFrame } from "../forge/frame";
 import { Button } from "../kit";
 
-type WalletStatus = "closed" | "prompt" | "rejected" | "failed";
+type WalletStatus = "closed" | "prompt" | "linked" | "failed";
 
 const HERO = "/hero/underrealm-hands-off.jpg";
 
@@ -32,6 +32,7 @@ const NOTES = [
 export function MainMenu() {
   const game = useGame();
   const [wallet, setWallet] = useState<WalletStatus>("closed");
+  const [keeper, setKeeper] = useState("");
 
   function start() {
     sfx.ui();
@@ -41,6 +42,10 @@ export function MainMenu() {
   function connect() {
     sfx.ui();
     setWallet("prompt");
+    void fetch("/api/near").then((response) => response.json()).then((body: { keeper?: string | null }) => {
+      setKeeper(body.keeper ?? "");
+      setWallet(body.keeper ? "linked" : "failed");
+    }).catch(() => setWallet("failed"));
   }
 
   function jump(event: MouseEvent<HTMLAnchorElement>) {
@@ -72,7 +77,7 @@ export function MainMenu() {
             <button className="land-btn" data-testid="get-started" onClick={start}><span>{game.continueReady ? "Enter the hall" : "Play"}</span></button>
             <button className="land-btn land-btn-ghost" data-testid="connect-wallet" onClick={connect}><span>Connect wallet</span></button>
           </div>
-          {game.continueReady && <p className="land-note">A guest hall is already saved on this device. Enter the hall opens it.</p>}
+          {game.continueReady && <p className="land-note">A hall is saved on this device. Offers and settlement are on game.neocrafts.testnet.</p>}
           <a className="land-scroll" href="#hall" onClick={jump}>Scroll<span /></a>
         </div>
       </section>
@@ -80,15 +85,14 @@ export function MainMenu() {
       {wallet !== "closed" && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="wallet-title">
           <ForgedFrame variant="modal" className="w-full max-w-md text-left">
-            <h2 id="wallet-title" className="font-display text-2xl text-gold">Connect Wallet</h2>
+            <h2 id="wallet-title" className="font-display text-2xl text-gold">Testnet signer</h2>
             <p className="mt-3 text-sm text-parchment/80" data-testid="wallet-status">
-              {wallet === "prompt" && "No sign-in provider is configured on this build. Nothing has been linked. Close this and press Play to enter as a guest."}
-              {wallet === "failed" && "Connection failed. No supported provider answered. Nothing was connected. Play still opens the hall."}
-              {wallet === "rejected" && "Connection cancelled. Nothing was connected. The entrance is unchanged."}
+              {wallet === "prompt" && "Checking the dev keychain."}
+              {wallet === "linked" && `This browser signs as ${keeper} on NEAR testnet. The key stays on the machine. Play opens that hall.`}
+              {wallet === "failed" && "This page has no signing key. Views of game.neocrafts.testnet still load. A state change needs the dev keychain."}
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
-              {wallet === "prompt" && <Button onClick={() => setWallet("failed")}>Try anyway</Button>}
-              <Button tone="ghost" onClick={() => setWallet(wallet === "prompt" ? "rejected" : "closed")}>{wallet === "prompt" ? "Cancel" : "Close"}</Button>
+              <Button tone="ghost" onClick={() => setWallet("closed")}>Close</Button>
             </div>
           </ForgedFrame>
         </div>
@@ -150,8 +154,8 @@ export function MainMenu() {
       </section>
 
       <section className="land-band border-y border-gold/15 bg-[#10141a]">
-        <h2 className="font-display text-4xl text-parchment md:text-5xl">Free on this device.</h2>
-        <p className="mt-3 max-w-[36ch] text-lg text-parchment/85">The hall saves in this browser. A wallet is optional, and nothing is linked until a provider is configured.</p>
+        <h2 className="font-display text-4xl text-parchment md:text-5xl">Signed on testnet.</h2>
+        <p className="mt-3 max-w-[36ch] text-lg text-parchment/85">Permits and settlement call game.neocrafts.testnet. The raid walk itself attaches no deposit.</p>
         <button className="land-btn land-btn-ghost mt-6" onClick={connect}><span>Connect wallet</span></button>
       </section>
 
@@ -170,8 +174,8 @@ export function MainMenu() {
         <div className="land-wrap">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-gold">Dark fantasy strategy</p>
           <h2 className="mt-3 font-display text-5xl text-parchment">Underrealm</h2>
-          <p className="mt-4 max-w-[68ch] text-parchment/85">Underrealm is a hall you keep on this device. You place the traps, open the south gate, and meet heroes who spend their own gold. A fallen hero leaves a page. Burn it, or let one rumour reach the stall.</p>
-          <p className="mt-3 max-w-[68ch] text-parchment/85">Ashgate, the market, and the workshop are here. A shared service for other computers is not live yet.</p>
+          <p className="mt-4 max-w-[68ch] text-parchment/85">Underrealm keeps the hall in this browser and the money on NEAR testnet. You place the traps. Heroes spend their own gold. A permit is 0.01 NEAR on game.neocrafts.testnet.</p>
+          <p className="mt-3 max-w-[68ch] text-parchment/85">Ashgate’s deed is deeds.neocrafts.testnet. NEAR AI, OutLayer, Intents, and the DAO are not connected, so diary pages are not minted.</p>
           <p className="mt-8 text-xs font-bold uppercase tracking-[0.16em] text-gold">The loop</p>
           <div className="land-chips mt-3">
             {NOTES.map(([href, label]) => (
@@ -182,7 +186,7 @@ export function MainMenu() {
       </section>
 
       <footer className="land-foot border-t border-white/10">
-        <p>Underrealm · Guest play on this device · 2026</p>
+        <p>Underrealm · NEAR testnet · 2026</p>
         <nav aria-label="Footer">
           <a href="#hall" onClick={jump}>The hall</a>
           <a href="#ledger" onClick={jump}>Ledger</a>

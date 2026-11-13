@@ -30,6 +30,6 @@ export async function viewCall<T>(contractId: string, method: string, args: Reco
   if (!body.result?.result) {
     return { source: "LIVE", error: body.error?.message ?? "view failed" };
   }
-  const text = String.fromCharCode(...body.result.result);
+  const text = new TextDecoder().decode(new Uint8Array(body.result.result));
   return { source: "LIVE", value: JSON.parse(text) as T };
 }

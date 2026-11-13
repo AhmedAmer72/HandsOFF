@@ -1,8 +1,8 @@
 # UNDERREALM loop
 
-Play Gold and Cinder only inside a guest raid. The guest client stays on the mock chain, so a raid does not spend testnet NEAR and does not open a wallet.
+Play Gold and Cinder stay inside the hall. Permits, settlement, salvage claims, supply, craft, listings, and the deed are calls to the testnet contracts. The raid walk itself does not open a wallet and does not attach a deposit.
 
-Testnet settlement exists on `game.neocrafts.testnet` for a signed player account. Those calls attach no deposit. A direct NEP-245 transfer is a separate 1 yoctoNEAR action and is not part of the raid loop.
+Settlement is `record_actions`, then `settle_raid`, on `game.neocrafts.testnet`. Those calls attach no deposit. A direct NEP-245 transfer is a separate 1 yoctoNEAR action and is not part of the raid loop.
 
 ## Every 30 seconds
 
@@ -14,4 +14,4 @@ A few waves. A burned-versus-landed tally. Salvage spent or supplied. One mercha
 
 ## Every session
 
-Vault and results. Materials used. Hero memories. Merchant status. A replay of the recorded ticks. An optional listing. No deed, guild, or withdrawal screen in this build.
+Vault and results. Materials used. Hero memories. Merchant status. A replay of the recorded ticks. A listing, the Ashgate deed, the guild balance, or a treasury withdrawal when the signed account is the current owner.

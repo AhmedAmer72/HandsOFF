@@ -1,6 +1,6 @@
 # Agents
 
-Guest play stays on the mock chain. Do not add a wallet prompt to the raid loop.
+The running app reads and writes NEAR testnet. Do not add a wallet prompt inside the raid loop. `npm test` keeps the local permit fixture because `appUsesChain()` is false under Vitest.
 
 Contract work uses Rust 1.95 and `near-sdk` 5.30.1. The workspace is `contracts/`. One game WASM. Deeds and the Ashgate controller are separate accounts.
 

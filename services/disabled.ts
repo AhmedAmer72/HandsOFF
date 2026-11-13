@@ -33,7 +33,7 @@ export const DAO: Integration = {
 export const NEAR_AUTH: Integration = {
   name: "NEAR Auth",
   status: "DISABLED",
-  blocker: "No approved NEAR Auth credentials. Players sign with a testnet account key or stay on the mock chain.",
+  blocker: "No approved NEAR Auth credentials. The dev server signs with the near-cli keychain for neocrafts.testnet.",
 };
 
 export function assertNotLive(integration: Integration) {

@@ -1,9 +1,10 @@
 export type ChainSource = "LIVE" | "MOCK" | "SIMULATED";
 
 function envMode() {
-  const vite = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_CHAIN_MODE;
+  const vite = import.meta.env.VITE_CHAIN_MODE;
   const node = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.VITE_CHAIN_MODE;
-  return vite === "testnet" || node === "testnet" ? "testnet" : "mock";
+  const chosen = vite ?? node;
+  return chosen === "mock" ? "mock" : "testnet";
 }
 
 export const CHAIN_MODE = envMode();
