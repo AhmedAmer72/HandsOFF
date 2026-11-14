@@ -487,6 +487,10 @@
     max-width: none !important;
   }
 
+  .hud-stack.hero-open ~ .trap-bar {
+    top: 20rem !important;
+  }
+
   .gate-dock {
     position: fixed;
     top: auto;

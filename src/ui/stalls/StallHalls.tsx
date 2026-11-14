@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { GOODS, RECIPES, RAID } from "../../../rules/economy";
+import { formatMicro, gameView } from "../../chain/live";
 import { goodsRule } from "../../game/config/economyRules";
 import { RULES } from "../../game/config/gameRules";
 import { quotePrice } from "../../game/engine/pricing";
@@ -20,6 +21,7 @@ import { Prompt } from "../forge/controls";
 import { GameIcon, ItemSlot } from "../pack/components";
 import { TRAP_ICON, ui } from "../pack/urls";
 import { Button, Panel, Title } from "../kit";
+import { playerLine } from "../playerLine";
 
 function itemLabel(id: string) {
   return goodsRule(id)?.name ?? id.split(":").pop() ?? id;
@@ -78,13 +80,13 @@ function StallHall({ place, title }: { place: "market" | "workshop"; title: stri
               </span>
               <Button tone="ghost" onClick={() => setOpen(null)}><GameIcon src={ui.icon.close} /> Close</Button>
             </div>
-            {note && <p className="mt-2 text-sm text-gold" data-testid="stall-note">{note}</p>}
+            {note && <p className="mt-2 text-sm text-gold" data-testid="stall-note">{playerLine(note)}</p>}
             {place === "market" && open !== "board" && open !== "exit" && (
               <MerchantSheet merchant={open as "mira" | "orrin" | "tallow"} onNote={setNote} />
             )}
             {place === "market" && open === "board" && <ListingSheet onNote={setNote} />}
             {place === "workshop" && <CraftSheet station={open} onNote={setNote} />}
-            <p className="mt-3 text-xs text-parchment/60">Hall gold {game.gold.toFixed(0)}. NEAR moves only on game.neocrafts.testnet.</p>
+            <p className="mt-3 text-xs text-parchment/60">Gold {Math.round(game.gold)}.</p>
           </Panel>
         </div>
       )}
@@ -95,13 +97,27 @@ function StallHall({ place, title }: { place: "market" | "workshop"; title: stri
 function MerchantSheet({ merchant, onNote }: { merchant: "mira" | "orrin" | "tallow"; onNote: (text: string) => void }) {
   const game = useGame();
   const stall = game.merchants[merchant];
+  const [why, setWhy] = useState<string | null>(null);
+  const [ironQuote, setIronQuote] = useState("");
+  useEffect(() => {
+    if (merchant !== "mira" || why !== "play:resource:iron") return;
+    let gone = false;
+    void gameView<{ price?: string }>("quote", { token_id: "play:resource:iron" }).then((quote) => {
+      if (!gone && quote.value?.price) setIronQuote(formatMicro(quote.value.price));
+    }).catch(() => {
+      if (!gone) setIronQuote("");
+    });
+    return () => {
+      gone = true;
+    };
+  }, [merchant, why]);
   return (
     <div className="mt-3 space-y-2 text-sm">
-      <p>{stall.role}. Hall gold {stall.gold.toFixed(0)}. Salvage supply and NEAR gear are signed on testnet.</p>
+      <p>{stall.role}</p>
       {merchant === "mira" && (
         <div className="flex flex-wrap gap-2">
           {(["iron", "ash", "bone"] as const).map((kind) => (
-            <Button key={kind} tone="ghost" onClick={() => void supplyOnChain(1, kind).then((result) => onNote(result.reason))}>Supply 1 {kind}</Button>
+            <Button key={kind} tone="ghost" onClick={() => void supplyOnChain(1, kind).then((result) => onNote(result.reason))}>Supply {kind}</Button>
           ))}
         </div>
       )}
@@ -109,10 +125,22 @@ function MerchantSheet({ merchant, onNote }: { merchant: "mira" | "orrin" | "tal
         {stall.stock.map((line) => {
           const quote = quotePrice(line.itemId, line.qty);
           const currency = line.itemId in GOODS ? GOODS[line.itemId as keyof typeof GOODS].currency : "PLAY_GOLD";
+          const price = quote.price < 1 ? quote.price.toFixed(4) : quote.price.toFixed(2);
           return (
-            <li key={line.itemId} className="flex flex-wrap items-center justify-between gap-2">
-              <span className="num">{itemLabel(line.itemId)} · {line.qty} · {quote.price < 1 ? quote.price.toFixed(4) : quote.price.toFixed(2)} {currency === "NEAR" ? "NEAR" : "hall gold"}</span>
-              <Button onClick={() => void buyStallOnChain(merchant, line.itemId).then((result) => onNote(result.reason))}>Buy</Button>
+            <li key={line.itemId}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="num">{itemLabel(line.itemId)} · {line.qty} · {price} {currency === "NEAR" ? "NEAR" : "gold"}</span>
+                <span className="flex gap-2">
+                  <Button onClick={() => void buyStallOnChain(merchant, line.itemId).then((result) => onNote(result.reason))}>Buy</Button>
+                  <Button tone="ghost" onClick={() => setWhy(why === line.itemId ? null : line.itemId)}>Why?</Button>
+                </span>
+              </div>
+              {why === line.itemId && (
+                <p className="mt-1 text-parchment/70">
+                  {quote.reason}
+                  {line.itemId === "play:resource:iron" && ironQuote ? ` Iron ${ironQuote} gold.` : ""}
+                </p>
+              )}
             </li>
           );
         })}
@@ -134,14 +162,14 @@ function ListingSheet({ onNote }: { onNote: (text: string) => void }) {
   const [chainListings, setChainListings] = useState<{ id: string; label: string }[]>([]);
   return (
     <div className="mt-3 space-y-2 text-sm">
-      <p>Listings are escrow on game.neocrafts.testnet. A play-gold sale pays the seller 90, the guild 5, and ops 5.</p>
+      <p>Ask in gold.</p>
       {chainListings.map((listing) => (
         <div key={listing.id} className="flex flex-wrap items-center justify-between gap-2">
           <span>{listing.label}</span>
           <Button tone="ghost" onClick={() => void cancelListingOnChain(listing.id).then((result) => onNote(result.reason))}>Cancel</Button>
         </div>
       ))}
-      {chainListings.length === 0 && <p>No testnet listing from this desk yet.</p>}
+      {chainListings.length === 0 && <p>Nothing listed.</p>}
       <label className="block">Gold ask
         <input className="control ml-2 w-24" type="number" min={1} value={price} onChange={(event) => setPrice(Number(event.target.value))} />
       </label>
@@ -150,8 +178,8 @@ function ListingSheet({ onNote }: { onNote: (text: string) => void }) {
           <span className="flex items-center gap-2"><ItemSlot><span className="num text-xs">{qty}</span></ItemSlot>{itemLabel(id)} × {qty}</span>
           <Button tone="ghost" onClick={() => void listOnChain(id, price, "PLAY_GOLD").then((result) => {
             onNote(result.reason);
-            if (result.ok && "id" in result && result.id) setChainListings((rows) => [...rows, { id: result.id, label: `${itemLabel(id)} · ${price} PLAY_GOLD` }]);
-          })}>List on testnet</Button>
+            if (result.ok && "id" in result && result.id) setChainListings((rows) => [...rows, { id: result.id, label: `${itemLabel(id)} · ${price} gold` }]);
+          })}>List</Button>
         </div>
       ))}
     </div>
@@ -160,6 +188,7 @@ function ListingSheet({ onNote }: { onNote: (text: string) => void }) {
 
 function CraftSheet({ station, onNote }: { station: string; onNote: (text: string) => void }) {
   const game = useGame();
+  const [why, setWhy] = useState<string | null>(null);
   const kinds = station === "anvil"
     ? (["spike", "pit", "boulder"] as const)
     : station === "bench"
@@ -178,13 +207,18 @@ function CraftSheet({ station, onNote }: { station: string; onNote: (text: strin
               {kind === "armor" && <GameIcon src={ui.icon.helmet} />}
               {kind}
             </p>
-            <ul>
-              {needs.map(([material, qty]) => {
-                const held = game.inventory[material] ?? 0;
-                return <li key={material} className={held >= qty ? "text-emerald-300" : "text-red-300"}>{material} {held}/{qty}</li>;
-              })}
-            </ul>
-            <Button onClick={() => void craftOnChain(kind).then((result) => onNote(result.reason))}>Craft on testnet</Button>
+            <div className="mt-1 flex flex-wrap gap-2">
+              <Button onClick={() => void craftOnChain(kind).then((result) => onNote(result.reason))}>Craft</Button>
+              <Button tone="ghost" onClick={() => setWhy(why === kind ? null : kind)}>Why?</Button>
+            </div>
+            {why === kind && (
+              <ul className="mt-1">
+                {needs.map(([material, qty]) => {
+                  const held = game.inventory[material] ?? 0;
+                  return <li key={material} className={held >= qty ? "text-emerald-300" : "text-red-300"}>{material} {held}/{qty}</li>;
+                })}
+              </ul>
+            )}
           </div>
         );
       })}

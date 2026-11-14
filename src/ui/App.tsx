@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { goodsRule } from "../game/config/economyRules";
 import { RULES } from "../game/config/gameRules";
-import { GOODS as RULE_GOODS, RAID } from "../../rules/economy";
+import { GOODS as RULE_GOODS, PERMIT, RAID } from "../../rules/economy";
 import { HERO_PROFILES } from "../game/config/heroProfiles";
 import { TRAP_DEFINITIONS, TRAP_IDS } from "../game/config/trapDefinitions";
-import { quotePrice } from "../game/engine/pricing";
 import { evaluateHero } from "../game/engine/decisions";
-import { merchantStatus } from "../game/engine/market";
 import { sfx } from "../game/audio";
 import {
   acceptRaidOffer,
@@ -23,7 +20,6 @@ import {
   markDiary,
   newGame,
   nextDay,
-  note,
   placeTrap,
   relayTrapTo,
   resolvePage,
@@ -34,7 +30,6 @@ import {
   clearTrap,
   setQuality,
   setReduceMotion,
-  setShowStats,
   setScreen,
   setStats,
   startRaid,
@@ -44,27 +39,26 @@ import {
 } from "../game/store";
 import { outcomeHash } from "../game/engine/raid";
 import { mountDungeon } from "../three/dungeon";
-import { mountGallery } from "../three/gallery";
 import { MainMenu } from "./screens/MainMenu";
-import { MockSandbox } from "./screens/MockSandbox";
-import { DeedScreen, GuildScreen, ReportScreen, TakeHomeScreen, WeekScreen } from "./screens/PlayScreens";
+import { DeedScreen, ReportScreen } from "./screens/PlayScreens";
+import { playerLine } from "./playerLine";
 import { MarketHall, WorkshopHall } from "./stalls/StallHalls";
 import { SpectatorScreen, WorldMap } from "./world/WorldScreens";
 import { Shell } from "./shell";
 import { Channel, HeroPip, Notice } from "./forge/controls";
 import { ForgedFrame } from "./forge/frame";
-import { CircularGameButton, CinderPips, CornerOrnament, Divider, GameIcon, ItemSlot, ProgressTrack, ResourcePanel, TrapCard, WaxSealMark } from "./pack/components";
+import { CircularGameButton, CinderPips, CornerOrnament, Divider, GameIcon, ItemSlot, ProgressTrack, ResourcePanel, TrapCard } from "./pack/components";
 import { HERO_ICON, TRAP_ICON, ui } from "./pack/urls";
 import { Button, CHRONICLE, chronicleKind, Panel, Receipt } from "./kit";
 
 const TUTORIAL = [
-  `The way to the vault bends through gates. Choose Spike and click tile ${RULES.spikeTutorialCell.ix}, ${RULES.spikeTutorialCell.iz}.`,
-  "Press Begin the raid. The hero walks in from the south gate.",
-  "Click the flying page to burn it, or let the moment pass.",
-  "Orrin keeps a landed page. Buy it back at his stall in the Market.",
-  "Press Begin the raid again. A hero who bought the rumour walks around the spike.",
-  "Supply iron or buy a phial from the stalls in the Market.",
-  "Chapter 7. The vault brace is in the workshop. After that, the next day is yours.",
+  `Place Spike on tile ${RULES.spikeTutorialCell.ix}, ${RULES.spikeTutorialCell.iz}.`,
+  "Begin the raid.",
+  "Burn the page, or let it land.",
+  "A landed page sits with Orrin.",
+  "Begin again. A warned hero walks around the spike.",
+  "Supply iron, or buy a phial.",
+  "The vault brace is in the workshop.",
 ];
 
 export function App() {
@@ -74,22 +68,16 @@ export function App() {
       {game.screen !== "menu" && game.screen !== "dungeon" && game.screen !== "home" && <Shell screen={game.screen} />}
       <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         {game.screen === "menu" && <MainMenu />}
-        {(game.screen === "dungeon" || game.screen === "home") && <DungeonScreen />}
+        {(game.screen === "dungeon" || game.screen === "home" || game.screen === "registry") && <DungeonScreen />}
         {game.screen === "map" && <WorldMap />}
         {game.screen === "gate" && <GateMarket />}
         {game.screen === "market" && <MarketHall />}
         {game.screen === "workshop" && <WorkshopHall />}
         {game.screen === "spectator" && <SpectatorScreen />}
-        {game.screen === "registry" && <Registry />}
         {game.screen === "chronicle" && <Chronicle />}
         {game.screen === "report" && <ReportScreen />}
-        {game.screen === "week" && <WeekScreen />}
-        {game.screen === "deed" && <DeedScreen />}
-        {game.screen === "guild" && <GuildScreen />}
-        {game.screen === "takehome" && <TakeHomeScreen />}
-        {game.screen === "settings" && <Settings />}
-        {game.screen === "gallery" && <Gallery />}
-        {game.screen === "sandbox" && <MockSandbox />}
+        {(game.screen === "deed" || game.screen === "guild" || game.screen === "takehome" || game.screen === "week") && <DeedScreen />}
+        {(game.screen === "settings" || game.screen === "gallery" || game.screen === "sandbox") && <Settings />}
       </main>
     </div>
   );
@@ -101,8 +89,6 @@ function DungeonScreen() {
   const [seconds, setSeconds] = useState<number>(RAID.pageFlightSec);
   const [hint, setHint] = useState("Choose a trap. It follows the cursor until you click a tile.");
   const [openHero, setOpenHero] = useState<"kara" | "brann" | "ivo" | null>(null);
-  const [feed, setFeed] = useState("All");
-  const [logOpen, setLogOpen] = useState(false);
   const [vaultPulse, setVaultPulse] = useState<"up" | "down" | null>(null);
   const prevVault = useRef(game.vault);
   useEffect(() => {
@@ -155,10 +141,7 @@ function DungeonScreen() {
       onPrompt: (text) => setHint(text),
       onGate: () => {
         if (hooks.current.phase === "report") nextDay();
-        else if (hooks.current.phase === "prep") {
-          setScreen("gate");
-          sfx.ui();
-        }
+        else if (hooks.current.phase === "prep") sfx.ui();
       },
       onBurn: () => {
         const result = resolvePage("burn");
@@ -262,17 +245,21 @@ function DungeonScreen() {
 
   const picked = openHero ? game.heroes[openHero] : null;
   const pickedProfile = openHero ? HERO_PROFILES[openHero] : null;
-  const pickedFacts = picked?.facts.filter((fact) => !fact.burned) ?? [];
   const lowVault = game.vault < RAID.vaultStart * 0.25;
   const tier = dungeonTier(game.raidsCleared ?? 0);
   const vaultPct = Math.max(0, Math.min(100, (game.vault / RAID.vaultStart) * 100));
   const bleed = game.phase === "raid" ? RAID.bleedPerHeroPerSec : 0;
   const possessLocked = game.day < RAID.possess.fromWave;
+  const offerBoard = (["kara", "brann", "ivo"] as const).map((id) => evaluateHero(game, game.heroes[id]));
+  const willing = offerBoard.filter((trace) => trace.accept).sort((a, b) => b.score - a.score)[0];
+  const counter = offerBoard.find((trace) => (trace.counterShift ?? 0) > 0);
+  const splitLabel = `${Math.round(PERMIT.split.owner * 100)} / ${Math.round(PERMIT.split.agents * 100)} / ${Math.round(PERMIT.split.guild * 100)} / ${Math.round(PERMIT.split.ops * 100)}`;
+  const namedHero = game.chainHero && game.chainHero in HERO_PROFILES ? HERO_PROFILES[game.chainHero].name : null;
 
   return (
     <div className={`relative h-full w-full overflow-hidden ${game.reduceMotion ? "motion-reduce" : ""}`}>
       <canvas ref={canvasRef} className="view absolute inset-0 h-full w-full" />
-      <div className="hud-stack pointer-events-none absolute left-3 top-3 z-20 flex max-w-[calc(100%-10.5rem)] flex-col gap-2 sm:max-w-[min(28rem,calc(100%-18rem))]">
+      <div className={`hud-stack pointer-events-none absolute left-3 top-3 z-20 flex max-w-[calc(100%-10.5rem)] flex-col gap-2 sm:max-w-[min(28rem,calc(100%-18rem))] ${openHero ? "hero-open" : ""}`}>
         <div className="pointer-events-auto flex flex-wrap gap-2">
           <ResourcePanel icon={ui.icon.coin} value={Math.round(game.gold)} label={bleed > 0 ? `−${bleed}/s` : "−0/s"} labelHot={bleed > 0} pulse={Boolean(vaultPulse)} />
           <ResourcePanel icon={ui.icon.wave} value={game.day} label="Wave" />
@@ -295,18 +282,12 @@ function DungeonScreen() {
               <GameIcon src={HERO_ICON[openHero]} />
               <p className="font-display text-xl text-gold">{pickedProfile.name} · {pickedProfile.role}</p>
             </div>
-            <p>HP <span className="num">{picked.hp}/{picked.maxHp}</span> · Purse <span className="num">{picked.gold}</span></p>
+            <p>HP <span className="num">{picked.hp}/{picked.maxHp}</span> · Gold <span className="num">{picked.gold}</span></p>
             <div className="mt-2 flex items-center gap-2">
               <ItemSlot><GameIcon src={ui.icon.helmet} /></ItemSlot>
               <p className="text-parchment/75">Gear {picked.equipment.join(", ") || "pack only"}</p>
             </div>
-            <div className="mt-2">
-              <ProgressTrack track="health" pct={Math.max(0, (picked.hp / picked.maxHp) * 100)} label={`Health ${picked.hp} of ${picked.maxHp}`} now={picked.hp} max={picked.maxHp} />
-            </div>
-            {pickedFacts[0] ? <p className="mt-1 text-memory">{pickedFacts[0].memory ?? "warned"} · {pickedFacts[0].source ?? "record"}</p> : <p className="mt-1 text-parchment/70">No trap memory yet</p>}
-            <p className="mt-1 text-parchment/80">{picked.memory[0]}</p>
-            {pickedFacts.slice(0, 3).map((fact) => <p key={fact.id}>{fact.text}</p>)}
-            <Button tone="ghost" className="mt-2" onClick={() => setScreen("registry")}>Hero record</Button>
+            <p className="mt-1 text-parchment/80">{picked.memory[0] ?? "No memory yet."}</p>
           </ForgedFrame>
         )}
         <div className="hud-hint">
@@ -317,31 +298,32 @@ function DungeonScreen() {
           </Notice>
         </div>
         {game.phase === "prep" && !walking && (
-          <ForgedFrame variant="tooltip" className="gate-dock pointer-events-auto max-w-xs">
+          <ForgedFrame variant="tooltip" className="gate-dock pointer-events-auto max-w-xs" data-testid="gate-dock">
             <p className="font-display text-lg text-gold">South gate</p>
-            <p className="gate-blurb text-sm text-parchment/80">The hero starts beside the banners and walks the corridor.</p>
+            <p className="text-sm">Permit {PERMIT.price}</p>
+            <p className="text-sm">Split {splitLabel}</p>
+            <p className="text-sm">Open for {PERMIT.offerTtlMinutes} minutes</p>
+            <p className="text-sm">{namedHero ? namedHero : game.chainOfferId ? "OPEN" : "No offer"}</p>
+            <p className="text-sm">{willing ? `${HERO_PROFILES[willing.heroId].name} is willing.` : "No hero is willing."}</p>
             <div className="mt-2 flex flex-wrap gap-2">
+              <Button tone="ghost" onClick={() => void fundRaidOffer().then((result) => setRaidNote(result.reason))}>Fund</Button>
+              {game.chainOfferId && <Button tone="ghost" onClick={() => void acceptRaidOffer().then((result) => setRaidNote(result.reason))}>Accept</Button>}
+              {counter && game.chainOfferId && !game.chainHero && (
+                <Button tone="ghost" onClick={() => void counterRaidOffer(counter.heroId).then((result) => setRaidNote(result.reason))}>Counter</Button>
+              )}
               <Button onClick={() => {
                 const result = startRaid();
-                setRaidNote(result.ok ? "The hero is walking. Testnet settlement follows." : result.reason);
+                setRaidNote(result.ok ? "The hero is walking." : result.reason);
                 if (!result.ok) return;
                 sfx.ui();
-                void publishRaid().then((published) => setRaidNote(published.reason));
+                void publishRaid().then((published) => setRaidNote(published.ok ? "Settled." : published.reason));
               }}>Begin the raid</Button>
             </div>
-            {raidNote && (
-              <>
-                <p className="mt-2 text-sm text-gold">{raidNote}</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Button tone="ghost" onClick={() => void fundRaidOffer().then((result) => setRaidNote(result.reason))}>Fund offer</Button>
-                  <Button tone="ghost" onClick={() => void acceptRaidOffer().then((result) => setRaidNote(result.reason))}>Accept offer</Button>
-                </div>
-              </>
-            )}
+            {raidNote && <p className="mt-2 text-sm text-gold" data-testid="raid-note">{playerLine(raidNote)}</p>}
           </ForgedFrame>
         )}
-        {toast && <div className="hud-toast"><Notice tone="gold">{toast}</Notice></div>}
-        <p className="hud-tutorial pointer-events-none max-w-[12.5rem] text-[10px] uppercase tracking-[0.14em] text-parchment/75">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
+        {toast && <div className="hud-toast"><Notice tone="gold">{playerLine(toast)}</Notice></div>}
+        <p className="hud-tutorial pointer-events-none max-w-[18rem] text-[11px] tracking-wide text-parchment/75">{TUTORIAL[Math.min(game.tutorialStep, TUTORIAL.length - 1)]}</p>
       </div>
       <div className="trap-bar pointer-events-auto absolute right-3 top-3 z-20 flex w-[9.4rem] flex-wrap justify-end gap-1 sm:w-auto sm:max-w-[calc(100%-20rem)]">
         {TRAP_IDS.map((id) => {
@@ -376,41 +358,17 @@ function DungeonScreen() {
           <Divider />
           <p>{report.survived ? `${hero.name} survived.` : `${hero.name} died.`}</p>
           <p>Traps sprung <span className="num">{report.trapsTriggered.length}</span>. Chain ×<span className="num">{game.chain ?? 0}</span>.</p>
-          <p>Pages {game.pageResult === "burned" ? "burned" : game.pageResult === "escaped" ? "landed" : "still in the air"}: <span className="num">{report.facts.length}</span>. A landed page is sold. It does not teach a hero.</p>
+          <p>{report.facts.length === 0 ? "No page." : `Pages ${game.pageResult === "burned" ? "burned" : game.pageResult === "escaped" ? "landed" : "in the air"}: ${report.facts.length}.`}</p>
           <p>Salvage: iron <span className="num">{game.inventory.iron ?? 0}</span>, ash <span className="num">{game.inventory.ash ?? 0}</span>, bone <span className="num">{game.inventory.bone ?? 0}</span>.</p>
-          <p>Tier <span className="num">{tier}</span>.</p>
-          {game.dungeonClosed && <p className="text-blood">The vault is empty. The next wave restocks it.</p>}
+          {game.dungeonClosed && <p className="text-blood">The vault is empty.</p>}
+          {raidNote && <p className="text-gold" data-testid="raid-note">{playerLine(raidNote)}</p>}
           <div className="mt-2 flex flex-wrap gap-2">
-            <Button onClick={() => nextDay()}>{game.dungeonClosed ? "Restock and continue" : "Continue"}</Button>
+            <Button onClick={() => nextDay()}>{game.dungeonClosed ? "Restock" : "Continue"}</Button>
             <Button tone="ghost" onClick={() => setScreen("report")}>Full report</Button>
-            <Button tone="ghost" onClick={() => setScreen("market")}>Market</Button>
-            <Button tone="ghost" onClick={() => setScreen("workshop")}>Workshop</Button>
-            <Button tone="ghost" onClick={() => setScreen("chronicle")}>Watch replay</Button>
+            <Button tone="ghost" onClick={() => setScreen("chronicle")}>Replay</Button>
           </div>
         </Receipt>
       )}
-      <div className={`pointer-events-auto absolute right-3 top-36 z-20 w-[min(20rem,calc(100%-1rem))] ${logOpen ? "block" : "hidden"}`}>
-        <ForgedFrame className="max-h-72 overflow-auto text-sm" pad={false}>
-          <div className="forged-body">
-          <div className="flex items-center justify-between">
-            <div className="font-display text-xl text-gold">Chronicle</div>
-            <button className="ur-tab" onClick={() => setLogOpen(false)}><GameIcon src={ui.icon.close} /> Close</button>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-1">
-            {["All", ...CHRONICLE].map((label) => (
-              <button key={label} className={`ur-tab ${feed === label ? "is-on" : ""}`} onClick={() => setFeed(label)}>{label}</button>
-            ))}
-          </div>
-          {game.ledger.filter((line) => feed === "All" || chronicleKind(line.text) === feed).slice(0, 8).map((line) => (
-            <article key={line.id} className="event-plate mt-2">
-              <p className="text-xs uppercase tracking-wider text-memory">{chronicleKind(line.text)} · day {line.day}</p>
-              <p>{line.text}</p>
-            </article>
-          ))}
-          {game.ledger.length === 0 && <p className="mt-2 text-parchment/70">The chronicle is empty.</p>}
-          </div>
-        </ForgedFrame>
-      </div>
       <div className="hud-meters pointer-events-none absolute bottom-24 left-3 z-20 flex w-[calc(100%-1.5rem)] max-w-xs flex-col gap-2 sm:bottom-4 sm:left-4 sm:w-[min(16rem,calc(100%-12rem))]">
         <Channel kicker="Dungeon Tier" value={tier} pct={(tier / 4) * 100} mark={<GameIcon src={ui.icon.shield} />} />
         <Channel
@@ -437,12 +395,9 @@ function DungeonScreen() {
                 ["market", "Market"],
                 ["workshop", "Workshop"],
                 ["map", "World map"],
-                ["gate", "Contract board"],
-                ["registry", "Hero records"],
               ] as const).map(([id, label]) => (
                 <button key={id} role="menuitem" onClick={() => { setGearOpen(false); setScreen(id); }}>{label}</button>
               ))}
-              <button role="menuitem" onClick={() => { setGearOpen(false); setLogOpen(true); }}>Chronicle</button>
             </div>
           )}
         </div>
@@ -457,107 +412,29 @@ function DungeonScreen() {
 function GateMarket() {
   const game = useGame();
   const [slip, setSlip] = useState("");
-  const merchants = [game.merchants.mira, game.merchants.orrin, game.merchants.tallow];
   const board = (["kara", "brann", "ivo"] as const).map((id) => evaluateHero(game, game.heroes[id]));
-  const raider = board.filter((trace) => trace.accept).sort((a, b) => b.score - a.score)[0];
+  const willing = board.filter((trace) => trace.accept).sort((a, b) => b.score - a.score)[0];
   return (
-    <section className="grid gap-4 p-4 lg:grid-cols-3" data-testid="contract-board">
-      <div className="lg:col-span-3"><Button tone="ghost" onClick={() => setScreen("dungeon")}>Return to your dungeon</Button></div>
-      <Panel variant="ledger" className="lg:col-span-3">
-        <div className="ledger-head">
-          <div>
-        <h3 className="font-display text-2xl text-gold">Raid board</h3>
-        <Divider />
-        <p className="text-sm text-ink/80">Funding attaches 0.01 NEAR on game.neocrafts.testnet. The price stays fixed. A counter only moves the split. The raid itself attaches no deposit.</p>
-          </div>
-          {game.chainHero && <WaxSealMark />}
-        </div>
-        <p className="num mt-2 text-sm">Keeper neocrafts.testnet. {game.chainOfferId ? `Offer ${game.chainOfferId}${game.chainHero ? ` · ${game.chainHero}` : " · waiting for a hero"}.` : "No testnet offer yet."}</p>
-        <ul className="mt-2 space-y-2 text-sm">
-          {board.map((trace) => (
-            <li key={trace.heroId}>
-              <p>{trace.accept ? "Accepted" : "Refused"} · {trace.reason}</p>
-              {(trace.counterShift ?? 0) > 0 && Boolean(game.chainOfferId) && !game.chainHero && (
-                <Button tone="ghost" className="mt-1" onClick={() => void counterRaidOffer(trace.heroId).then((result) => setSlip(result.reason))}>Record {trace.heroId}'s counter</Button>
-              )}
-            </li>
-          ))}
-        </ul>
-        <p className="mt-2 text-sm">{raider ? `${raider.heroId} is willing.` : "No hero is willing. A raid cannot start."}</p>
-        {slip && <p className="mt-2 text-sm text-gold">{slip}</p>}
+    <section className="mx-auto flex max-w-xl flex-col gap-4 p-4" data-testid="gate-board">
+      <Button tone="ghost" className="self-start" onClick={() => setScreen("dungeon")}>My Dungeon</Button>
+      <Panel variant="ledger">
+        <h3 className="font-display text-2xl text-gold">South gate</h3>
+        <p className="mt-2 text-sm">Permit {PERMIT.price}. Split {Math.round(PERMIT.split.owner * 100)} / {Math.round(PERMIT.split.agents * 100)} / {Math.round(PERMIT.split.guild * 100)} / {Math.round(PERMIT.split.ops * 100)}.</p>
+        <p className="text-sm">{willing ? `${HERO_PROFILES[willing.heroId].name} is willing.` : "No hero is willing."}</p>
+        {slip && <p className="mt-2 text-sm text-gold">{playerLine(slip)}</p>}
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button onClick={() => void fundRaidOffer().then((result) => setSlip(result.reason))}>Fund offer</Button>
-          {game.chainOfferId && !game.chainHero && <Button tone="ghost" onClick={() => void acceptRaidOffer().then((result) => setSlip(result.reason))}>Accept offer</Button>}
-          <Button tone="ghost" disabled={!game.chainHero || !raider} onClick={() => { const result = startRaid(); setSlip(result?.reason ?? "The raid started."); if (result?.ok) { setScreen("dungeon"); void publishRaid().then((published) => setSlip(published.reason)); } }}>Send the willing hero</Button>
+          <Button onClick={() => void fundRaidOffer().then((result) => setSlip(result.reason))}>Fund</Button>
+          {game.chainOfferId && <Button tone="ghost" onClick={() => void acceptRaidOffer().then((result) => setSlip(result.reason))}>Accept</Button>}
+          <Button tone="ghost" onClick={() => {
+            const result = startRaid();
+            setSlip(result.ok ? "The hero is walking." : result.reason);
+            if (result.ok) {
+              setScreen("dungeon");
+              void publishRaid().then((published) => setSlip(published.ok ? "Settled." : published.reason));
+            }
+          }}>Begin the raid</Button>
         </div>
       </Panel>
-      {merchants.map((merchant) => {
-        const status = merchantStatus(merchant);
-        return (
-        <Panel key={merchant.id} variant="tall">
-          <h3 className="font-display text-2xl text-gold">{merchant.name}</h3>
-          <p className="text-sm text-parchment/70">{merchant.role} · hall gold {merchant.gold.toFixed(0)} · {status}. Chain balances load on the charter and guild screens.</p>
-          <ul className="mt-3 space-y-2 text-sm">
-            {merchant.stock.map((line) => {
-              const quote = quotePrice(line.itemId, line.qty);
-              return (
-                <li key={line.itemId} className="flex items-center justify-between gap-2">
-                  <span title={quote.reason}>{goodsRule(line.itemId)?.name ?? line.itemId} · {line.qty} · {quote.price < 1 ? quote.price.toFixed(4) : quote.price.toFixed(2)}</span>
-                  <Button title={quote.reason} onClick={() => { void buyStallOnChain(merchant.id, line.itemId).then((result) => { setSlip(result.reason); if (result.ok) sfx.coin(); }); }}>Buy</Button>
-                  <Button tone="ghost" onClick={() => note(quote.reason)}>Why</Button>
-                </li>
-              );
-            })}
-            {merchant.rumours.map((rumour) => (
-              <li key={rumour.id} className="flex items-center justify-between gap-2">
-                <span>{rumour.text} · epoch {rumour.epoch ?? 1}</span>
-                <Button onClick={() => void buyBackOnChain(rumour.id).then((result) => setSlip(result.reason))}>Buy back</Button>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-        );
-      })}
-      <Panel className="lg:col-span-3">
-        <h3 className="font-display text-gold">Why the price moved</h3>
-        <p className="text-sm">{game.priceNote || "Prices follow stock against each merchant's target."}</p>
-        {game.ledger.slice(0, 6).map((line) => <p key={line.id} className="text-sm">{line.text}</p>)}
-      </Panel>
-    </section>
-  );
-}
-
-function Registry() {
-  const game = useGame();
-  return (
-    <section className="grid gap-4 p-4 lg:grid-cols-2">
-      <div className="lg:col-span-2"><Button tone="ghost" onClick={() => setScreen("dungeon")}>Return to your dungeon</Button></div>
-      {(["kara", "brann", "ivo"] as const).map((id) => {
-        const profile = HERO_PROFILES[id];
-        const hero = game.heroes[id];
-        return (
-          <Panel key={id} variant="hero">
-            <div className="flex items-center gap-2">
-              <GameIcon src={HERO_ICON[id]} />
-              <h3 className="font-display text-2xl text-gold">{profile.name}</h3>
-            </div>
-            <p>{profile.role}. {profile.personality}</p>
-            <p className="text-sm">Gold {hero.gold}. Health {hero.hp}/{hero.maxHp}. Gear {hero.equipment.join(", ") || "pack only"}.</p>
-            <p className="mt-2 text-sm text-parchment/70">{hero.memory[0]}</p>
-            {hero.facts.filter((fact) => !fact.burned).map((fact) => <p key={fact.id} className="text-sm">{fact.memory ?? "warned"} · {fact.source ?? "record"} · {fact.text}</p>)}
-            <div className="mt-3 border border-bronze/40 p-3 text-sm">
-              <p className="font-display text-gold">On chain</p>
-              <p className="text-parchment/70">Agent ledgers live in game.neocrafts.testnet. NEAR AI verification is disabled until a verifier key is pinned, so diary pages are not minted.</p>
-            </div>
-          </Panel>
-        );
-      })}
-      {([game.merchants.mira, game.merchants.orrin, game.merchants.tallow]).map((merchant) => (
-        <Panel key={merchant.id} variant="tablet">
-          <h3 className="font-display text-2xl text-gold">{merchant.name}</h3>
-          <p>{merchant.role}. Hall gold {merchant.gold.toFixed(0)}. Sales {merchant.sales}. {merchantStatus(merchant)}.</p>
-        </Panel>
-      ))}
     </section>
   );
 }
@@ -587,7 +464,7 @@ function Chronicle() {
     <section className="mx-auto flex max-w-3xl flex-col gap-4 p-4">
       <Button tone="ghost" className="self-start" onClick={() => setScreen(game.raids.length ? "report" : "dungeon")}>Back to the raid</Button>
       <h2 className="font-display text-3xl text-gold">Replay</h2>
-      <p className="text-sm text-parchment/75">Replayed from recorded inputs. Diary text and hero decisions are the ones already stored.</p>
+      <p className="text-sm text-parchment/75">Recorded steps.</p>
       {raid && <p className="text-sm">Day {raid.day} · {raid.heroId}. Outcome {outcomeHash(rows)}. {raid.decision.reason}</p>}
       <ProgressTrack pct={rows.length ? ((cursor + 1) / rows.length) * 100 : 0} label={`Replay ${rows.length ? cursor + 1 : 0} of ${rows.length}`} now={rows.length ? cursor + 1 : 0} max={Math.max(rows.length, 1)} />
       <div className="flex flex-wrap gap-2">
@@ -619,109 +496,22 @@ function Chronicle() {
 
 function Settings() {
   const game = useGame();
-  const [sound, setSound] = useState(true);
-  const [music, setMusic] = useState(false);
   return (
     <section className="mx-auto max-w-xl p-6">
-      <Button tone="ghost" className="mb-4" onClick={() => setScreen("dungeon")}>Return to your dungeon</Button>
+      <Button tone="ghost" className="mb-4" onClick={() => setScreen("dungeon")}>My Dungeon</Button>
       <h2 className="font-display text-3xl text-gold">Settings</h2>
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button tone={sound ? "gold" : "ghost"} onClick={() => setSound((value) => !value)}>Sound {sound ? "on" : "off"}</Button>
-        <Button tone={music ? "gold" : "ghost"} onClick={() => setMusic((value) => !value)}>Music {music ? "on" : "off"}</Button>
         <Button tone={game.reduceMotion ? "ghost" : "gold"} onClick={() => setReduceMotion(!game.reduceMotion)}>Motion {game.reduceMotion ? "reduced" : "on"}</Button>
-        <Button tone={game.showStats ? "gold" : "ghost"} onClick={() => setShowStats(!game.showStats)}>Performance details {game.showStats ? "on" : "off"}</Button>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         {(["low", "medium", "high"] as const).map((quality) => (
           <Button key={quality} tone={game.quality === quality ? "gold" : "ghost"} onClick={() => setQuality(quality)}>{quality}</Button>
         ))}
       </div>
-      <p className="mt-3 text-sm text-parchment/70">Low drops shadows. Performance details stay off until you turn them on here. The numbers are a measurement from this machine.</p>
       <div className="mt-6 flex flex-col items-start gap-2">
-        <Button tone="ember" onClick={() => newGame()}>New game (clears this browser save)</Button>
-        <Button onClick={() => setScreen("sandbox")}>Testnet ledger</Button>
-        <Button tone="ghost" onClick={() => setScreen("gallery")}>Model shelf</Button>
-        <Button tone="ghost" onClick={() => setScreen("registry")}>Hero directory</Button>
+        <Button onClick={() => setScreen("deed")}>Ownership</Button>
+        <Button tone="ember" onClick={() => newGame()}>New game</Button>
       </div>
-      <p className="mt-2 text-xs text-parchment/50">The ledger reads game.neocrafts.testnet, deeds.neocrafts.testnet, and the Ashgate treasury.</p>
-    </section>
-  );
-}
-
-interface CatalogAsset {
-  filename: string;
-  publicPath: string;
-  sourcePack: string;
-  category: string;
-  triangles: number;
-  meshes: number;
-  materials: number;
-  animations: string[];
-  skins: string[];
-  bytes: number;
-  bounds: { size: number[] } | null;
-}
-
-function Gallery() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const view = useRef<ReturnType<typeof mountGallery> | null>(null);
-  const [assets, setAssets] = useState<CatalogAsset[]>([]);
-  const [category, setCategory] = useState("characters");
-  const [query, setQuery] = useState("");
-  const [current, setCurrent] = useState<CatalogAsset | null>(null);
-  const [clips, setClips] = useState<string[]>([]);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    fetch("/catalog.json").then((response) => response.json()).then((payload: { assets: CatalogAsset[] }) => setAssets(payload.assets)).catch((reason: unknown) => setError(String(reason)));
-  }, []);
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    view.current = mountGallery(canvas);
-    return () => view.current?.dispose();
-  }, []);
-  const categories = useMemo(() => ["characters", "monsters", "dungeon", "weapons", "items", "skeleton-props", "animations"], []);
-  const visible = assets.filter((asset) => asset.category === category && asset.filename.toLowerCase().includes(query.toLowerCase()));
-  return (
-    <section className="grid h-full min-h-0 lg:grid-cols-[320px_1fr_280px]">
-      <div className="overflow-auto border-r border-white/10 p-3">
-        <div className="flex flex-wrap gap-1">
-          {categories.map((entry) => <button key={entry} className={`ur-tab text-xs ${category === entry ? "is-on" : ""}`} onClick={() => setCategory(entry)}>{entry}</button>)}
-        </div>
-        <input className="control mt-3 text-sm" placeholder="Filter filename" value={query} onChange={(event) => setQuery(event.target.value)} />
-        <ul className="mt-3 space-y-1">
-          {visible.map((asset) => (
-            <li key={asset.publicPath}>
-              <button className="w-full truncate text-left text-sm hover:text-gold" onClick={() => { setCurrent(asset); setError(""); view.current?.show(asset.publicPath).then(setClips).catch((reason: unknown) => setError(String(reason))); }}>{asset.filename}</button>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <div className="relative min-h-[480px]">
-        <canvas ref={canvasRef} className="view h-full w-full" />
-        <div className="absolute left-3 top-3 flex gap-1">
-          {(["front", "side", "back", "three-quarter"] as const).map((viewName) => (
-            <button key={viewName} className="ur-tab text-[11px] uppercase tracking-wider" onClick={() => view.current?.setView(viewName)}>{viewName}</button>
-          ))}
-        </div>
-        {error && <p className="absolute bottom-3 left-3 text-sm text-blood">{error}</p>}
-      </div>
-      <aside className="overflow-auto border-l border-white/10 p-3 text-sm">
-        {current ? (
-          <>
-            <div className="font-display text-xl text-gold">{current.filename}</div>
-            <p>Pack: {current.sourcePack}</p>
-            <p>Triangles: {current.triangles}</p>
-            <p>Meshes: {current.meshes} · Materials: {current.materials}</p>
-            <p>Skins: {current.skins.join(", ") || "none"}</p>
-            {current.bounds && <p>Size: {current.bounds.size.map((value) => value.toFixed(2)).join(" × ")}</p>}
-            <div className="mt-3 flex flex-col gap-1">
-              {clips.map((clip) => <button key={clip} className="text-left text-gold/90" onClick={() => view.current?.play(clip)}>{clip}</button>)}
-            </div>
-          </>
-        ) : <p>Choose a model. Drag to rotate, wheel to zoom.</p>}
-      </aside>
     </section>
   );
 }
