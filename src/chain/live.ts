@@ -34,8 +34,13 @@ export function appUsesChain() {
 }
 
 export async function keeper() {
-  const response = await fetch("/api/near");
-  return response.json() as Promise<{ source: "LIVE"; accounts: string[]; keeper: string | null }>;
+  try {
+    const response = await fetch("/api/near");
+    if (!response.ok) return { source: "LIVE" as const, accounts: [] as string[], keeper: null };
+    return await response.json() as { source: "LIVE"; accounts: string[]; keeper: string | null };
+  } catch {
+    return { source: "LIVE" as const, accounts: [], keeper: null };
+  }
 }
 
 export async function transact(input: {
@@ -45,19 +50,23 @@ export async function transact(input: {
   account?: string;
   deposit?: string;
 }): Promise<TxResult> {
-  const response = await fetch("/api/near", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      account: input.account ?? "neocrafts.testnet",
-      contract: input.contract ?? GAME_CONTRACT,
-      method: input.method,
-      args: input.args ?? {},
-      deposit: input.deposit,
-    }),
-  });
-  const body = await response.json() as TxResult;
-  return { ...body, source: "LIVE" };
+  try {
+    const response = await fetch("/api/near", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        account: input.account ?? "neocrafts.testnet",
+        contract: input.contract ?? GAME_CONTRACT,
+        method: input.method,
+        args: input.args ?? {},
+        deposit: input.deposit,
+      }),
+    });
+    const body = await response.json() as TxResult;
+    return { ...body, source: "LIVE", ok: response.ok && body.ok !== false };
+  } catch {
+    return { ok: false, source: "LIVE", error: "No signing key on this host." };
+  }
 }
 
 export async function gameStatus() {

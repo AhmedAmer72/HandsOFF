@@ -2,7 +2,7 @@
 
 5 November 2026 (Africa/Cairo)
 
-- Audited an empty HandsOFF repository and the four official KayKit pages.
+- Audited an empty repository and the four official KayKit pages.
 - Confirmed each free pack's own CC0 `License.txt`. Did not download paid EXTRA or SOURCE uploads.
 - Dungeon Remastered's official link redirects to Dungeon Pack 1.1. The changelog on that page records the rebrand. Downloaded Free 1.1.
 - Downloaded Character Animations 1.1 because the Adventurers page links to it for clips. Its license was read separately and is also CC0.

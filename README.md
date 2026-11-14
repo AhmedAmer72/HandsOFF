@@ -1,6 +1,6 @@
 # UNDERREALM
 
-A local, blockchain-free 3D dungeon built from the free KayKit packs.
+A 3D dungeon on NEAR testnet, built from the free KayKit packs.
 
 ```bash
 npm install
@@ -9,7 +9,11 @@ npm run dev
 npm run build
 ```
 
-Open the dev server and choose Enter Dungeon. `npm test` runs the rules, raid, market, and mock-ledger checks. `npm run build` typechecks and writes `dist/`.
+Open the dev server and choose Get Started. `npm test` runs the rules, raid, market, and mock-ledger checks. `npm run build` typechecks and writes `dist/`.
+
+## Deploy
+
+Vercel builds with `npm run build` and serves `dist/`. Import this repository and leave the framework on Vite. The hosted site reads `https://rpc.testnet.near.org`. It does not ship a signing key. Connect Wallet reports that no key is on the host, and a signed call fails instead of succeeding on its own. Signing stays on a machine whose near-cli keychain holds `neocrafts.testnet` or `buyer.neocrafts.testnet`.
 
 `BLOCKCHAIN_MODE` defaults to `testnet`. The page allows `https://rpc.testnet.near.org` and blocks mainnet, Intents, OutLayer, and NEAR AI hosts. Set `VITE_CHAIN_MODE=mock` only for a local ledger. The dev server signs as `neocrafts.testnet` through `/api/near` when that key is in the near-cli keychain. The key is not shipped in the page.
 
