@@ -1,4 +1,5 @@
 import react from "@vitejs/plugin-react";
+import { nearDevSigner } from "./scripts/near-dev-signer";
 import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type Plugin } from "vite";
@@ -146,7 +147,7 @@ function hallsApi(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), serveRuntime(), hallsApi()],
+  plugins: [react(), serveRuntime(), hallsApi(), nearDevSigner()],
   server: {
     host: "0.0.0.0",
     port: 5173,

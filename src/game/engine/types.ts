@@ -161,4 +161,7 @@ export interface SaveData {
   dungeonName?: string;
   dungeonDescription?: string;
   dungeonPublished?: boolean;
+  /** Offer id returned by game.neocrafts.testnet. */
+  chainOfferId?: string;
+  chainHero?: HeroId;
 }

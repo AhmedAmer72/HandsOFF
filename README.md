@@ -1,6 +1,6 @@
 # UNDERREALM
 
-A local, blockchain-free 3D dungeon built from the free KayKit packs.
+A 3D dungeon on NEAR testnet, built from the free KayKit packs.
 
 ```bash
 npm install
@@ -9,9 +9,17 @@ npm run dev
 npm run build
 ```
 
-Open the dev server and choose Enter Dungeon. `npm test` runs the rules, raid, market, and mock-ledger checks. `npm run build` typechecks and writes `dist/`.
+Open the dev server and choose Get Started. `npm test` runs the rules, raid, market, and mock-ledger checks. `npm run build` typechecks and writes `dist/`.
 
-`BLOCKCHAIN_MODE` is `mock` in `src/blockchain/guard.ts`. The page blocks fetches to NEAR hosts. No wallet is connected and no funds leave the machine.
+## Deploy
+
+Vercel builds with `npm run build` and serves `dist/`. Import this repository and leave the framework on Vite. The hosted site reads `https://rpc.testnet.near.org`. It does not ship a signing key. Connect Wallet reports that no key is on the host, and a signed call fails instead of succeeding on its own. Signing stays on a machine whose near-cli keychain holds `neocrafts.testnet` or `buyer.neocrafts.testnet`.
+
+`BLOCKCHAIN_MODE` defaults to `testnet`. The page allows `https://rpc.testnet.near.org` and blocks mainnet, Intents, OutLayer, and NEAR AI hosts. Set `VITE_CHAIN_MODE=mock` only for a local ledger. The dev server signs as `neocrafts.testnet` through `/api/near` when that key is in the near-cli keychain. The key is not shipped in the page.
+
+In-raid actions are zero-deposit game-contract calls. Direct NEP-245 transfers need 1 yoctoNEAR and a full sign-in; they only happen outside raids. A wallet prompt during a raid is a bug — report it with the raid id.
+
+The testnet contracts are `game.neocrafts.testnet`, `deeds.neocrafts.testnet`, and `ashgate.deeds.neocrafts.testnet`. State-changing calls are signed by the player account with `near-cli`. NEP-366 delegation is not the path this build submits: `relayer.neocrafts.testnet` cannot call `record_actions`. `npm run verify:mainnet` fails because mainnet was not deployed. Proofs are in `docs/TESTNET_PROOFS.md`.
 
 What is finished, what is not, and the last measurements are in `docs/UNDERREALM_FINAL_ACCEPTANCE_REPORT.md`. Asset provenance and licenses are in `docs/`.
 

@@ -1,0 +1,13 @@
+[package]
+name = "underrealm-engine"
+version = "0.1.0"
+edition = "2021"
+description = "Canonical settlement record shared by the TypeScript raid and the game contract."
+
+[dependencies]
+sha2 = "0.10"
+hex = "0.4"
+
+[[bin]]
+name = "settlement-hash"
+path = "src/bin/hash.rs"

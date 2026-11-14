@@ -24,9 +24,9 @@ The website opens on a landing page. Get Started enters My Dungeon as a guest. I
 
 ## Capabilities and Constraints
 
-Play stays on this device. `BLOCKCHAIN_MODE` is `mock`. No wallet provider is configured, so Connect Wallet can only cancel or fail. The world map lists halls published in this browser. Economy values in `rules/economy.ts` stay as written. Recipes stay spike, pit, boulder, potion, armor, and boots. Mira, Orrin, and Tallow are the only merchants.
+Permits, settlement, deeds, and merchant NEAR actions run on NEAR testnet. Play gold and Cinder stay in the hall. The dev server signs with the near-cli keychain. No wallet prompt is part of the raid walk. The world map lists halls published in this browser. Economy values in `rules/economy.ts` stay as written. Recipes stay spike, pit, boulder, potion, armor, and boots. Mira, Orrin, and Tallow are the only merchants.
 
-A live network, a real sign-in, and settlement proofs are not on this build.
+NEAR AI, OutLayer, Intents, NEAR Auth, and the DAO are not connected. Rumours are not minted until a verifier key is pinned.
 
 ## Brand Commitments
 

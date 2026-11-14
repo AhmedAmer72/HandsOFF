@@ -1,5 +1,10 @@
 node_modules
 dist
+.vercel
+.env
+.env.*
+contracts/target
+contracts/probe
 .DS_Store
 *.log
 .vite

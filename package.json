@@ -10,7 +10,12 @@
     "catalog": "python3 tools/stage_assets.py",
     "verify:assets": "node tools/verify-catalog.mjs",
     "test": "vitest run",
+    "verify": "vitest run && npm run verify:contracts",
     "verify:economy": "vitest run src/game/rules/money.test.ts scripts/economy-sim.test.ts",
+    "verify:contracts": "cargo test --manifest-path contracts/Cargo.toml -p underrealm-core -p underrealm-engine -p underrealm-game -p underrealm-deeds -p underrealm-deed-controller",
+    "verify:replay": "node scripts/verify-replay.mjs",
+    "verify:testnet": "node scripts/verify-testnet.mjs",
+    "verify:mainnet": "node scripts/verify-mainnet.mjs",
     "mock:seed": "vitest run src/blockchain/MockChain.test.ts",
     "mock:reset": "vitest run src/blockchain/MockChain.test.ts"
   },

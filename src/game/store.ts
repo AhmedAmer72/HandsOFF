@@ -12,6 +12,7 @@ import { createSave, restock } from "./engine/newGame";
 import { outcomeHash, simulateRaid } from "./engine/raid";
 import type { PlacedTrap, RaidReport, SaveData } from "./engine/types";
 import { clearSave, readSave, writeSave } from "./persist";
+import { appUsesChain, gameStatus, gameView, settlePublishedRaid, transact } from "../chain/live";
 import { beginActivity, consumeRecord, counterRecord, endActivity, expireRecord, fundRecord, getActivity, loadRegistry, offerExpired, offersOf, pushHalls, readRegistry, refuseRecord, settleRecord, unpublishHall, upsertHall, writeRegistry } from "./world/registry";
 export interface VisualStep {
   type: string;
@@ -327,6 +328,17 @@ export function reviewOffers(now = Date.now()) {
 }
 
 export async function fundRaidOffer(dungeonId = hallIdOf(state)) {
+  if (appUsesChain()) {
+    if (state.chainOfferId) {
+      const open = await gameView<{ state: number }>("view_offer", { offer_id: state.chainOfferId });
+      if (open.value && open.value.state < 2) return { ok: false, reason: "An offer is already open on game.neocrafts.testnet. Accept it or let it expire. Nothing more was taken." };
+    }
+    const tx = await transact({ method: "fund_offer" });
+    if (!tx.ok || typeof tx.value !== "string") return { ok: false, reason: tx.error ?? "game.neocrafts.testnet did not open an offer." };
+    state = { ...state, chainOfferId: tx.value, chainHero: undefined, priceNote: `Offer ${tx.value} funded with 0.01 NEAR on testnet.` };
+    emit();
+    return { ok: true, reason: `${state.priceNote} ${tx.explorer ?? ""}`.trim() };
+  }
   reviewOffers();
   if ((state.near ?? 0) + 1e-9 < PERMIT.price) return { ok: false, reason: "The mock purse does not hold 0.01. Nothing was taken." };
   const slots = dungeonId === hallIdOf(state) ? (state.raidsCleared ?? 0) : null;
@@ -346,6 +358,18 @@ export async function fundRaidOffer(dungeonId = hallIdOf(state)) {
 }
 
 export async function counterRaidOffer(heroId: HeroId) {
+  if (appUsesChain()) {
+    const offerId = state.chainOfferId;
+    if (!offerId) return { ok: false, reason: "Fund the 0.01 NEAR offer on game.neocrafts.testnet before a counter." };
+    const trace = evaluateHero(state, state.heroes[heroId]);
+    if (!trace.accept || !trace.counterShift) return { ok: false, reason: `${heroId} does not counter this offer.` };
+    const shift = Math.round(trace.counterShift * 10_000);
+    const placed = await transact({ method: "counter_offer", args: { offer_id: offerId, hero_id: heroId, shift_bps: shift, decision_id: `counter-${offerId}-${heroId}-${Date.now()}` } });
+    if (!placed.ok || placed.value !== "ok") return { ok: false, reason: typeof placed.value === "string" ? placed.value : placed.error ?? "The contract rejected the counter." };
+    state = { ...state, chainHero: heroId, priceNote: `${heroId} countered ${offerId} on testnet.` };
+    emit();
+    return { ok: true, reason: `${state.priceNote} ${placed.explorer ?? ""}`.trim() };
+  }
   const offer = offersOf(readRegistry()).find((entry) => entry.dungeonId === hallIdOf(state) && entry.status === "OPEN");
   if (!offer) return { ok: false, reason: "There is no open offer on your hall." };
   const trace = evaluateHero(state, state.heroes[heroId]);
@@ -370,6 +394,26 @@ export async function refuseRaidOffer() {
 }
 
 export async function acceptRaidOffer() {
+  if (appUsesChain()) {
+    const offerId = state.chainOfferId;
+    if (!offerId) return { ok: false, reason: "Fund the 0.01 NEAR offer on game.neocrafts.testnet first." };
+    const hero = chooseRaider(state);
+    if (!hero.accept) return { ok: false, reason: "No hero accepted the offer." };
+    const live = await gameView<{ hero: string | null }>("view_offer", { offer_id: offerId });
+    if (!live.value) return { ok: false, reason: live.error ?? "The offer is not on the contract." };
+    if (!live.value.hero) {
+      const shift = Math.round((hero.counterShift ?? 0) * 10_000);
+      const placed = shift > 0
+        ? await transact({ method: "counter_offer", args: { offer_id: offerId, hero_id: hero.heroId, shift_bps: shift, decision_id: `counter-${offerId}-${hero.heroId}` } })
+        : await transact({ method: "assign_hero", args: { offer_id: offerId, hero_id: hero.heroId } });
+      if (!placed.ok || (shift > 0 && placed.value !== "ok")) return { ok: false, reason: typeof placed.value === "string" && placed.value !== "ok" ? placed.value : placed.error ?? "The hero was not assigned." };
+    }
+    const accepted = await transact({ method: "accept_offer", args: { offer_id: offerId } });
+    if (!accepted.ok) return { ok: false, reason: accepted.error ?? "The contract did not accept the offer." };
+    state = { ...state, chainHero: hero.heroId, priceNote: `${hero.heroId} is assigned on ${offerId}.` };
+    emit();
+    return { ok: true, reason: `${state.priceNote} ${accepted.explorer ?? ""}`.trim() };
+  }
   const offer = offersOf(readRegistry()).find((entry) => entry.dungeonId === hallIdOf(state) && (entry.status === "OPEN" || entry.status === "COUNTER_PENDING"));
   if (!offer) return { ok: false, reason: "Only the owner can accept an offer on this hall." };
   const result = settleRecord(readRegistry(), offer.id);
@@ -386,16 +430,20 @@ export function startRaid() {
   if (state.dungeonClosed) return { ok: false, reason: "The hall is closed." };
   if (state.phase !== "prep" && state.phase !== "report") return { ok: false, reason: "The hall is not ready for a raid." };
   reviewOffers();
-  const permit = offersOf(readRegistry()).find((offer) => offer.dungeonId === hallIdOf(state) && offer.status === "SETTLED" && !offer.consumed);
-  if (!permit) return { ok: false, reason: "No settled offer. Fund one on the contract board. Nothing started." };
-  const decisionPreview = chooseRaider(state);
+  const onChain = appUsesChain();
+  const permit = onChain ? null : offersOf(readRegistry()).find((offer) => offer.dungeonId === hallIdOf(state) && offer.status === "SETTLED" && !offer.consumed);
+  if (!onChain && !permit) return { ok: false, reason: "No settled offer. Fund one on the contract board. Nothing started." };
+  if (onChain && (!state.chainOfferId || !state.chainHero)) return { ok: false, reason: "Accept the testnet offer before the gate opens." };
+  const decisionPreview = onChain && state.chainHero ? evaluateHero(state, state.heroes[state.chainHero]) : chooseRaider(state);
   if (!decisionPreview.accept) return { ok: false, reason: "No hero accepted the offer. The raid did not start." };
-  const consumed = consumeRecord(readRegistry(), permit.id);
-  if (!consumed.ok) return { ok: false, reason: consumed.reason };
-  writeRegistry(consumed.file);
-  void pushHalls({ action: "consume", offerId: permit.id });
+  if (permit) {
+    const consumed = consumeRecord(readRegistry(), permit.id);
+    if (!consumed.ok) return { ok: false, reason: consumed.reason };
+    writeRegistry(consumed.file);
+    void pushHalls({ action: "consume", offerId: permit.id });
+  }
   let save: SaveData = state;
-  const decision = chooseRaider(save);
+  const decision = onChain && state.chainHero ? evaluateHero(save, save.heroes[state.chainHero]) : chooseRaider(save);
   if (decision.purchase) save = applyPurchase(save, decision.heroId, decision.purchase);
   const possessGuard = state.possessArmed && save.day >= RAID.possess.fromWave;
   const simulated = simulateRaid({
@@ -414,7 +462,7 @@ export function startRaid() {
     ...save.heroes,
     [decision.heroId]: {
       ...simulated.hero,
-      near: (simulated.hero.near ?? 0) + PERMIT.price * permit.split.agents,
+      near: (simulated.hero.near ?? 0) + (permit ? PERMIT.price * permit.split.agents : 0),
     },
   };
   const boots = save.heroes[decision.heroId].equipment.includes("boots") ? 1.3 : 1;
@@ -486,6 +534,148 @@ export function startRaid() {
   }
   emit();
   return { ok: true, reason: decision.reason };
+}
+
+export async function publishRaid() {
+  if (!appUsesChain()) return { ok: true, reason: "Recorded on this device." };
+  const report = state.pending;
+  const offerId = state.chainOfferId;
+  const hero = state.chainHero;
+  if (!report || !offerId || !hero) return { ok: false, reason: "There is no accepted testnet offer to settle." };
+  const kills = report.events.filter((event) => event.type === "death").length;
+  const goldDelta = Math.trunc(report.goldEarned - report.goldLost);
+  if (kills > 20 || goldDelta < -1200 || goldDelta > 1200) {
+    return { ok: false, reason: "This raid is outside the contract bounds, so it was not sent." };
+  }
+  const vault = report.events.some((event) => event.type === "vault");
+  const salvage = !report.survived
+    ? hero === "brann" ? { iron: SALVAGE.brute.iron, bone: 0, ash: 0 } : hero === "ivo" ? { iron: 0, bone: 0, ash: SALVAGE.mage.ash } : { iron: 0, bone: SALVAGE.thief.bone, ash: 0 }
+    : vault ? { iron: SALVAGE.waveClear.iron, bone: 0, ash: 0 } : { iron: 0, bone: 0, ash: 0 };
+  const log = report.events.map((event) => `${event.tick}|${event.type}|${event.ix ?? ""}|${event.iz ?? ""}|${event.text}`).join("\n");
+  const settled = await settlePublishedRaid({
+    offerId,
+    hero,
+    raidId: `r${state.day}x${Date.now()}`,
+    survived: report.survived,
+    goldDelta,
+    kills,
+    iron: salvage.iron,
+    bone: salvage.bone,
+    ash: salvage.ash,
+    log,
+  });
+  if (!settled.ok) return { ok: false, reason: settled.error ?? "Settlement failed on testnet." };
+  state = { ...state, chainOfferId: undefined, chainHero: undefined, ledger: [{ id: `chain-${settled.txHash}`, day: state.day, text: `Settled on game.neocrafts.testnet. ${settled.explorer ?? settled.txHash}` }, ...state.ledger] };
+  emit();
+  return { ok: true, reason: `Settled on testnet. ${settled.explorer ?? settled.txHash ?? ""}`.trim() };
+}
+
+function chainToken(itemId: string) {
+  if (itemId.includes(":")) return itemId;
+  if (itemId === "iron" || itemId === "ash" || itemId === "bone") return `play:resource:${itemId}`;
+  if (itemId === "potion" || itemId === "armor" || itemId === "boots") return `play:gear:${itemId}`;
+  if (itemId === "spike" || itemId === "pit" || itemId === "boulder") return `play:trap:${itemId}`;
+  return itemId;
+}
+
+async function ensureChainBalance(token: string, qty: number) {
+  const bal = await gameView<string>("mt_balance_of", { account_id: "neocrafts.testnet", token_id: token });
+  if (BigInt(bal.value ?? "0") >= BigInt(qty)) return { ok: true as const };
+  const kind = token.startsWith("play:resource:") ? token.slice("play:resource:".length) : "";
+  const held = kind ? (state.inventory[kind] ?? 0) : 0;
+  if (held < qty) return { ok: false as const, error: `game.neocrafts.testnet holds ${bal.value ?? "0"} ${token}. The hall does not have ${qty} to import.` };
+  return transact({ method: "merge_guest", args: { guest_id: `keeper-${state.ownerId || "neocrafts"}-${token}`, nonce: "boot", items: [[token, String(qty)]] } });
+}
+
+export async function supplyOnChain(qty: number, kind: "iron" | "ash" | "bone" = "iron") {
+  if (!appUsesChain()) return supplyMaterial(kind, qty);
+  const token = `play:resource:${kind}`;
+  const ready = await ensureChainBalance(token, qty);
+  if (!ready.ok) return { ok: false, reason: ready.error ?? "No salvage was supplied." };
+  const supplied = await transact({ method: "supply", args: { merchant_id: "mira", token_id: token, amount: String(qty), session_nonce: 0 } });
+  if (!supplied.ok) return { ok: false, reason: supplied.error ?? "Mira did not take the salvage on testnet." };
+  if ((state.inventory[kind] ?? 0) >= qty) supplyMaterial(kind, qty);
+  return { ok: true, reason: `Mira took ${qty} ${kind} on testnet. ${supplied.explorer ?? ""}`.trim() };
+}
+
+export async function craftOnChain(kind: "spike" | "pit" | "boulder" | "potion" | "armor" | "boots") {
+  if (!appUsesChain()) return craftTrap(kind);
+  const output = chainToken(kind) as keyof typeof RECIPES;
+  for (const [material, qty] of recipeInputs(output)) {
+    const ready = await ensureChainBalance(chainToken(material), qty);
+    if (!ready.ok) return { ok: false, reason: ready.error ?? `Missing ${material} on testnet.` };
+  }
+  const tx = await transact({ method: "craft", args: { output, session_nonce: 0 } });
+  if (!tx.ok) return { ok: false, reason: tx.error ?? "Craft was rejected on testnet." };
+  const local = craftTrap(kind);
+  return { ok: true, reason: `Crafted ${output} on testnet. ${tx.explorer ?? ""} ${local.ok ? "" : "The hall pack was short, so only the contract balance changed."}`.trim() };
+}
+
+export async function buyStallOnChain(merchantId: "mira" | "orrin" | "tallow", itemId: string) {
+  if (!appUsesChain()) return buyFromMerchant(merchantId, itemId);
+  const token = chainToken(itemId);
+  if (!token.startsWith("nb:") && !token.startsWith("rumour:")) {
+    const local = buyFromMerchant(merchantId, itemId);
+    return { ok: local.ok, reason: local.ok ? `${local.reason} Paid in hall gold. Play gold is not a NEAR transfer.` : local.reason };
+  }
+  const [status, agent, quote] = await Promise.all([
+    gameStatus(),
+    gameView<{ nonce: number; near: string }>("view_agent", { agent_id: "kara" }),
+    gameView<{ price?: string; error?: string }>("quote", { token_id: token }),
+  ]);
+  const price = quote.value?.price;
+  if (!status.value?.rules_hash || agent.value == null || !price) return { ok: false, reason: quote.value?.error ?? quote.error ?? "The contract did not quote that good." };
+  const tx = await transact({
+    method: "execute_agent_decision",
+    args: {
+      agent_id: "kara",
+      decision_id: `gear-${token}-${Date.now()}`,
+      nonce: agent.value.nonce,
+      method: "gear_purchase",
+      receiver: merchantId,
+      token_id: token,
+      amount: price,
+      currency: "NEAR",
+      expires_at_ms: Date.now() + 120_000,
+      rules_hash: status.value.rules_hash,
+    },
+  });
+  if (!tx.ok || tx.value !== "ok") return { ok: false, reason: typeof tx.value === "string" ? tx.value : tx.error ?? "Kara did not buy that on testnet." };
+  return { ok: true, reason: `Kara bought ${token} on testnet for ${price} yoctoNEAR. ${tx.explorer ?? ""}`.trim() };
+}
+
+export async function listOnChain(itemId: string, price: number, currency: Currency = "PLAY_GOLD") {
+  if (!appUsesChain()) return listItem(itemId, price, currency);
+  const token = chainToken(itemId);
+  const priceArg = currency === "NEAR" ? BigInt(Math.round(price * 1e6)) * 10n ** 18n : BigInt(Math.round(price * 1_000_000));
+  const tx = await transact({ method: "list", args: { token_id: token, amount: "1", price: priceArg.toString(), currency, session_nonce: 0 } });
+  if (!tx.ok || typeof tx.value !== "string") return { ok: false, reason: tx.error ?? "The contract did not open a listing." };
+  return { ok: true, reason: `Listed ${tx.value} on testnet. ${tx.explorer ?? ""}`.trim(), id: tx.value };
+}
+
+export async function buyListingOnChain(id: string, deposit = "0 NEAR") {
+  if (!appUsesChain()) return buyListing(id);
+  const tx = await transact({ method: "buy_listing", args: { listing_id: id }, deposit });
+  if (!tx.ok) return { ok: false, reason: tx.error ?? "The purchase was rejected on testnet." };
+  return { ok: true, reason: `Bought ${id} on testnet. ${tx.explorer ?? ""}`.trim() };
+}
+
+export async function cancelListingOnChain(id: string) {
+  if (!appUsesChain()) return cancelListing(id);
+  const tx = await transact({ method: "cancel_listing", args: { listing_id: id } });
+  if (!tx.ok) return { ok: false, reason: tx.error ?? "The contract did not cancel that listing." };
+  return { ok: true, reason: `Cancelled ${id} on testnet. ${tx.explorer ?? ""}`.trim() };
+}
+
+export async function buyBackOnChain(id: string) {
+  if (!appUsesChain()) return buyBackRumour(id);
+  const status = await gameStatus();
+  if (status.value?.ai_verification === "DISABLED") {
+    return { ok: false, reason: "Rumours are not minted. NEAR AI verification is disabled on the game contract, so there is no page to buy back." };
+  }
+  const tx = await transact({ method: "buy_back", args: { token_id: id, session_nonce: 0 } });
+  if (!tx.ok) return { ok: false, reason: tx.error ?? "Buy-back was rejected on testnet." };
+  return { ok: true, reason: `Bought back on testnet. ${tx.explorer ?? ""}`.trim() };
 }
 
 export function markDiary() {

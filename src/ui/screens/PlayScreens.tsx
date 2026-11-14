@@ -1,31 +1,46 @@
 import { useEffect, useState } from "react";
-import { canonicalChain } from "../../blockchain/adapters";
-import { MockChain } from "../../blockchain/MockChain";
 import { RAID } from "../../../rules/economy";
+import { DEEDS_CONTRACT, GAME_CONTRACT, TREASURY_CONTRACT } from "../../chain/mode";
+import { accountNear, deedToken, formatMicro, formatYocto, gameStatus, gameView, keeper, transact } from "../../chain/live";
 import { HERO_PROFILES } from "../../game/config/heroProfiles";
 import { dungeonTier, nextDay, setScreen, useGame } from "../../game/store";
-import { shopState, stockPrice } from "../../game/rules/money";
+import { playerLine } from "../playerLine";
 import { Button, Chip, Panel, Receipt, Title } from "../kit";
 
-function book() {
-  return canonicalChain(() => {
-    const chain = new MockChain();
-    chain.seedStandard();
-    return chain;
-  });
+function useLive<T>(load: () => Promise<T>, refresh = 0) {
+  const [value, setValue] = useState<T | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let gone = false;
+    void load().then((next) => {
+      if (!gone) setValue(next);
+    }).catch((reason: unknown) => {
+      if (!gone) setError(reason instanceof Error ? reason.message : "That call failed.");
+    });
+    return () => {
+      gone = true;
+    };
+    // The loader is read once per refresh. A new function identity must not refetch in a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refresh]);
+  return { value, error };
 }
 
 export function HomeScreen() {
   const game = useGame();
-  const treasury = book().account("dungeon").gold;
   const tier = dungeonTier(game.raidsCleared ?? 0);
+  const live = useLive(async () => {
+    const status = await gameStatus();
+    const gold = await gameView<string>("mt_balance_of", { account_id: "neocrafts.testnet", token_id: "__gold" });
+    return { status: status.value, gold: gold.value ?? "0", error: status.error };
+  });
   return (
     <section className="mx-auto flex max-w-5xl flex-col gap-4 p-4">
       <Title>Ashgate</Title>
-      <p className="text-sm text-parchment/75">{game.continueReady ? "The hall remembers this device." : "First watch. Nothing has been written yet."}</p>
+      <p className="text-sm text-parchment/75">Live on game.neocrafts.testnet. {live.error || live.value?.error || (live.value ? `Network ${live.value.status?.network ?? "testnet"}.` : "Reading the contract.")}</p>
       <div className="flex flex-wrap gap-2">
         <Chip hot={game.vault < RAID.vaultStart * 0.25}>Vault {game.vault}</Chip>
-        <Chip>Treasury {treasury.toFixed(0)}</Chip>
+        <Chip>Chain gold {live.value ? formatMicro(live.value.gold) : "…"}</Chip>
         <Chip>Tier {tier}</Chip>
         <Chip>{game.dungeonClosed ? "Closed — restock to reopen" : "Open"}</Chip>
       </div>
@@ -52,141 +67,96 @@ export function ReportScreen() {
         <p className="text-sm">Pages burned {burned}. Pages landed {landed}. Memory rating {report.facts.length ? `${burned}/${report.facts.length}` : "no page"}.</p>
         <p className="text-sm">Salvage in hand: iron {game.inventory.iron ?? 0}, ash {game.inventory.ash ?? 0}, bone {game.inventory.bone ?? 0}.</p>
         <p className="text-sm">Spike kills {game.trapKills?.spike ?? 0}. Tier {dungeonTier(game.raidsCleared ?? 0)}.</p>
-        <p className="mt-2 text-sm opacity-80">{report.decision.reason}</p>
+        <Why text={report.decision.reason} />
       </Receipt>
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => { if (game.phase === "report") nextDay(); else setScreen("dungeon"); }}>Continue</Button>
-        <Button tone="ghost" onClick={() => setScreen("dungeon")}>My Dungeon</Button>
-        <Button tone="ghost" onClick={() => setScreen("market")}>Market</Button>
-        <Button tone="ghost" onClick={() => setScreen("workshop")}>Workshop</Button>
-        <Button tone="ghost" onClick={() => setScreen("chronicle")}>Watch replay</Button>
+        <Button tone="ghost" onClick={() => setScreen("chronicle")}>Replay</Button>
       </div>
     </section>
   );
 }
 
-export function WeekScreen() {
-  const stocks = [100, 160, 220, 400, 40, 100];
-  const points = stocks.map((stock) => ({ stock, price: stockPrice("play:resource:iron", stock, stock >= 200 ? 1 : 8, stock >= 200 ? 14 : 2, 12).price }));
-  const closed = shopState(0.005, 0, 100, true);
-  const thin = shopState(0.015, 40, 100, true);
-  const open = shopState(0.02, 100, 100, true);
-  const max = Math.max(...points.map((point) => point.price));
+function Why({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
   return (
-    <section className="mx-auto flex max-w-4xl flex-col gap-4 p-4">
-      <p className="text-xs uppercase tracking-[0.2em] text-ember">Simulated</p>
-      <Title>A week of raids</Title>
-      <p className="text-sm text-parchment/75">Same stock curve as the hall. No one is paid. Iron floods, the price falls, the shop closes, then a restock reopens it.</p>
-      <Panel>
-        <p className="text-sm">Iron price against stock. Base 10, target 100, floor 5, ceiling 20.</p>
-        <div className="mt-4 flex h-40 items-end gap-2">
-          {points.map((point) => (
-            <div key={point.stock} className="flex flex-1 flex-col items-center gap-1">
-              <div className="w-full rounded-t-xl bg-gold" style={{ height: `${Math.max(12, (point.price / max) * 100)}%` }} />
-              <span className="text-[10px]">{point.price.toFixed(1)}</span>
-              <span className="text-[10px] text-parchment/60">s{point.stock}</span>
-            </div>
-          ))}
-        </div>
-      </Panel>
-      <div className="flex flex-wrap gap-2 text-sm">
-        <Chip>Flood stock 400 → {points[3].price.toFixed(2)}</Chip>
-        <Chip>Purse 0.005 and empty shelves → {closed}</Chip>
-        <Chip>Purse 0.015 → {thin}</Chip>
-        <Chip>Restocked 0.02 and full shelves → {open}</Chip>
-      </div>
-    </section>
+    <div className="mt-2">
+      <Button tone="ghost" onClick={() => setOpen((value) => !value)}>Why?</Button>
+      {open && <p className="mt-2 text-sm opacity-80">{text}</p>}
+    </div>
   );
 }
 
 export function DeedScreen() {
   const game = useGame();
-  const chain = book();
-  const [tick, setTick] = useState(0);
   const [note, setNote] = useState("");
-  const owner = chain.deed.owner;
-  const holder = owner === "player";
+  const [details, setDetails] = useState(false);
+  const [amount, setAmount] = useState("0.01");
+  const [nonce, setNonce] = useState(0);
+  const [signers, setSigners] = useState<string[]>([]);
+  const live = useLive(async () => {
+    const deed = await deedToken();
+    const treasury = await accountNear(TREASURY_CONTRACT);
+    const status = await gameStatus();
+    return { deed: deed.value, error: deed.error || status.error, treasury: treasury.liquid, status: status.value };
+  }, nonce);
+  useEffect(() => {
+    void keeper().then((body) => setSigners(body.accounts ?? [])).catch(() => setSigners([]));
+  }, [nonce]);
+  const owner = live.value?.deed?.owner_id ?? "";
+  const canSign = Boolean(owner) && signers.includes(owner);
+  const guild = live.value?.status?.guild_yocto;
+  const ops = live.value?.status?.ops_yocto;
+  const solvency = live.value?.status?.solvency_yocto;
   return (
-    <section className="mx-auto flex max-w-3xl flex-col gap-4 p-4" data-tick={tick}>
-      <p className="text-xs uppercase tracking-[0.2em] text-ember">Simulated</p>
-      <Title>{holder ? "Ashgate charter" : "Ashgate, public"}</Title>
+    <section className="mx-auto flex max-w-3xl flex-col gap-4 p-4" data-testid="ownership">
+      <Button tone="ghost" className="self-start" onClick={() => setScreen("settings")}>Settings</Button>
+      <Title>Ownership</Title>
       <Panel>
-        {holder ? (
-          <>
-            <p>You hold the charter. Treasury gold {chain.account("dungeon").gold.toFixed(0)}. Status {chain.deed.status}.</p>
-            <p className="mt-2 text-sm text-parchment/70">Earlier holders: {(chain.deed.previousOwners ?? []).join(", ") || "none"}.</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button onClick={() => { const result = chain.transferDeed("player", "mira", `ui-deed-${tick}`); setNote(result.receipt.reason); setTick((value) => value + 1); }}>Pass the charter to Mira</Button>
-              <Button tone="ghost" onClick={() => setScreen("takehome")}>Take it home</Button>
-            </div>
-          </>
-        ) : (
-          <p>The charter is held by {owner}. Tier {dungeonTier(game.raidsCleared ?? 0)}. The hall is {game.dungeonClosed ? "closed" : "open"}. Traffic this season: {game.raids.length} recorded raids.</p>
-        )}
-        {note && <p className="mt-3 text-sm text-gold">{note}</p>}
-      </Panel>
-    </section>
-  );
-}
-
-export function GuildScreen() {
-  const chain = book();
-  const [tick, setTick] = useState(0);
-  const [note, setNote] = useState("Simulated guild purse. Nothing leaves this device.");
-  return (
-    <section className="mx-auto flex max-w-3xl flex-col gap-4 p-4" data-tick={tick}>
-      <p className="text-xs uppercase tracking-[0.2em] text-ember">Simulated</p>
-      <Title>Guild board</Title>
-      <p className="text-sm text-parchment/75">{note}</p>
-      <Panel>
-        <p>Guild purse {chain.account("guild").near.toFixed(4)} on this device.</p>
-        {chain.bounties.length === 0 && <p className="mt-2 text-sm">No open tasks.</p>}
-        {chain.bounties.map((bounty) => <p key={bounty.id} className="mt-2 text-sm">{bounty.payee} · {bounty.amount} · {bounty.status}</p>)}
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button onClick={() => { const result = chain.proposeBounty("mira", 0.01, `ui-bounty-${tick}`); setNote(result.receipt.reason); setTick((value) => value + 1); }}>Post a restock task</Button>
-          <Button tone="ghost" disabled={!chain.bounties.some((bounty) => bounty.status === "PROPOSED")} onClick={() => {
-            const bounty = chain.bounties.find((entry) => entry.status === "PROPOSED");
-            if (!bounty) return;
-            const result = chain.approveBounty("guild", bounty.id, `ui-pay-${tick}`);
-            setNote(result.receipt.reason);
-            setTick((value) => value + 1);
-          }}>Pay the open task</Button>
-        </div>
-      </Panel>
-    </section>
-  );
-}
-
-const STEPS = ["In the hall", "Sent", "On the road", "Delivered"] as const;
-
-export function TakeHomeScreen() {
-  const chain = book();
-  const treasury = chain.account("dungeon").near;
-  const [amount, setAmount] = useState(0.01);
-  const [step, setStep] = useState(0);
-  const [status, setStatus] = useState<"idle" | "SUCCESS" | "FAILED">("idle");
-  const fee = amount * 0.02;
-  const tooMuch = amount > treasury + 1e-9;
-  useEffect(() => { setStatus("idle"); setStep(0); }, [amount]);
-  return (
-    <section className="mx-auto flex max-w-3xl flex-col gap-4 p-4">
-      <p className="text-xs uppercase tracking-[0.2em] text-ember">Simulated result</p>
-      <Title>Take it home</Title>
-      <Panel>
-        <p className="text-sm">Only the treasury can leave. Vault gold stays in the hall. Nothing is sent off this device.</p>
-        <p className="mt-2">Treasury on this device {treasury.toFixed(4)}.</p>
-        <label className="mt-3 block text-sm">Amount
-          <input className="control mt-1" type="number" min={0.001} step={0.001} value={amount} onChange={(event) => setAmount(Number(event.target.value))} />
+        <p>Owner {owner || "…"}</p>
+        <p className="mt-2">Treasury {live.value?.treasury ?? "…"}</p>
+        <p className="mt-2">Guild {guild ? formatYocto(guild) : "…"} · sending it is unavailable</p>
+        <p className="mt-2 text-sm">Hall {game.dungeonClosed ? "CLOSED" : "OPEN"} · Tier {dungeonTier(game.raidsCleared ?? 0)}</p>
+        <p className="mt-2 text-sm">Ops {ops ? formatYocto(ops) : "…"} · Solvency {solvency ? formatYocto(solvency) : "…"}</p>
+        {live.error && <p className="mt-2 text-sm text-blood">{playerLine(live.error)}</p>}
+        <label className="mt-4 block text-sm">Amount
+          <input className="control mt-1" value={amount} onChange={(event) => setAmount(event.target.value)} />
         </label>
-        <p className="mt-2 text-sm">Quoted fee {fee.toFixed(4)}. You would keep {(amount - fee).toFixed(4)}. This quote is simulated.</p>
-        <p className="mt-2 text-sm">Status: {status === "idle" ? STEPS[step] : status}.</p>
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button disabled={tooMuch || step >= STEPS.length - 1} onClick={() => setStep((value) => Math.min(STEPS.length - 1, value + 1))}>Advance</Button>
-          <Button tone="ember" disabled={tooMuch || step < STEPS.length - 1 || status !== "idle"} onClick={() => setStatus("SUCCESS")}>Mark delivered</Button>
-          <Button tone="ghost" onClick={() => setStatus("FAILED")}>Mark failed</Button>
+          <Button disabled={!canSign} onClick={() => {
+            const yocto = BigInt(Math.round(Number(amount) * 1e6)) * 10n ** 18n;
+            void transact({
+              contract: DEEDS_CONTRACT,
+              method: "withdraw_treasury",
+              account: owner,
+              args: { token_id: "deed:ashgate", amount: yocto.toString() },
+            }).then((result) => {
+              setNote(result.ok ? "Withdrawn." : result.error ?? "Withdraw failed.");
+              setNonce((value) => value + 1);
+            });
+          }}>Withdraw</Button>
         </div>
-        {tooMuch && <p className="mt-2 text-sm text-blood">That is more than the treasury.</p>}
-        {status !== "idle" && <p className="mt-2 text-sm text-gold">{status}. No funds moved.</p>}
+        {note && <p className="mt-3 text-sm text-gold" data-testid="ownership-note">{playerLine(note)}</p>}
+        <Button tone="ghost" className="mt-4" onClick={() => setDetails((value) => !value)}>Details</Button>
+        {details && (
+          <div className="mt-3 text-sm text-parchment/70">
+            <p>{GAME_CONTRACT}</p>
+            <p>{DEEDS_CONTRACT}</p>
+            <p>{TREASURY_CONTRACT}</p>
+            <p className="mt-2">deed:ashgate</p>
+            {canSign && owner === "neocrafts.testnet" && (
+              <Button className="mt-3" onClick={() => void transact({
+                contract: DEEDS_CONTRACT,
+                method: "nft_transfer",
+                account: owner,
+                args: { receiver_id: "buyer.neocrafts.testnet", token_id: "deed:ashgate", approval_id: null, memo: null },
+              }).then((result) => {
+                setNote(result.ok ? "The deed moved." : result.error ?? "Transfer failed.");
+                setNonce((value) => value + 1);
+              })}>Pass the deed</Button>
+            )}
+          </div>
+        )}
       </Panel>
     </section>
   );

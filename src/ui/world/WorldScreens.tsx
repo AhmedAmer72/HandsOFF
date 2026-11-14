@@ -6,6 +6,7 @@ import { ForgedFrame } from "../forge/frame";
 import { GameIcon } from "../pack/components";
 import { ui } from "../pack/urls";
 import { Button, Chip, Field, Panel, Status, Title } from "../kit";
+import { playerLine } from "../playerLine";
 
 const SORTS: { id: NonNullable<HallQuery["sort"]>; label: string }[] = [
   { id: "recent", label: "Recently active" },
@@ -66,7 +67,7 @@ export function WorldMap() {
             <h2 className="font-display text-5xl leading-none text-parchment">World Map</h2>
           </div>
           <p className="mt-3 max-w-[62ch] font-body text-base text-parchment/80">Discover dungeons across the Underrealm. Heroes raid them. You do not.</p>
-          <p className="mt-2 font-body text-sm text-parchment/70" data-testid="hall-count">{board.total} published {board.total === 1 ? "hall" : "halls"}. {liveRaids} live {liveRaids === 1 ? "raid" : "raids"}. Shared by browsers on this server. Not a mainnet.</p>
+          <p className="mt-2 font-body text-sm text-parchment/70" data-testid="hall-count">{board.total} {board.total === 1 ? "hall" : "halls"}. {liveRaids} live.</p>
         </div>
         <Button tone="ghost" onClick={() => setHallOpen((value) => !value)}>{hallOpen ? "Close your hall" : "Your hall"}</Button>
       </header>
@@ -113,11 +114,11 @@ export function WorldMap() {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block font-display text-2xl text-parchment">{hall.name}</span>
-                  <span className="mt-1 block font-body text-sm text-parchment/75">Owner {hall.displayName} · Settled raids {hall.raidCount} · Hero traffic {hall.heroTraffic}</span>
+                  <span className="mt-1 block font-body text-sm text-parchment/75">Owner {hall.displayName} · Settled {hall.raidCount}</span>
                 </span>
                 <span className="flex shrink-0 flex-col items-end gap-2">
-                  <Status tone={hall.state === "CLOSED" ? "danger" : "quiet"}>{hall.state === "CLOSED" ? "Closed" : "Open"}</Status>
-                  <Status tone={hall.activeRaidCount > 0 ? "live" : "quiet"}>{hall.activeRaidCount > 0 ? "Live raid" : "No live raid"}</Status>
+                  <Status tone={hall.state === "CLOSED" ? "danger" : "quiet"}>{hall.state === "CLOSED" ? "CLOSED" : "OPEN"}</Status>
+                  <Status tone={hall.activeRaidCount > 0 ? "live" : "quiet"}>{hall.activeRaidCount > 0 ? "Live raid" : "Quiet"}</Status>
                 </span>
               </button>
             </li>
@@ -128,7 +129,7 @@ export function WorldMap() {
           {!selected && <Panel variant="square" className="flex min-h-40 items-center justify-center text-center font-body text-sm text-parchment/70">Select a hall to read its public page.</Panel>}
         </div>
       </div>
-      {note && <p className="font-body text-sm text-gold">{note}</p>}
+      {note && <p className="font-body text-sm text-gold">{playerLine(note)}</p>}
       {hallOpen && (
         <Panel>
           <p className="font-display text-gold">{game.displayName}</p>
@@ -140,10 +141,10 @@ export function WorldMap() {
             <Button onClick={() => { const result = publishHall(hallName, blurb, shownName); setNote(result.reason); void pullHalls(); }}>Publish</Button>
             {game.dungeonPublished && <Button tone="ghost" onClick={() => { setNote(unpublishCurrent().reason); void pullHalls(); }}>Unpublish</Button>}
           </div>
-          <p className="mt-3 text-xs uppercase tracking-[0.16em] text-ember">Mock · this device only</p>
-          <Field label="Sit as another keeper"><input data-testid="keeper-id" className="control" value={keeperId} placeholder="keeper-b" onChange={(event) => setKeeperId(event.target.value)} /></Field>
+          <p className="mt-3 text-xs uppercase tracking-[0.16em] text-ember">This server</p>
+          <Field label="Another owner"><input data-testid="keeper-id" className="control" value={keeperId} placeholder="keeper-b" onChange={(event) => setKeeperId(event.target.value)} /></Field>
           <Field label="Their name"><input data-testid="keeper-name" className="control" value={keeperName} onChange={(event) => setKeeperName(event.target.value)} /></Field>
-          <Button tone="ghost" className="mt-2" onClick={() => setNote(switchKeeper(keeperId, keeperName || keeperId).reason)}>Switch keeper</Button>
+          <Button tone="ghost" className="mt-2" onClick={() => setNote(switchKeeper(keeperId, keeperName || keeperId).reason)}>Switch owner</Button>
         </Panel>
       )}
     </section>
@@ -163,17 +164,16 @@ function PublicCard({ hall, own, onClose, onNote }: { hall: PublicDungeon; own: 
         <div className="mt-2 flex flex-wrap gap-2">
           <Chip>Owner {hall.displayName}</Chip>
           <Chip>Tier {hall.tier}</Chip>
-          <Chip hot={hall.state === "CLOSED"}>{hall.state === "CLOSED" ? "Closed" : "Open"}</Chip>
-          <Chip>Raids settled {hall.raidCount}</Chip>
-          <Chip>Hero traffic {hall.heroTraffic}</Chip>
-          <Chip>{hall.activeRaidCount > 0 ? "Live raid" : "No live raid"}</Chip>
+          <Chip hot={hall.state === "CLOSED"}>{hall.state === "CLOSED" ? "CLOSED" : "OPEN"}</Chip>
+          <Chip>Settled {hall.raidCount}</Chip>
+          <Chip>{hall.activeRaidCount > 0 ? "Live raid" : "Quiet"}</Chip>
         </div>
         <p className="mt-2 text-sm">Mira {hall.merchantStates.mira} · Orrin {hall.merchantStates.orrin} · Tallow {hall.merchantStates.tallow}</p>
         {hall.lastRaidSummary && <p className="mt-2 text-sm text-parchment/80">{hall.lastRaidSummary}</p>}
         <p className="mt-2 text-xs text-parchment/60">Trap locations stay off this page.</p>
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button disabled={hall.activeRaidCount < 1} onClick={() => watchRaid(hall.dungeonId)}>{hall.activeRaidCount > 0 ? "Watch live raid" : "No live raid"}</Button>
-          <Button tone="ghost" onClick={() => void fundRaidOffer(hall.dungeonId).then((result) => onNote(result.reason))}>Fund raid offer</Button>
+          {hall.activeRaidCount > 0 && <Button onClick={() => watchRaid(hall.dungeonId)}>Watch</Button>}
+          <Button tone="ghost" onClick={() => void fundRaidOffer(hall.dungeonId).then((result) => onNote(result.reason))}>Fund</Button>
           {(own || mine) && <Button tone="ghost" onClick={() => setScreen("dungeon")}>Open your hall</Button>}
         </div>
       </Panel>
@@ -200,7 +200,7 @@ export function SpectatorScreen() {
     <section className="mx-auto flex max-w-3xl flex-col gap-4 p-4" data-testid="spectator">
       <p className="text-xs uppercase tracking-[0.16em] text-gold">Watching</p>
       <Title>Spectator</Title>
-      <p className="text-sm text-parchment/75">You can follow the hero. You cannot place traps, trigger them, burn a page, or spend this hall's gold.</p>
+      <p className="text-sm text-parchment/75">Watch only.</p>
       <div className="flex flex-wrap gap-2">
         {(["kara", "brann", "ivo"] as const).map((id) => (
           <Button key={id} tone={follow === id ? "gold" : "ghost"} onClick={() => setFollow(id)}>{HERO_PROFILES[id].name}</Button>

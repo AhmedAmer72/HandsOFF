@@ -1,10 +1,14 @@
-export const BLOCKCHAIN_MODE = "mock" as const;
+import { CHAIN_MODE } from "../chain/mode";
 
-const BLOCKED = /near\.org|nearprotocol|intents\.near|relayer\.near|outlayer/i;
+export const BLOCKCHAIN_MODE = CHAIN_MODE;
+
+const BLOCKED = /near\.org|nearprotocol|intents\.near|relayer\.near|outlayer|cloud-api\.near\.ai/i;
+const TESTNET_RPC = /^https:\/\/rpc\.testnet\.near\.org(\/|$)/i;
 
 export function assertLocalOnly(url: string) {
+  if (BLOCKCHAIN_MODE === "testnet" && TESTNET_RPC.test(url)) return;
   if (BLOCKED.test(url)) {
-    throw new Error("MOCK MODE: a live network call was blocked.");
+    throw new Error("That network call was blocked. This app talks to NEAR testnet only.");
   }
 }
 

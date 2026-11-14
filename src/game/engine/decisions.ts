@@ -68,7 +68,7 @@ function planPurchase(save: SaveData, hero: HeroState): DecisionTrace["purchase"
           itemId: rumour.id,
           price: quote.price,
           currency: "NEAR",
-          reason: `${profile.name} buys the rumour "${rumour.text}" for ${quote.price.toFixed(4)} mock NEAR. Freshness ${quote.inputs.freshness.toFixed(2)}, demand ${quote.inputs.demand}, richness ${quote.inputs.richness.toFixed(2)}, base ${quote.inputs.base}. Appetite ${profile.rumourAppetite}. Purse before ${near.toFixed(4)}, after ${(near - quote.price).toFixed(4)}.`,
+          reason: `${profile.name} buys the rumour "${rumour.text}" for ${quote.price.toFixed(4)} NEAR. Freshness ${quote.inputs.freshness.toFixed(2)}, demand ${quote.inputs.demand}, richness ${quote.inputs.richness.toFixed(2)}, base ${quote.inputs.base}. Appetite ${profile.rumourAppetite}. Purse before ${near.toFixed(4)}, after ${(near - quote.price).toFixed(4)}.`,
         };
       }
     }

@@ -10,9 +10,9 @@ function chain() {
 
 describe("mock chain", () => {
   it("rejects a live network host", () => {
-    expect(BLOCKCHAIN_MODE).toBe("mock");
-    expect(() => assertLocalOnly("https://rpc.mainnet.near.org")).toThrow(/MOCK MODE/);
-    expect(() => assertLocalOnly("https://rpc.testnet.near.org")).toThrow(/MOCK MODE/);
+    expect(BLOCKCHAIN_MODE).toBe("testnet");
+    expect(() => assertLocalOnly("https://rpc.mainnet.near.org")).toThrow(/blocked/);
+    expect(() => assertLocalOnly("https://rpc.testnet.near.org")).not.toThrow();
   });
 
   it("rejects selling play-only salvage for NEAR and mints no NEAR", () => {

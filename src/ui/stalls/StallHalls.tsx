@@ -1,19 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { GOODS, RECIPES, RAID } from "../../../rules/economy";
+import { formatMicro, gameView } from "../../chain/live";
 import { goodsRule } from "../../game/config/economyRules";
 import { RULES } from "../../game/config/gameRules";
 import { quotePrice } from "../../game/engine/pricing";
 import {
-  buyBackRumour,
-  buyFromMerchant,
-  buyListing,
+  buyBackOnChain,
+  buyStallOnChain,
   buyUpgrade,
-  cancelListing,
-  craftTrap,
+  cancelListingOnChain,
+  craftOnChain,
   forgeKit,
-  listItem,
+  listOnChain,
   setScreen,
-  supplyMaterial,
+  supplyOnChain,
   useGame,
 } from "../../game/store";
 import { MARKET_SPOTS, WORKSHOP_SPOTS, mountPlace } from "../../three/places";
@@ -21,6 +21,7 @@ import { Prompt } from "../forge/controls";
 import { GameIcon, ItemSlot } from "../pack/components";
 import { TRAP_ICON, ui } from "../pack/urls";
 import { Button, Panel, Title } from "../kit";
+import { playerLine } from "../playerLine";
 
 function itemLabel(id: string) {
   return goodsRule(id)?.name ?? id.split(":").pop() ?? id;
@@ -79,13 +80,13 @@ function StallHall({ place, title }: { place: "market" | "workshop"; title: stri
               </span>
               <Button tone="ghost" onClick={() => setOpen(null)}><GameIcon src={ui.icon.close} /> Close</Button>
             </div>
-            {note && <p className="mt-2 text-sm text-gold" data-testid="stall-note">{note}</p>}
+            {note && <p className="mt-2 text-sm text-gold" data-testid="stall-note">{playerLine(note)}</p>}
             {place === "market" && open !== "board" && open !== "exit" && (
               <MerchantSheet merchant={open as "mira" | "orrin" | "tallow"} onNote={setNote} />
             )}
             {place === "market" && open === "board" && <ListingSheet onNote={setNote} />}
             {place === "workshop" && <CraftSheet station={open} onNote={setNote} />}
-            <p className="mt-3 text-xs text-parchment/60">Gold {game.gold.toFixed(0)} · small purse {(game.near ?? 0).toFixed(4)}</p>
+            <p className="mt-3 text-xs text-parchment/60">Gold {Math.round(game.gold)}.</p>
           </Panel>
         </div>
       )}
@@ -96,13 +97,27 @@ function StallHall({ place, title }: { place: "market" | "workshop"; title: stri
 function MerchantSheet({ merchant, onNote }: { merchant: "mira" | "orrin" | "tallow"; onNote: (text: string) => void }) {
   const game = useGame();
   const stall = game.merchants[merchant];
+  const [why, setWhy] = useState<string | null>(null);
+  const [ironQuote, setIronQuote] = useState("");
+  useEffect(() => {
+    if (merchant !== "mira" || why !== "play:resource:iron") return;
+    let gone = false;
+    void gameView<{ price?: string }>("quote", { token_id: "play:resource:iron" }).then((quote) => {
+      if (!gone && quote.value?.price) setIronQuote(formatMicro(quote.value.price));
+    }).catch(() => {
+      if (!gone) setIronQuote("");
+    });
+    return () => {
+      gone = true;
+    };
+  }, [merchant, why]);
   return (
     <div className="mt-3 space-y-2 text-sm">
-      <p>{stall.role}. Purse {stall.gold.toFixed(0)} gold · small purse {(stall.near ?? 0).toFixed(4)}.</p>
+      <p>{stall.role}</p>
       {merchant === "mira" && (
         <div className="flex flex-wrap gap-2">
           {(["iron", "ash", "bone"] as const).map((kind) => (
-            <Button key={kind} tone="ghost" onClick={() => onNote(supplyMaterial(kind, 1).reason)}>Supply 1 {kind}</Button>
+            <Button key={kind} tone="ghost" onClick={() => void supplyOnChain(1, kind).then((result) => onNote(result.reason))}>Supply {kind}</Button>
           ))}
         </div>
       )}
@@ -110,17 +125,29 @@ function MerchantSheet({ merchant, onNote }: { merchant: "mira" | "orrin" | "tal
         {stall.stock.map((line) => {
           const quote = quotePrice(line.itemId, line.qty);
           const currency = line.itemId in GOODS ? GOODS[line.itemId as keyof typeof GOODS].currency : "PLAY_GOLD";
+          const price = quote.price < 1 ? quote.price.toFixed(4) : quote.price.toFixed(2);
           return (
-            <li key={line.itemId} className="flex flex-wrap items-center justify-between gap-2">
-              <span className="num">{itemLabel(line.itemId)} · {line.qty} · {quote.price < 1 ? quote.price.toFixed(4) : quote.price.toFixed(2)} {currency === "NEAR" ? "small purse" : "gold"}</span>
-              <Button onClick={() => onNote(buyFromMerchant(merchant, line.itemId).reason ?? "")}>Buy</Button>
+            <li key={line.itemId}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="num">{itemLabel(line.itemId)} · {line.qty} · {price} {currency === "NEAR" ? "NEAR" : "gold"}</span>
+                <span className="flex gap-2">
+                  <Button onClick={() => void buyStallOnChain(merchant, line.itemId).then((result) => onNote(result.reason))}>Buy</Button>
+                  <Button tone="ghost" onClick={() => setWhy(why === line.itemId ? null : line.itemId)}>Why?</Button>
+                </span>
+              </div>
+              {why === line.itemId && (
+                <p className="mt-1 text-parchment/70">
+                  {quote.reason}
+                  {line.itemId === "play:resource:iron" && ironQuote ? ` Iron ${ironQuote} gold.` : ""}
+                </p>
+              )}
             </li>
           );
         })}
         {stall.rumours.map((rumour) => (
           <li key={rumour.id} className="flex flex-wrap items-center justify-between gap-2">
             <span>{rumour.text}</span>
-            <Button onClick={() => onNote(buyBackRumour(rumour.id).reason)}>Buy back</Button>
+            <Button onClick={() => void buyBackOnChain(rumour.id).then((result) => onNote(result.reason))}>Buy back</Button>
           </li>
         ))}
       </ul>
@@ -132,25 +159,27 @@ function MerchantSheet({ merchant, onNote }: { merchant: "mira" | "orrin" | "tal
 function ListingSheet({ onNote }: { onNote: (text: string) => void }) {
   const game = useGame();
   const [price, setPrice] = useState(10);
-  const open = game.listings.filter((listing) => (listing.status ?? "LISTED") === "LISTED");
+  const [chainListings, setChainListings] = useState<{ id: string; label: string }[]>([]);
   return (
     <div className="mt-3 space-y-2 text-sm">
-      <p>A listing sits in escrow. A sale pays the seller 90, the guild 5, and ops 5.</p>
-      {open.map((listing) => (
+      <p>Ask in gold.</p>
+      {chainListings.map((listing) => (
         <div key={listing.id} className="flex flex-wrap items-center justify-between gap-2">
-          <span>{itemLabel(listing.itemId)} · {listing.price} {listing.currency ?? "PLAY_GOLD"}</span>
-          {listing.seller !== "player" && <Button onClick={() => onNote(buyListing(listing.id).reason ?? "")}>Buy</Button>}
-          {listing.seller === "player" && <Button tone="ghost" onClick={() => onNote(cancelListing(listing.id).reason ?? "")}>Cancel</Button>}
+          <span>{listing.label}</span>
+          <Button tone="ghost" onClick={() => void cancelListingOnChain(listing.id).then((result) => onNote(result.reason))}>Cancel</Button>
         </div>
       ))}
-      {open.length === 0 && <p>No listings.</p>}
+      {chainListings.length === 0 && <p>Nothing listed.</p>}
       <label className="block">Gold ask
         <input className="control ml-2 w-24" type="number" min={1} value={price} onChange={(event) => setPrice(Number(event.target.value))} />
       </label>
       {Object.entries(game.inventory).filter(([, qty]) => qty > 0).map(([id, qty]) => (
         <div key={id} className="flex flex-wrap items-center justify-between gap-2">
           <span className="flex items-center gap-2"><ItemSlot><span className="num text-xs">{qty}</span></ItemSlot>{itemLabel(id)} × {qty}</span>
-          <Button tone="ghost" onClick={() => onNote(listItem(id, price, "PLAY_GOLD").reason ?? "")}>List</Button>
+          <Button tone="ghost" onClick={() => void listOnChain(id, price, "PLAY_GOLD").then((result) => {
+            onNote(result.reason);
+            if (result.ok && "id" in result && result.id) setChainListings((rows) => [...rows, { id: result.id, label: `${itemLabel(id)} · ${price} gold` }]);
+          })}>List</Button>
         </div>
       ))}
     </div>
@@ -159,6 +188,7 @@ function ListingSheet({ onNote }: { onNote: (text: string) => void }) {
 
 function CraftSheet({ station, onNote }: { station: string; onNote: (text: string) => void }) {
   const game = useGame();
+  const [why, setWhy] = useState<string | null>(null);
   const kinds = station === "anvil"
     ? (["spike", "pit", "boulder"] as const)
     : station === "bench"
@@ -170,7 +200,6 @@ function CraftSheet({ station, onNote }: { station: string; onNote: (text: strin
         const id = (kind === "potion" || kind === "armor" || kind === "boots" ? `play:gear:${kind}` : `play:trap:${kind}`) as keyof typeof RECIPES;
         const recipe = RECIPES[id];
         const needs = Object.entries(recipe).filter(([key]) => key !== "cls") as [string, number][];
-        const missing = needs.filter(([material, qty]) => (game.inventory[material] ?? 0) < qty);
         return (
           <div key={kind}>
             <p className="flex items-center gap-2 font-display text-gold">
@@ -178,13 +207,18 @@ function CraftSheet({ station, onNote }: { station: string; onNote: (text: strin
               {kind === "armor" && <GameIcon src={ui.icon.helmet} />}
               {kind}
             </p>
-            <ul>
-              {needs.map(([material, qty]) => {
-                const held = game.inventory[material] ?? 0;
-                return <li key={material} className={held >= qty ? "text-emerald-300" : "text-red-300"}>{material} {held}/{qty}</li>;
-              })}
-            </ul>
-            <Button disabled={missing.length > 0} onClick={() => onNote(craftTrap(kind).reason)}>Craft</Button>
+            <div className="mt-1 flex flex-wrap gap-2">
+              <Button onClick={() => void craftOnChain(kind).then((result) => onNote(result.reason))}>Craft</Button>
+              <Button tone="ghost" onClick={() => setWhy(why === kind ? null : kind)}>Why?</Button>
+            </div>
+            {why === kind && (
+              <ul className="mt-1">
+                {needs.map(([material, qty]) => {
+                  const held = game.inventory[material] ?? 0;
+                  return <li key={material} className={held >= qty ? "text-emerald-300" : "text-red-300"}>{material} {held}/{qty}</li>;
+                })}
+              </ul>
+            )}
           </div>
         );
       })}
